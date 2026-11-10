@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta name="robots" content="noindex,nofollow">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>簡易 CAD</title>
+<style>
+:root{--bg:#1b1e23;--panel:#262b33;--panel2:#30363f;--line:#3d444f;--text:#e9ebee;--muted:#9aa1ab;--acc:#4fb3c8;--acc2:#2f7f90;--danger:#c86b6b}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--text);font-family:system-ui,-apple-system,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;overflow:hidden;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+#wrap{flex:1;position:relative;min-height:0}
+#c{position:absolute;inset:0;width:100%;height:100%;touch-action:none;display:block}
+button{font-family:inherit;color:var(--text)}
+.fl{position:absolute;display:flex;gap:2px;background:rgba(38,43,51,.92);border-radius:12px;padding:3px;box-shadow:0 2px 10px rgba(0,0,0,.4);z-index:5}
+.fl button{width:42px;height:40px;border:0;background:none;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0;font-size:12px}
+.fl button svg{width:24px;height:24px}
+.fl button.on{background:var(--acc2)}
+.fl button:active{background:var(--panel2)}
+.fl button:disabled{opacity:.35}
+#topbar{top:8px;left:8px}
+#cmdbar{top:58px;right:8px;display:none}
+#cmdbar button{width:auto;min-width:44px;padding:0 10px;font-size:14px}
+#cmdbar .ok{background:var(--acc2)}
+#cmdbar .mode{font-size:13px;min-width:40px;padding:0 8px;opacity:.75}
+#cmdbar .mode.on{opacity:1;outline:2px solid var(--acc);outline-offset:-2px;background:var(--panel2)}
+#penbar{right:8px;top:58px;flex-direction:column;display:none}
+#penbar button{width:44px;height:44px}
+.dot{width:24px;height:24px;border-radius:50%;border:2px solid #fff3}
+#penW{right:62px;top:58px;width:230px;flex-direction:column;gap:8px;padding:10px 12px;display:none}
+#penW .pwh{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+#penW .pwh b{color:var(--text);font-size:15px}
+#penW input{width:100%}
+#penW .pwp{height:24px;display:flex;align-items:center}
+#penWp{width:100%;border-radius:10px}
+#penW .pwq{display:flex;gap:4px}
+#penW .pwq button{flex:1;width:auto;height:30px;font-size:12px;padding:0}
+#penbar button.on{background:var(--panel2);outline:2px solid var(--acc)}
+#bottom{background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);flex:none}
+#hint{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 10px;font-size:13px;line-height:1.35;color:var(--muted);border-bottom:1px solid var(--line)}
+#hintT{flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#hintT.info{color:var(--text)}
+#hintT.big{font-size:20px;font-weight:600;line-height:1.3;white-space:pre-line;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+#hintC{font-size:11px;font-variant-numeric:tabular-nums;white-space:pre;text-align:right;color:var(--muted)}
+#hintBtn{display:none;border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:4px 10px;font-size:13px}
+#tabs{display:flex}
+#tabs button{flex:1;border:0;background:none;padding:6px 0 4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;color:var(--muted)}
+#tabs button svg{width:24px;height:24px}
+#tabs button.on{color:var(--acc)}
+#panel{display:none;grid-template-columns:repeat(4,1fr);gap:4px;padding:8px;border-bottom:1px solid var(--line)}
+#panel button{border:0;background:var(--panel2);border-radius:10px;padding:8px 2px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12.5px}
+#panel button svg{width:26px;height:26px;color:var(--acc)}
+#panel button:active{filter:brightness(1.25)}
+#keypad{display:none;border-bottom:1px solid var(--line)}
+#kfields{display:flex;gap:8px;padding:6px 8px;align-items:flex-end}
+.kf{flex:1}
+.kf label{display:block;font-size:12px;color:var(--muted);margin-bottom:2px}
+.kf div{height:38px;border:1px solid var(--line);border-radius:8px;background:#1d2127;padding:0 10px;display:flex;align-items:center;font-size:17px;font-variant-numeric:tabular-nums;overflow:hidden;white-space:nowrap}
+.kf div.act{border-color:var(--acc)}
+.kf div.lock{color:#7fe3f5}
+#kswap{width:40px;height:38px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-size:16px}
+#kkeys{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line)}
+#kkeys button{height:44px;border:0;background:#2b3038;font-size:19px}
+#kkeys button:active{background:#3a414c}
+#kkeys .x{background:#8a4f4f}
+#kkeys .p,#kkeys .ok{background:var(--acc2)}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:20}
+.sheet.show{display:flex}
+.sh{background:var(--panel);width:100%;max-width:560px;max-height:85%;overflow:auto;border-radius:14px 14px 0 0;padding:12px 14px calc(16px + env(safe-area-inset-bottom));-webkit-user-select:auto;user-select:auto}
+.shh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:16px}
+.sec{padding:10px 0;border-top:1px solid var(--line)}
+.lab{font-size:13px;color:var(--muted);margin-bottom:6px}
+.sh button,.sh select,.sh input,.sh textarea{font-family:inherit;font-size:15px;color:var(--text);background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.sh input[type=number],.sh input[type=text],.sh select,.sh textarea{width:100%}
+.row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.row2>*{flex:1}
+.small{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.danger{color:#ff9b9b!important;border-color:#6a3434!important}
+.big{width:100%;text-align:left;margin:4px 0;padding:12px!important}
+.fbtn{position:relative;overflow:hidden;display:block}
+.fbtn input{position:absolute;inset:0;width:100%;height:100%;opacity:0;font-size:0}
+.lyr{display:grid;grid-template-columns:28px 22px 1fr 56px 36px 34px;gap:6px;align-items:center;margin:6px 0}
+.lyr input[type=radio]{width:20px;height:20px}
+.lyr .chip{width:22px;height:22px;border-radius:5px;border:1px solid #fff4}
+.lyr input,.lyr select{padding:6px!important;font-size:14px!important}
+.lyr button{padding:4px!important}
+.rct{display:flex;gap:6px;margin:5px 0;align-items:stretch}
+.rcb{flex:1;min-width:0;text-align:left;padding:8px 10px!important}
+.rcb.cur{border-color:var(--acc)!important}
+.rcn{font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rcm{font-size:12px;color:var(--muted);margin-top:2px}
+.rcx{flex:none;width:40px;padding:0!important}
+.blyr{display:flex;gap:6px;align-items:center;font-size:14px;margin:2px 0}
+.lyb{width:36px;height:34px;padding:0!important;display:flex;align-items:center;justify-content:center;flex:none}
+.lyn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cibtn{padding:6px 4px!important;font-size:14px!important}
+.acg{display:grid;grid-template-columns:repeat(24,1fr);gap:1px}
+.acg .ac{aspect-ratio:1;min-height:12px}
+.acs{display:flex;gap:4px}
+.acs .ac{width:28px;height:28px}
+.ac{padding:0!important;border:1px solid #0006!important;border-radius:2px!important}
+.ac.on{outline:2px solid #fff;outline-offset:-1px;box-shadow:0 0 0 3px var(--acc)}
+#osnaps,#osnapsQ{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+#osnaps label,#osnapsQ label{display:flex;gap:6px;align-items:center;font-size:14px}
+#busy{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:30}
+#busy.show{display:flex}
+#busyBox{background:var(--panel);padding:18px 22px;border-radius:12px;display:flex;gap:12px;align-items:center;max-width:80%;font-size:14px;line-height:1.5}
+.spin{width:22px;height:22px;border:3px solid #555;border-top-color:var(--acc);border-radius:50%;animation:sp 1s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+#toast{position:fixed;left:50%;top:calc(110px + env(safe-area-inset-top));transform:translateX(-50%);background:rgba(20,22,26,.95);border:1px solid var(--line);padding:8px 14px;border-radius:10px;font-size:13px;z-index:40;display:none;max-width:85%;text-align:center}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="wrap">
+    <canvas id="c"></canvas>
+    <div id="topbar" class="fl">
+      <button id="tFile" title="檔案"></button>
+      <button id="tUndo" title="復原"></button>
+      <button id="tRedo" title="重做"></button>
+      <button id="tFit" title="全圖"></button>
+      <button id="tSnap" title="鎖點"></button>
+      <button id="tOrtho" title="正交"></button>
+      <button id="tSet" title="設定"></button>
+    </div>
+    <div id="cmdbar" class="fl"></div>
+    <div id="penbar" class="fl"></div>
+    <div id="penW" class="fl"><div class="pwh"><span>手寫粗細</span><b id="penWv"></b></div><input type="range" id="penWr" min="0.5" max="20" step="0.5"><div class="pwp"><div id="penWp"></div></div><div class="pwq"><button data-w="1">1</button><button data-w="2">2</button><button data-w="3">3</button><button data-w="5">5</button><button data-w="8">8</button><button data-w="12">12</button></div></div>
+  </div>
+  <div id="bottom">
+    <div id="hint"><div id="hintT"></div><button id="hintBtn"></button><div id="hintC"></div></div>
+    <div id="keypad">
+      <div id="kfields"></div>
+      <div id="kkeys"></div>
+    </div>
+    <div id="panel"></div>
+    <div id="tabs"></div>
+  </div>
+</div>
+
+<div id="fileSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>檔案</b><button data-close>關閉</button></div>
+  <div class="sec">
+    <label class="fbtn big" style="border:1px solid var(--line);border-radius:8px;background:var(--panel2)">開啟圖檔（DWG / DXF）<input type="file" id="cadFile"></label>
+    <div class="small" id="drawInfo"></div>
+  </div>
+  <div class="sec" id="recentSec" style="display:none">
+    <div class="lab">最近開過的檔案（點一下直接開）</div>
+    <div id="recentList"></div>
+    <div class="small">最多記 6 個。移除只會刪掉 App 裡的暫存，你畫的東西還在，之後重新開同一張圖就會載回來。</div>
+  </div>
+  <div class="sec">
+    <div class="lab">交件：匯出我畫的東西（DXF）</div>
+    <button class="big" id="expSave">另存 DXF 到手機…</button>
+    <button class="big" id="expShare">分享 DXF（LINE、Email、雲端硬碟…）</button>
+    <div class="small">只輸出你畫的線、文字、手寫，圖層照你訂的名稱。座標跟原圖相同，編輯人員用插入或外部參考疊上去就對齊。</div>
+  </div>
+  <div class="sec"><button class="big danger" id="impClear">移除底圖</button></div>
+</div></div>
+
+<div id="setSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>設定</b><button data-close>完成</button></div>
+  <div class="sec">
+    <div class="lab">Support（線型 .lin、形狀與字型 .shx）</div>
+    <button class="big" id="supPick" style="display:none">選擇 Support 資料夾…</button>
+    <button class="big" id="supScan" style="display:none">重新掃描資料夾</button>
+    <label class="fbtn big" style="border:1px solid var(--line);border-radius:8px;background:var(--panel2)">選檔案載入（可多選）<input type="file" id="supFiles" multiple></label>
+    <div class="small" id="supMsg"></div>
+  </div>
+  <div class="sec"><div class="lab">背景</div><div class="row2"><button id="bgDark">黑底</button><button id="bgWhite">白底</button></div></div>
+  <div class="sec row2">
+    <div><div class="lab">線型比例 LTSCALE</div><input id="sLt" type="number" step="any" inputmode="decimal"></div>
+    <div><div class="lab">中央經線（度）</div><input id="sLon" type="number" step="any" inputmode="decimal"></div>
+  </div>
+  <div class="sec row2">
+    <div><div class="lab">小數位數</div><input id="sPrec" type="number" min="0" max="6" inputmode="numeric"></div>
+    <div><div class="lab">文字字高</div><input id="sTh" type="number" step="any" inputmode="decimal"></div>
+    <div><div class="lab">手寫粗細(px)</div><input id="sInk" type="number" step="any" inputmode="decimal"></div>
+  </div>
+  <div class="sec"><div class="lab">鎖點模式</div><div id="osnaps"></div></div>
+  <div class="sec"><button class="big danger" id="clearMine">清除這張圖上我畫的東西</button></div>
+</div></div>
+
+<div id="layerSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>圖層</b><button data-close>完成</button></div>
+  <div class="sec">
+    <div class="lab">我的圖層（點圓圈設為目前圖層）</div>
+    <div id="myLayers"></div>
+    <div class="row2" style="margin-top:8px"><input type="text" id="newLy" placeholder="新圖層名稱"><button id="addLy" style="flex:none">新增</button></div>
+  </div>
+  <div class="sec" id="baseSec">
+    <div class="lab">底圖圖層</div>
+    <div class="row2" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button></div>
+    <div id="baseLayers"></div>
+  </div>
+</div></div>
+
+<div id="aciSheet" class="sheet" style="z-index:25"><div class="sh">
+  <div class="shh"><b>選取顏色</b><button data-close>取消</button></div>
+  <div class="lab">AutoCAD 顏色索引（ACI）</div>
+  <div id="aciTop" class="acg"></div>
+  <div id="aciBot" class="acg" style="margin-top:6px"></div>
+  <div class="row2" style="margin-top:10px;gap:10px;align-items:flex-start">
+    <div style="flex:none"><div id="aciStd" class="acs"></div><div id="aciGray" class="acs" style="margin-top:6px"></div></div>
+    <div id="aciPrev" style="flex:none;width:56px;height:56px;border-radius:8px;border:1px solid #fff4;margin-left:auto"></div>
+  </div>
+  <div class="small" id="aciInfo"></div>
+  <div class="row2" style="margin-top:8px"><input id="aciNum" type="number" min="1" max="255" inputmode="numeric"><button id="aciOk" style="flex:none;background:var(--acc);color:#fff;border-color:var(--acc)">確定</button></div>
+</div></div>
+
+<div id="snapSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>鎖點模式</b><button data-close>完成</button></div>
+  <div id="osnapsQ"></div>
+  <div class="row2" style="margin-top:10px"><button id="osqMine">常用（端點 外觀交點 插入點 交點 垂足 最近點）</button></div>
+  <div class="row2" style="margin-top:6px"><button id="osqAll">全選</button><button id="osqNone">全不選</button></div>
+  <div class="small" style="margin-top:8px">垂足要先點第一點，從那點往游標下的線（含延長線）或圓作垂線。有開最近點時，游標要靠近垂足才會鎖垂足。</div>
+</div></div>
+
+<div id="pickLySheet" class="sheet"><div class="sh">
+  <div class="shh"><b>改到哪個圖層？</b><button data-close>取消</button></div>
+  <div id="pickLyList"></div>
+</div></div>
+
+<div id="textSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>文字</b><button data-close>取消</button></div>
+  <div class="sec"><textarea id="txtVal" rows="2" placeholder="例如：電力人孔"></textarea></div>
+  <div class="sec row2">
+    <div><div class="lab">字高</div><input id="txtH" type="number" step="any" inputmode="decimal"></div>
+    <div><div class="lab">角度（度）</div><input id="txtA" type="number" step="any" inputmode="decimal"></div>
+  </div>
+  <div class="sec row2"><button id="txtAlign">點一條線取方向</button><button id="txtOk" style="background:var(--acc2)">放上去</button></div>
+</div></div>
+
+<div id="busy"><div id="busyBox"><div class="spin"></div><div id="busyMsg">讀取中…</div></div></div>
+<div id="toast"></div>
+
+<script src="js/core.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
