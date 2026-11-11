@@ -22,6 +22,10 @@ button{font-family:inherit;color:var(--text)}
 #topbar{top:8px;left:8px}
 #cmdbar{top:58px;right:8px;display:none}
 #smallBar{top:58px;left:8px;display:none;align-items:center}
+#selBar{top:58px;right:8px;display:none}
+#selBar button{width:auto;white-space:nowrap;padding:0 14px;font-size:14px}
+#selBar button+button{border-left:1px solid #fff2;border-radius:0 9px 9px 0}
+.lyhl{outline:2px solid #ffcc00;border-radius:6px;background:#ffcc0022}
 #smallTxt{font-size:13px;padding:0 8px;white-space:nowrap}
 #cmdbar button{width:auto;min-width:44px;padding:0 10px;font-size:14px}
 #cmdbar .ok{background:var(--acc2)}
@@ -127,6 +131,7 @@ button{font-family:inherit;color:var(--text)}
       <button id="tSet" title="設定"></button>
     </div>
     <div id="cmdbar" class="fl"></div>
+    <div id="selBar" class="fl"><button id="selOff">關閉此圖層</button><button id="selList">圖層列表</button></div>
     <div id="smallBar" class="fl"><span id="smallTxt"></span><button id="smPrev">◀</button><button id="smNext">▶</button><button id="smOff">✕</button></div>
     <div id="penbar" class="fl"></div>
     <div id="penW" class="fl"><div class="pwh"><span>手寫粗細</span><b id="penWv"></b></div><input type="range" id="penWr" min="0.5" max="20" step="0.5"><div class="pwp"><div id="penWp"></div></div><div class="pwq"><button data-w="1">1</button><button data-w="2">2</button><button data-w="3">3</button><button data-w="5">5</button><button data-w="8">8</button><button data-w="12">12</button></div></div>

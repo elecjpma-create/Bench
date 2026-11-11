@@ -151,7 +151,8 @@ function cmdBase(){return cmd&&cmd.base?cmd.base():null;}
 function setCursorRaw(w){const r=snapAt(w,cmdBase());cur={raw:w.slice(),p:r.p,snap:r.snap};kp.unlockAll();refreshCmd();}
 function pickEnt(w,filter){
   const tol=18/st.view.s;let bi=null,bd=tol;
-  for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;const d=hitDist(e,w);if(d<bd||(d===bd&&!e.imp)){bd=d;bi=e;}}
+  // 文字框內不算 0：點到框裡時，8 像素內有線就選線（大字如圖號才不會擋住下面的線）
+  for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;let d=hitDist(e,w);if(e.t==='text')d=Math.max(d,8/st.view.s);if(d<bd||(d===bd&&!e.imp)){bd=d;bi=e;}}
   return bi;
 }
 
@@ -1216,7 +1217,7 @@ function fillLayerSheet(){
   try{updOldBtn();updSmallBar();}catch(_){}
   const box=$('myLayers');box.innerHTML='';
   for(const L of st.layers){
-    const r=document.createElement('div');r.className='lyr';
+    const r=document.createElement('div');r.className='lyr';r.dataset.ly=L.name;
     const rb=document.createElement('input');rb.type='radio';rb.name='curly';rb.checked=st.cur===L.name;rb.onchange=()=>{st.cur=L.name;saveSettings();};
     const chip=document.createElement('div');chip.className='chip';chip.style.background=aciHex(L.ci);
     const nm=document.createElement('input');nm.type='text';nm.value=L.name;nm.onchange=()=>{const v=nm.value.trim();if(!v||st.layers.some(x=>x!==L&&x.name===v)){nm.value=L.name;toast('名稱空白或重複');return;}
@@ -1233,7 +1234,7 @@ function fillLayerSheet(){
   $('baseSec').style.display=imp.length?'block':'none';
   const bb=$('baseLayers');bb.innerHTML='';
   impLayers.slice().sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant')).forEach(L=>{
-    const r=document.createElement('div');r.className='blyr';
+    const r=document.createElement('div');r.className='blyr';r.dataset.ly=L.name;r.dataset.base='1';
     const on=document.createElement('button');on.className='lyb';const fz=document.createElement('button');fz.className='lyb';
     const paint=()=>{on.innerHTML=lyIcon('bulb',!offLy.has(L.name));on.title=offLy.has(L.name)?'關閉中（點一下打開）':'打開';
       fz.innerHTML=lyIcon('sun',!frzLy.has(L.name));fz.title=frzLy.has(L.name)?'凍結中（點一下解凍）':'解凍';t.style.opacity=hidLy.has(L.name)?.45:1;};
@@ -1254,6 +1255,16 @@ function lyIcon(k,act){
 $('addLy').onclick=()=>{const v=$('newLy').value.trim();if(!v)return;if(st.layers.some(l=>l.name===v)){toast('已經有這個圖層');return;}st.layers.push({name:v,ci:7,lt:'CONTINUOUS',on:true});st.cur=v;$('newLy').value='';saveSettings();fillLayerSheet();};
 $('lyAll').onclick=()=>{offLy.clear();frzLy.clear();syncHid();fillLayerSheet();schedule();};
 $('lyNone').onclick=()=>{impLayers.forEach(l=>offLy.add(l.name));syncHid();fillLayerSheet();schedule();};
+
+/* ---------- 點到物件時：關閉這個圖層／到圖層列表找它 ---------- */
+function updSelBar(){const b=$('selBar');if(!b)return;const show=!cmd&&selE&&!smallMarks;b.style.display=show?'flex':'none';}
+function closeSelLayer(){if(!selE)return;const n=selE.ly||'0';
+  if(selE.imp){offLy.add(n);syncHid();}else{const L=st.layers.find(l=>l.name===n);if(L){L.on=false;saveSettings();}}
+  selE=null;setHint(baseHintText(),false);toast('已關閉圖層「'+n+'」（到圖層裡可再打開）',2500);schedule();}
+function showSelLayer(){if(!selE)return;const n=selE.ly||'0';fillLayerSheet();openSheet('layerSheet');
+  setTimeout(()=>{const r=[...document.querySelectorAll('#layerSheet [data-ly]')].find(x=>x.dataset.ly===n&&(x.dataset.base==='1')===!!selE.imp);
+    if(!r)return;r.scrollIntoView({block:'start',behavior:'smooth'});r.classList.add('lyhl');setTimeout(()=>r.classList.remove('lyhl'),2500);},120);}
+$('selOff').onclick=closeSelLayer;$('selList').onclick=showSelLayer;
 
 /* ---------- 舊圖（a 開頭圖層）一鍵開關、小線段標記 ---------- */
 const OLD_RE=/^a/i,NEW_RE=/^\d/;const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
@@ -1297,7 +1308,7 @@ function updSmallBar(){const b=$('smallBar');if(!smallMarks){b.style.display='no
 function smallGo(d){const V=smallVis();if(!V.length){toast('目前開著的圖層沒有小線段');return;}
   let k=V.indexOf(smallMarks[smallIdx]);k=k<0?(d>0?0:V.length-1):(k+d+V.length)%V.length;const m=V[k];smallIdx=smallMarks.indexOf(m);
   const v=st.view;v.s=Math.max(v.s,40);v.ox=W/2-m.p[0]*v.s;v.oy=H/2+m.p[1]*v.s;updSmallBar();schedule();}
-function drawSmall(){if(smallMarks&&smallKey!==impName){smallMarks=null;updSmallBar();}if(!smallMarks)return;const cm=smallMarks[smallIdx];ctx.save();
+function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=null;updSmallBar();}if(!smallMarks)return;const cm=smallMarks[smallIdx];ctx.save();
   for(const m of smallMarks){if(hidLy.has(m.l))continue;const q=toS(m.p);if(q[0]<-30||q[1]<-30||q[0]>W+30||q[1]>H+30)continue;const on=m===cm;
     ctx.strokeStyle=on?'#ffea00':'#ff2bd6';ctx.lineWidth=on?3.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
   ctx.restore();}
