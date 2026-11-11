@@ -1267,16 +1267,19 @@ function showSelLayer(){if(!selE)return;const n=selE.ly||'0';fillLayerSheet();op
 $('selOff').onclick=closeSelLayer;$('selList').onclick=showSelLayer;
 
 /* ---------- 舊圖（a 開頭圖層）一鍵開關、小線段標記 ---------- */
-const OLD_RE=/^a/i,NEW_RE=/^\d/;const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
+const OLD_RE=/^a/i,NEW_RE=/^\d/,Q_RE=/^q/i;const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
 const oldLayers=()=>impLayers.filter(l=>OLD_RE.test(l.name)).map(l=>l.name);
 const newLayers=()=>impLayers.filter(l=>NEW_RE.test(l.name)&&l.name!=='0').map(l=>l.name);
+const qLayers=()=>impLayers.filter(l=>Q_RE.test(l.name)).map(l=>l.name);
 function oldOff(){const o=oldLayers();return o.length&&o.every(n=>offLy.has(n));}
 function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!==$('smallMax'))$('smallMax').value=smallMaxV();const o=oldLayers();b.disabled=!o.length;b.textContent=o.length?(oldOff()?'開啟舊圖（a 開頭）':'關閉舊圖（a 開頭）'):'沒有 a 開頭的舊圖層';
-  $('lySmall').textContent=smallMarks?'取消小線段標記':`標出新圖層小線段（<${smallMaxV()}m）`;}
+  $('lySmall').textContent=smallMarks?'取消小線段標記':`標出新圖層／Q 小線段（<${smallMaxV()}m）`;}
 $('lyOld').onclick=()=>{const o=oldLayers();if(!o.length)return;if(oldOff())o.forEach(n=>offLy.delete(n));else o.forEach(n=>offLy.add(n));syncHid();fillLayerSheet();schedule();};
 let smallMarks=null,smallIdx=-1,smallKey='';
 // 網頁版（DXF）找孤立小線段：規則同原生端
-function findSmallJS(S,max){
+function findSmallJS(S,max,NW,QS){
+  // 相接的算法：同圖層；Q 圖層的線接到新圖層或其他 Q 圖層也算
+  const link=(a,b)=>a===b||(QS.has(a)&&(NW.has(b)||QS.has(b)));
   const tol=0.02,polyLen=P=>{let l=0;for(let i=1;i<P.length;i++)l+=dist(P[i-1],P[i]);return l;};
   const C=imp.filter(e=>!e.g&&S.has(e.ly)&&(e.t==='line'||e.t==='pline'||e.t==='arc'));
   const info=new Map();for(const e of C){const P=entPolys(e)[0];const l=polyLen(P);info.set(e,{P,l,small:l<max&&l>1e-9});}
@@ -1288,18 +1291,18 @@ function findSmallJS(S,max){
     const Q=[e];done.add(e);let total=0,iso=true,bb=[Infinity,Infinity,-Infinity,-Infinity];
     while(Q.length){const j=Q.shift(),J=info.get(j);total+=J.l;const b=j.bb||entBox(j);bb=[Math.min(bb[0],b[0]),Math.min(bb[1],b[1]),Math.max(bb[2],b[2]),Math.max(bb[3],b[3])];
       if(total>=max){iso=false;continue;}
-      for(const k of near(j)){if(k===j||k.ly!==j.ly)continue;const K=info.get(k),KP=K?K.P:entPolys(k)[0];if(!KP||!touch(J.P,KP))continue;
+      for(const k of near(j)){if(k===j||!link(j.ly,k.ly))continue;const K=info.get(k),KP=K?K.P:entPolys(k)[0];if(!KP||!touch(J.P,KP))continue;
         if(K&&K.small){if(!done.has(k)){done.add(k);Q.push(k);}}else iso=false;}}
     if(iso&&total<max)out.push({x:(bb[0]+bb[2])/2,y:(bb[1]+bb[3])/2,len:total,l:e.ly});}
   return out;
 }
 async function findSmall(){
-  const only=newLayers();let L=[];
-  if(!only.length){toast('沒有數字開頭的新圖層');return;}
-  if(nativeOn){try{L=await CadCall('Cad','small',{max:smallMaxV(),only});}catch(err){toast('找小線段失敗：'+(err.message||err));return;}}
-  else L=findSmallJS(new Set(only),smallMaxV());
+  const nw=newLayers(),q=qLayers(),only=nw.concat(q);let L=[];
+  if(!only.length){toast('沒有數字開頭的新圖層或 Q 圖層');return;}
+  if(nativeOn){try{L=await CadCall('Cad','small',{max:smallMaxV(),only,q});}catch(err){toast('找小線段失敗：'+(err.message||err));return;}}
+  else L=findSmallJS(new Set(only),smallMaxV(),new Set(nw),new Set(q));
   smallKey=impName;smallMarks=L.map(m=>({p:[m.x,m.y],len:m.len,l:m.l}));smallIdx=-1;
-  toast(smallMarks.length?`找到 ${smallMarks.length} 段小於 ${smallMaxV()}m 的線（只找數字開頭的新圖層、沒跟同圖層線相接的）`:'沒有找到小線段',3000);
+  toast(smallMarks.length?`找到 ${smallMarks.length} 段小於 ${smallMaxV()}m 的線（新圖層和 Q 圖層、沒跟相關圖層線相接的）`:'沒有找到小線段',3000);
   if(!smallMarks.length)smallMarks=null;updSmallBar();schedule();
 }
 const smallVis=()=>smallMarks?smallMarks.filter(m=>!hidLy.has(m.l)):[];
