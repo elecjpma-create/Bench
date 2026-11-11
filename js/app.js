@@ -66,6 +66,7 @@ const IC={
   done:'<path d="M5 12l5 5 9-10"/>',
   join:'<path d="M3 17l6-6"/><path d="M15 11l6-6"/><circle cx="12" cy="11" r="2.2"/>',
   brk:'<path d="M3 18L9 12"/><path d="M15 12l6-6"/><path d="M10 7l4 10" stroke-dasharray="2 2"/>',
+  dim:'<path d="M4 7v10M20 7v10M4 12h16"/><path d="M6 10l-2 2 2 2M18 10l2 2-2 2"/>',
   cclip:'<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a1 1 0 00-1 1v14a1 1 0 001 1h12a1 1 0 001-1V6a1 1 0 00-1-1h-2"/>',
   pclip:'<rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 5H6a1 1 0 00-1 1v14a1 1 0 001 1h12a1 1 0 001-1V6a1 1 0 00-1-1h-2"/><path d="M12 10v7M9 14l3 3 3-3"/>'
 };
@@ -273,6 +274,17 @@ function cmdLine(){return pointsCmd({name:'line',
   onPoint(p){if(this.pts.length){const a=this.pts[this.pts.length-1];if(dist(a,p)>1e-9){snapshot();addEnt({t:'line',a:a.slice(),b:p.slice()});saveDraw();}}this.pts.push(p);},
   ok(){startCmd(cmdLine());},
   preview(){if(this.pts.length&&cur)previewPath([this.pts[this.pts.length-1]],cur.p);}
+});}
+/* ---------- 標註（對齊標註）：點兩點，再點標註線位置；字高用「文字高度」設定 ---------- */
+function dimOff(a,b,p){const L=dist(a,b);if(!L)return 0;const ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;return ux*(p[1]-a[1])-uy*(p[0]-a[0]);}
+function cmdDim(){return pointsCmd({name:'dim',
+  init(){kp.setMode('xy');},
+  hint(){const n=this.pts.length;return[n===0?(cur?'拖曳微調，再點一下確定第一點':'標註：點第一點（可鎖點）'):n===1?'標註：點第二點（可鎖點）':'標註：點標註線要放的位置（拉離兩點連線）',!!cur];},
+  onPoint(p){if(this.pts.length<2){if(this.pts.length===1&&dist(this.pts[0],p)<1e-9)return;this.pts.push(p);return;}
+    const[a,b]=this.pts;snapshot();addEnt({t:'dim',a:a.slice(),b:b.slice(),off:dimOff(a,b,p),h:st.textH||2});saveDraw();startCmd(cmdDim());},
+  ok(){endCmd();},
+  preview(){const P=this.pts;if(P.length===1&&cur)previewPath([P[0]],cur.p);
+    if(P.length===2){const off=cur?dimOff(P[0],P[1],cur.p):0;drawTemp({t:'dim',a:P[0],b:P[1],off,h:st.textH||2});}}
 });}
 /* ---------- 幾何：三點圓、雲形線、多邊形 ---------- */
 function circ3(a,b,c){const d=2*(a[0]*(b[1]-c[1])+b[0]*(c[1]-a[1])+c[0]*(a[1]-b[1]));if(Math.abs(d)<1e-12)return null;
@@ -1160,7 +1172,7 @@ function onTap(sp){
 /* ---------- 底部工具列 ---------- */
 const TABS=[
   ['sel','選取',()=>{endCmd();closePanel();}],
-  ['draw','繪製',[['pline','多段線',cmdPline],['line','直線',cmdLine],['circle','圓',cmdCircle],['arc','弧',cmdArc],['spline','雲形線',cmdSpline],['polygon','多邊形',cmdPolygon],['text','文字',cmdText]]],
+  ['draw','繪製',[['pline','多段線',cmdPline],['line','直線',cmdLine],['circle','圓',cmdCircle],['arc','弧',cmdArc],['spline','雲形線',cmdSpline],['polygon','多邊形',cmdPolygon],['text','文字',cmdText],['dim','標註',cmdDim]]],
   ['edit','編輯',[['move','移動',()=>cmdMove(false)],['copy','複製',()=>cmdMove(true)],['rot','旋轉',cmdRotate],['offset','偏移',cmdOffset],['trim','修剪',()=>cmdTrimExt(false)],['extend','延伸',()=>cmdTrimExt(true)],['join','接合',cmdJoin],['brk','打斷',cmdBreak],['del','刪除',cmdDelete],['chly','改圖層',cmdChLayer],['cclip','複製到剪貼簿',cmdCopyClip],['pclip','原座標貼上',cmdPasteOrig]]],
   ['meas','測量',[['len','量長度',cmdMeasure],['xy','點坐標',()=>cmdCoord(false)],['ll','經緯度',()=>cmdCoord(true)]]],
   ['layers','圖層',()=>{closePanel();fillLayerSheet();openSheet('layerSheet');}],
@@ -1178,7 +1190,7 @@ function openPanel(k,items){
 }
 function closePanel(){tab=null;$('panel').style.display='none';if(cmd&&cmd.keypad&&!kp.hidden)kp.show();updateUI();}
 function updateUI(){
-  const active=cmd?{pline:'draw',line:'draw',circle:'draw',arc:'draw',spline:'draw',polygon:'draw',text:'draw',textalign:'draw',move:'edit',copy:'edit',rot:'edit',offset:'edit',trim:'edit',extend:'edit',join:'edit',brk:'edit',copyclip:'edit',grip:'sel',del:'edit',chly:'edit',mlen:'meas',xy:'meas',ll:'meas',pen:'pen'}[cmd.name]:'sel';
+  const active=cmd?{pline:'draw',line:'draw',circle:'draw',arc:'draw',spline:'draw',polygon:'draw',text:'draw',textalign:'draw',move:'edit',copy:'edit',rot:'edit',offset:'edit',dim:'draw',trim:'edit',extend:'edit',join:'edit',brk:'edit',copyclip:'edit',grip:'sel',del:'edit',chly:'edit',mlen:'meas',xy:'meas',ll:'meas',pen:'pen'}[cmd.name]:'sel';
   document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',(tab||active)===b.dataset.k));
   $('tSnap').classList.toggle('on',st.snap);$('tOrtho').classList.toggle('on',st.ortho);
   $('tUndo').disabled=!undoS.length&&!(cmd&&cmd.pts&&cmd.pts.length);$('tRedo').disabled=!redoS.length;
@@ -1453,7 +1465,13 @@ function buildDXF(){
   const pt=(c,p)=>{w(c,nf(p[0]));w(c+10,nf(p[1]));w(c+20,0);};
   for(const e of ents){
     switch(e.t){
-      case'line':case'dim':head('LINE',e);pt(10,e.a);pt(11,e.b);break;
+      case'line':head('LINE',e);pt(10,e.a);pt(11,e.b);break;
+      case'dim':{const L=dist(e.a,e.b);if(!L)break;const h=e.h||st.textH||2,ux=(e.b[0]-e.a[0])/L,uy=(e.b[1]-e.a[1])/L,nx=-uy,ny=ux,off=e.off||0,sg=Math.sign(off)||1;
+        const A2=[e.a[0]+nx*off,e.a[1]+ny*off],B2=[e.b[0]+nx*off,e.b[1]+ny*off],ln=(p,q)=>{head('LINE',e);pt(10,p);pt(11,q);};
+        if(Math.abs(off)>h*0.3)for(const[P,Q]of[[e.a,A2],[e.b,B2]])ln([P[0]+nx*sg*h*0.25,P[1]+ny*sg*h*0.25],[Q[0]+nx*sg*h*0.5,Q[1]+ny*sg*h*0.5]);
+        ln(A2,B2);const tx=(ux+nx)/Math.SQRT2*h*0.5,ty=(uy+ny)/Math.SQRT2*h*0.5;for(const P of[A2,B2])ln([P[0]-tx,P[1]-ty],[P[0]+tx,P[1]+ty]);
+        let ang=Math.atan2(uy,ux);if(Math.cos(ang)<-1e-6)ang+=Math.PI;const m=midp(A2,B2),tp=[m[0]-Math.sin(ang)*h*0.4,m[1]+Math.cos(ang)*h*0.4];
+        head('TEXT',e);pt(10,tp);w(40,nf(h));w(1,fmt(L));w(50,nf(normA(deg(ang))));w(7,'STANDARD');w(72,1);pt(11,tp);break;}
       case'pline':case'ink':head('POLYLINE',e);w(66,1);pt(10,[0,0]);w(70,e.closed?1:0);
         for(const p of e.pts){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));break;
       case'circle':head('CIRCLE',e);pt(10,e.o);w(40,nf(e.r));break;

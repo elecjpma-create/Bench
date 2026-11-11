@@ -384,12 +384,14 @@ function drawDim(e,col,width){
     ctx.moveTo(A[0]+nx*sg*3,A[1]+ny*sg*3);ctx.lineTo(A2[0]+nx*sg*5,A2[1]+ny*sg*5);
     ctx.moveTo(B[0]+nx*sg*3,B[1]+ny*sg*3);ctx.lineTo(B2[0]+nx*sg*5,B2[1]+ny*sg*5);}
   ctx.moveTo(A2[0],A2[1]);ctx.lineTo(B2[0],B2[1]);
-  const tx=(ux+nx)/Math.SQRT2*5,ty=(uy+ny)/Math.SQRT2*5;
+  const hp=e.h?e.h*st.view.s:0,tk=hp?Math.max(2,Math.min(hp*0.5,40)):5;
+  const tx=(ux+nx)/Math.SQRT2*tk,ty=(uy+ny)/Math.SQRT2*tk;
   for(const P of[A2,B2]){ctx.moveTo(P[0]-tx,P[1]-ty);ctx.lineTo(P[0]+tx,P[1]+ty);}
   ctx.stroke();
   let ang=Math.atan2(uy,ux);if(Math.cos(ang)<-1e-6)ang+=Math.PI;
   const m=midp(A2,B2);ctx.save();ctx.translate(m[0],m[1]);ctx.rotate(ang);
-  ctx.font='13px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(fmt(dist(e.a,e.b)),0,-3);ctx.restore();
+  if(hp&&hp<4){ctx.restore();return;}// 字太小就不畫字
+  ctx.font=(hp?Math.min(hp,200):13)+'px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='bottom';ctx.fillText(fmt(dist(e.a,e.b)),0,hp?-hp*0.4:-3);ctx.restore();
 }
 function drawSnapMark(s){
   const[x,y]=toS(s.p),r=6;ctx.strokeStyle='#ffcc00';ctx.lineWidth=2;ctx.lineCap='butt';ctx.beginPath();
