@@ -1275,9 +1275,10 @@ const newLayers=()=>impLayers.filter(l=>NEW_RE.test(l.name)&&l.name!=='0'&&!CONT
 const qLayers=()=>impLayers.filter(l=>Q_RE.test(l.name)).map(l=>l.name);
 function oldOff(){const o=oldLayers();return o.length&&o.every(n=>offLy.has(n));}
 function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!==$('smallMax'))$('smallMax').value=smallMaxV();const o=oldLayers();b.disabled=!o.length;b.textContent=o.length?(oldOff()?'開啟舊圖（a 開頭）':'關閉舊圖（a 開頭）'):'沒有 a 開頭的舊圖層';
-  $('lySmall').textContent=smallMarks?'取消小線段標記':`標出新圖層／Q 小線段（<${smallMaxV()}m）`;}
+  $('lySmall').textContent=smallMarks&&smallMode==='small'?'取消小線段標記':`標出新圖層／Q 小線段（<${smallMaxV()}m）`;
+  $('lyArea').textContent=smallMarks&&smallMode==='area'?'取消區域檢查標記':'檢查區域：相通／房屋未封閉／空白區';}
 $('lyOld').onclick=()=>{const o=oldLayers();if(!o.length)return;if(oldOff())o.forEach(n=>offLy.delete(n));else o.forEach(n=>offLy.add(n));syncHid();fillLayerSheet();schedule();};
-let smallMarks=null,smallIdx=-1,smallKey='';
+let smallMarks=null,smallIdx=-1,smallKey='',smallMode='small';
 // 網頁版（DXF）找孤立小線段：規則同原生端
 function findSmallJS(S,max,NW,QS){
   const link=(a,b)=>a===b;// 只看同一個圖層（Q 也一樣）
@@ -1302,23 +1303,68 @@ async function findSmall(){
   if(!only.length){toast('沒有數字開頭的新圖層或 Q 圖層');return;}
   if(nativeOn){try{L=await CadCall('Cad','small',{max:smallMaxV(),only,q});}catch(err){toast('找小線段失敗：'+(err.message||err));return;}}
   else L=findSmallJS(new Set(only),smallMaxV(),new Set(nw),new Set(q));
-  smallKey=impName;smallMarks=L.map(m=>({p:[m.x,m.y],len:m.len,l:m.l}));smallIdx=-1;
+  smallKey=impName;smallMode='small';smallMarks=L.map(m=>({p:[m.x,m.y],len:m.len,l:m.l}));smallIdx=-1;
   toast(smallMarks.length?`找到 ${smallMarks.length} 段小於 ${smallMaxV()}m 的線（新圖層和 Q 圖層、不含等高線、沒跟同圖層線相接的）`:'沒有找到小線段',3000);
   if(!smallMarks.length)smallMarks=null;updSmallBar();schedule();
 }
 const smallVis=()=>smallMarks?smallMarks.filter(m=>!hidLy.has(m.l)):[];
 function updSmallBar(){const b=$('smallBar');if(!smallMarks){b.style.display='none';return;}b.style.display='flex';
-  const V=smallVis(),m=smallMarks[smallIdx];$('smallTxt').textContent=m&&!hidLy.has(m.l)?`${V.indexOf(m)+1}/${V.length}　${m.len.toFixed(2)}m　${m.l}`:`小線段 ${V.length} 段`;}
+  const V=smallVis(),m=smallMarks[smallIdx];$('smallTxt').textContent=m&&!hidLy.has(m.l)?(m.msg?`${V.indexOf(m)+1}/${V.length}　${m.msg}`:`${V.indexOf(m)+1}/${V.length}　${m.len.toFixed(2)}m　${m.l}`):(smallMode==='area'?`區域問題 ${V.length} 處`:`小線段 ${V.length} 段`);}
 function smallGo(d){const V=smallVis();if(!V.length){toast('目前開著的圖層沒有小線段');return;}
   let k=V.indexOf(smallMarks[smallIdx]);k=k<0?(d>0?0:V.length-1):(k+d+V.length)%V.length;const m=V[k];smallIdx=smallMarks.indexOf(m);
   const v=st.view;v.s=Math.max(v.s,40);v.ox=W/2-m.p[0]*v.s;v.oy=H/2+m.p[1]*v.s;updSmallBar();schedule();}
 function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=null;updSmallBar();}if(!smallMarks)return;const cm=smallMarks[smallIdx];ctx.save();
   for(const m of smallMarks){if(hidLy.has(m.l))continue;const q=toS(m.p);if(q[0]<-30||q[1]<-30||q[0]>W+30||q[1]>H+30)continue;const on=m===cm;
-    ctx.strokeStyle=on?'#ffea00':'#ff2bd6';ctx.lineWidth=on?3.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
+    ctx.strokeStyle=on?'#ffea00':(AREA_COL[m.type]||'#ff2bd6');ctx.lineWidth=on?3.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
+  if(cm&&cm.ring){const r=cm.ring,o=cm.o;ctx.strokeStyle='#ffea00';ctx.lineWidth=2.5;ctx.setLineDash([8,5]);ctx.beginPath();
+    for(let i=0;i<r.length;i+=2){const q=toS([o[0]+r[i],o[1]+r[i+1]]);if(i)ctx.lineTo(q[0],q[1]);else ctx.moveTo(q[0],q[1]);}ctx.closePath();ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();}
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
-$('lySmall').onclick=()=>{if(smallMarks){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
+$('lySmall').onclick=()=>{if(smallMarks&&smallMode==='small'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
   findSmall().catch(err=>{console.error(err);toast('找小線段出錯：'+(err&&err.message||err),5000);});};
+/* ---------- 區域檢查：一區兩種屬性、房屋未封閉、增建註記位置、空白區（規則在 js/area.js） ---------- */
+const AREA_COL={mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff'};
+function areaCollect(){
+  const roles=new Map();for(const l of impLayers){const r=areaRole(l.name);if(r)roles.set(l.name,r);}
+  if(!roles.size)return null;
+  const lines=[],points=[];let ox=0,oy=0;
+  const textPt=(e,r)=>{const s=e.lines.join('').replace(/\s/g,'');if(!s)return;const b=e.bb||entBox(e);const x=(b[0]+b[2])/2-ox,y=(b[1]+b[3])/2-oy;
+    if(r.t==='house'){if(/^\d/.test(s))points.push({x,y,k:'H'});else if(/^[A-Za-z]/.test(s))points.push({x,y,add:true});}
+    else if(r.t==='add')points.push({x,y,add:true});
+    else if(r.a)points.push({x,y,k:areaKindName(e.ly)});};
+  if(nativeOn){
+    const req={b:[],p:[],l:[]};for(const[n,r]of roles){if(r.b)req.b.push(n);if(r.a)req.p.push(n);if(r.land)req.l.push(n);}
+    const D=JSON.parse(CadNative.areaData(JSON.stringify(req))||'null');if(!D)return null;if(D.err)throw new Error(D.err);
+    ox=D.ox;oy=D.oy;
+    for(const a of D.s){const r=roles.get(D.L[a[0]]);if(r&&r.b)lines.push({p:a.slice(1),r:r.b});}
+    for(const a of D.p){const n=D.L[a[0]];points.push({x:a[1],y:a[2],k:areaKindName(n)});}
+  }else{
+    const f=imp.find(e=>e.bb&&isFinite(e.bb[0]));if(f){ox=Math.floor(f.bb[0]);oy=Math.floor(f.bb[1]);}
+    const grp=new Map();
+    for(const e of imp){if(e.t==='text')continue;const r=roles.get(e.ly);if(!r)continue;const b=e.bb||entBox(e);
+      if(e.g){if(!r.a)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
+      if(r.land){points.push({x:(b[0]+b[2])/2-ox,y:(b[1]+b[3])/2-oy,k:areaKindName(e.ly)});continue;}
+      if(!r.b||e.t==='point'||e.t==='fill')continue;
+      for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);lines.push({p:a,r:r.b});}}
+    for(const g of grp.values())points.push({x:(g.b[0]+g.b[2])/2-ox,y:(g.b[1]+g.b[3])/2-oy,k:areaKindName(g.ly)});
+  }
+  for(const e of imp){if(e.t!=='text')continue;const r=roles.get(e.ly);if(r)textPt(e,r);}
+  return{lines,points,ox,oy};
+}
+async function findArea(){
+  const D=areaCollect();
+  if(!D||!D.lines.length){toast('這張圖沒有認得的房屋、圍牆、道路、地類界圖層（5 碼或 7 碼編碼）',4000);return;}
+  const R=areaCheck(D.lines,D.points);
+  const ord={mix:0,open:1,addout:2,empty:3};
+  R.marks.sort((a,b)=>ord[a.type]-ord[b.type]||b.y-a.y||a.x-b.x);
+  smallKey=impName;smallMode='area';
+  smallMarks=R.marks.map(m=>({p:[m.x+D.ox,m.y+D.oy],msg:m.msg,type:m.type,ring:m.ring,o:[D.ox,D.oy]}));smallIdx=-1;
+  const c=R.st,parts=[];if(c.mix)parts.push(`一區兩種屬性 ${c.mix}`);if(c.open)parts.push(`房屋未封閉 ${c.open}`);if(c.addout)parts.push(`增建註記位置 ${c.addout}`);if(c.empty)parts.push(`空白區 ${c.empty}`);
+  toast(smallMarks.length?`找到 ${smallMarks.length} 處：${parts.join('、')}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,4500);
+  if(!smallMarks.length)smallMarks=null;updSmallBar();updOldBtn();schedule();
+}
+$('lyArea').onclick=()=>{if(smallMarks&&smallMode==='area'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');busy(true,'檢查區域中…');
+  setTimeout(()=>{findArea().catch(err=>{console.error(err);toast('區域檢查出錯：'+(err&&err.message||err),5000);}).finally(()=>busy(false));},60);};
 $('smPrev').onclick=()=>smallGo(-1);$('smNext').onclick=()=>smallGo(1);$('smOff').onclick=()=>{smallMarks=null;updSmallBar();schedule();};
 
 /* ---------- AutoCAD 索引色色盤 ---------- */
