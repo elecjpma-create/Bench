@@ -21,22 +21,44 @@ function areaRole(name){
     if(isTxt)return{t:(code==='9310102'||/增建/.test(name))?'add':'house'};
     if(suf==='ADD'||code==='9310102'||/增建/.test(name))return{b:AR_ADD,t:'add'};
     if(code==='93111')return{b:AR_OTHER};
-    return AR_TEMPC.has(code)||/建築中|臨時/.test(name)?{b:AR_TEMP,t:'house'}:{b:AR_HOUSE,t:'house'};
+    return AR_TEMPC.has(code)||/建築中|臨時/.test(name)?{b:AR_TEMP,t:'temp'}:{b:AR_HOUSE,t:'house'};// 臨時性房屋上的 T（文字或圖塊）就是房屋註記
   }
   if(isTxt)return null;
   if(code.startsWith('97')){
     if(/地類界|田埂/.test(name)||['97921','97922','9790201','9790202'].includes(code))return{b:AR_OTHER};
     return{a:code,land:true};
   }
-  if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true}:{b:AR_OTHER};// 門的圖塊本身就把缺口封起來
+  if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER};// 門：兩個門之間有一條看不見的地類界
   if(/停車場/.test(name)||code.startsWith('94229'))return/出入口/.test(name)||suf==='D'?{b:AR_OTHER|AR_GATE,gb:true}:{b:AR_OTHER,a:code};
+  if(/分隔島/.test(name)||code==='94224'||code==='9421003')return{b:AR_OTHER};
   if(code.startsWith('942'))return(/人行道/.test(name)||code==='94218'||code==='9421006')?{b:AR_WALK}:{b:AR_ROAD};
-  if(code.startsWith('944'))return{b:AR_OTHER};
+  if(code.startsWith('944'))return/橋|涵/.test(name)?{b:AR_OTHER,wing:true}:{b:AR_OTHER};// 橋、涵的 45° 小翅膀不算
   if(code.startsWith('95'))return/土坎/.test(name)||code==='95134'?{b:AR_OTHER}:{b:AR_WATER};
   if(code.startsWith('93'))return(AR_KIND93.test(name)||AR_KIND93C.has(code))?{b:AR_OTHER,a:code}:{b:AR_OTHER};
   return null;
 }
 const areaKindName=n=>n.replace(/^a?\d+[A-Za-z]*_?/,'')||n;
+
+
+/** 前處理：兩個門之間補一條看不見的地類界；門、出入口線懸空的端點接到 1 公尺內最近的線 */
+function areaPrep(lines,opt){
+  const out=lines.slice(),G=opt.gates||[];
+  if(G.length>1){const used=new Set();
+    const nn=i=>{let b=-1,bd=15;for(let j=0;j<G.length;j++){if(j===i)continue;const d=Math.hypot(G[j][0]-G[i][0],G[j][1]-G[i][1]);if(d<bd){bd=d;b=j;}}return b;};
+    for(let i=0;i<G.length;i++){const j=nn(i);if(j<0||nn(j)!==i||used.has(i))continue;used.add(i);used.add(j);out.push({p:[G[i][0],G[i][1],G[j][0],G[j][1]],r:AR_OTHER|AR_GATE});}}
+  // 門、出入口線的端點
+  const ends=[];for(const L of out)if(L.r&AR_GATE&&L.p.length>=4){const p=L.p;ends.push([p[0],p[1]],[p[p.length-2],p[p.length-1]]);}
+  if(!ends.length)return out;
+  const cs=4,grid=new Map(),segs=[];
+  for(const L of out){if(L.r&AR_GATE)continue;const p=L.p;for(let i=2;i<p.length;i+=2){const k=segs.length;segs.push(p[i-2],p[i-1],p[i],p[i+1]);
+    const i0=Math.floor(Math.min(p[i-2],p[i])/cs),i1=Math.floor(Math.max(p[i-2],p[i])/cs),j0=Math.floor(Math.min(p[i-1],p[i+1])/cs),j1=Math.floor(Math.max(p[i-1],p[i+1])/cs);
+    if((i1-i0+1)*(j1-j0+1)>2500)continue;for(let a=i0;a<=i1;a++)for(let b=j0;b<=j1;b++){const key=a*1e7+b;let l=grid.get(key);if(!l)grid.set(key,l=[]);l.push(k);}}}
+  for(const[x,y]of ends){let bd=1.0,bq=null;const a0=Math.floor((x-1)/cs),a1=Math.floor((x+1)/cs),b0=Math.floor((y-1)/cs),b1=Math.floor((y+1)/cs);
+    for(let a=a0;a<=a1;a++)for(let b=b0;b<=b1;b++){const l=grid.get(a*1e7+b);if(!l)continue;for(const k of l){const ax=segs[k],ay=segs[k+1],dx=segs[k+2]-ax,dy=segs[k+3]-ay,l2=dx*dx+dy*dy;if(!l2)continue;
+      let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;const qx=ax+dx*t,qy=ay+dy*t,d=Math.hypot(qx-x,qy-y);if(d<bd){bd=d;bq=[qx,qy];}}}
+    if(bq&&bd>(opt.tol||0.01))out.push({p:[x,y,bq[0],bq[1]],r:AR_OTHER|AR_GATE});}
+  return out;
+}
 
 /**
  * lines：[{p:[x0,y0,x1,y1,…], r:邊界種類}]；points：[{x,y,k:'H'（房屋）|地物名稱, add:是否為屋頂增建註記}]
@@ -45,6 +67,7 @@ const areaKindName=n=>n.replace(/^a?\d+[A-Za-z]*_?/,'')||n;
 function areaCheck(lines,points,opt){
   opt=Object.assign({tol:0.01,minArea:0.05,thin:0.15,maxArea:1e5,maxMarks:5000},opt||{});
   const tol=opt.tol,t0=Date.now();
+  lines=areaPrep(lines,opt);
   /* 1. 線段 */
   let n=0;for(const L of lines)n+=Math.max(0,L.p.length/2-1);
   const X0=new Float64Array(n),Y0=new Float64Array(n),X1=new Float64Array(n),Y1=new Float64Array(n),R=new Uint8Array(n);
@@ -135,7 +158,7 @@ function areaCheck(lines,points,opt){
     const ring=new Float64Array(f.hs.length*2);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,per=0;const rl={};
     f.hs.forEach((h,i)=>{const a=hFrom(h),b=hTo(h);ring[2*i]=nX[a];ring[2*i+1]=nY[a];x0=Math.min(x0,nX[a]);y0=Math.min(y0,nY[a]);x1=Math.max(x1,nX[a]);y1=Math.max(y1,nY[a]);
       const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(const bit of[1,2,4,8,16,32,64,128])if(r&bit)rl[bit]=(rl[bit]||0)+l;});
-    F.push({ring,area:f.area,bb:[x0,y0,x1,y1],per,rl,kinds:new Map(),add:[]});}
+    F.push({ring,hs:f.hs,area:f.area,bb:[x0,y0,x1,y1],per,rl,kinds:new Map(),add:[],all:[]});}
   /* 8. 點落在哪一區：包含它的面裡面積最小的（洞裡的小區自然優先） */
   const fcs=Math.max(5,cs*2),FX=Math.ceil((bx1-bx0)/fcs)+1,FY=Math.ceil((by1-by0)/fcs)+1,fcells=new Map(),fbig=[];
   F.forEach((f,i)=>{const i0=Math.floor((f.bb[0]-bx0)/fcs),i1=Math.floor((f.bb[2]-bx0)/fcs),j0=Math.floor((f.bb[1]-by0)/fcs),j1=Math.floor((f.bb[3]-by0)/fcs);
@@ -145,8 +168,12 @@ function areaCheck(lines,points,opt){
     const test=k=>{const f=F[k];if(f.area>=ba||x<f.bb[0]||x>f.bb[2]||y<f.bb[1]||y>f.bb[3])return;if(inRing(f.ring,x,y)){best=k;ba=f.area;}};
     if(i>=0&&j>=0&&i<FX&&j<FY){const a=fcells.get(j*FX+i);if(a)for(const k of a)test(k);}for(const k of fbig)test(k);return best;};
   let inside=0;
-  for(const p of points){const k=locate(p.x,p.y);if(k<0)continue;inside++;const f=F[k];
-    if(p.add)f.add.push(p);else if(p.k){if(!f.kinds.has(p.k))f.kinds.set(p.k,p);}}
+  const locP=p=>{if(!(p.w>0&&p.h>0)||p.w>0.6||p.h>0.6)return locate(p.x,p.y);// 圖例跨在線上時，看它大部分落在哪一區
+    const c=locate(p.x,p.y),v=new Map();for(const a of[-0.8,0,0.8])for(const b of[-0.8,0,0.8]){const k=locate(p.x+a*p.w,p.y+b*p.h);v.set(k,(v.get(k)||0)+1);}
+    let best=c,bn=v.get(c)||0;for(const[k,n]of v)if(k>=0&&n>bn){best=k;bn=n;}return best;};
+  for(const p of points){const k=locP(p);if(k<0)continue;inside++;const f=F[k];
+    if(p.add)f.add.push(p);else if(p.k){f.all.push(p);if(!f.kinds.has(p.k))f.kinds.set(p.k,p);}}
+  if(opt.sub){opt.debug.dbg={F};return null;}
   /* 8b. 懸空端點歸到所在的區，並量它離最近的別條邊界線多遠（缺口） */
   const gapR=opt.gapMax||3;
   const nearest=(x,y,v)=>{let best=Infinity,bx=x,by=y;const i0=Math.max(0,Math.floor((x-gapR-bx0)/cs)),i1=Math.min(NX-1,Math.floor((x+gapR-bx0)/cs)),j0=Math.max(0,Math.floor((y-gapR-by0)/cs)),j1=Math.min(NY-1,Math.floor((y+gapR-by0)/cs));
@@ -154,18 +181,46 @@ function areaCheck(lines,points,opt){
       const qx=ax+dx*t,qy=ay+dy*t,d=Math.hypot(qx-x,qy-y);if(d<=tol)continue;// 自己這條或已接上的
       if(d<best){best=d;bx=qx;by=qy;}}}return best<=gapR?{d:best,x2:bx,y2:by}:null;};
   for(let v=0;v<NN;v++){if(deg0[v]!==1)continue;const k=locate(nX[v],nY[v]);if(k<0)continue;(F[k].ends||(F[k].ends=[])).push(v);}
+  /* 8c. 找真正讓兩區相通的缺口：把候選缺口補起來，看兩種屬性（或地物和道路）有沒有被分開；凸出去的小段補了也分不開就不算 */
+  const findGap=(f,mode)=>{
+    const C=[];for(const v of f.ends||[]){const n=nearest(nX[v],nY[v]);if(n)C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});}
+    if(!C.length)return null;C.sort((a,b)=>a.d-b.d);if(C.length>12)C.length=12;
+    const seg=e=>({p:[nX[eU[e]],nY[eU[e]],nX[eV[e]],nY[eV[e]]],r:eR[e]});
+    const base=[];for(const h of f.hs)base.push(seg(h>>1));
+    {// 區域裡面的線（懸空的、島狀的）也要放進來
+      const i0=Math.max(0,Math.floor((f.bb[0]-bx0)/cs)),i1=Math.min(NX-1,Math.floor((f.bb[2]-bx0)/cs)),j0=Math.max(0,Math.floor((f.bb[1]-by0)/cs)),j1=Math.min(NY-1,Math.floor((f.bb[3]-by0)/cs));const seen=new Set();
+      for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const a=cells.get(j*NX+i);if(!a)continue;for(const q of a){if(seen.has(q))continue;seen.add(q);const mx=(X0[q]+X1[q])/2,my=(Y0[q]+Y1[q])/2;
+        if(mx<f.bb[0]||mx>f.bb[2]||my<f.bb[1]||my>f.bb[3])continue;if(inRing(f.ring,mx,my))base.push({p:[X0[q],Y0[q],X1[q],Y1[q]],r:R[q]});}}}
+    const ok=SF=>{if(mode==='mix'){let mx=0;for(const g of SF)mx=Math.max(mx,g.kinds.size);return mx<f.kinds.size;}
+      const g=SF.find(g=>g.kinds.size);if(!g)return false;return((g.rl[AR_ROAD]||0)+(g.rl[AR_WALK]||0))<g.per*0.5&&g.area<f.area*0.9;};
+    const test=set=>{const d={};areaCheck(base.concat(set.map(c=>({p:[c.x,c.y,c.x2,c.y2],r:AR_OTHER}))),f.all,{tol,sub:true,debug:d});return!!(d.dbg&&ok(d.dbg.F));};
+    for(const c of C)if(test([c]))return Object.assign({all:[c]},c);
+    // 不只一個缺口：全部補起來分得開的話，逐一拿掉不需要的
+    if(C.length<2||!test(C))return null;
+    let set=C.slice();for(let i=set.length-1;i>=0&&set.length>1;i--){const t=set.slice(0,i).concat(set.slice(i+1));if(test(t))set=t;}
+    return Object.assign({all:set},set[0]);};
+  const pathOf=(f,c,mode)=>{const mx=c?(c.x+c.x2)/2:null,my=c?(c.y+c.y2)/2:null;
+    if(mode==='mix'){const ks=[...f.kinds.keys()];
+      if(!c){const a=f.kinds.get(ks[0]),b=f.kinds.get(ks[1]);return[a.x,a.y,b.x,b.y];}
+      const P=ks.map(k=>{let b=null,bd=Infinity;for(const p of f.all)if(p.k===k){const d=Math.hypot(p.x-mx,p.y-my);if(d<bd){bd=d;b=p;}}return b;}).sort((a,b)=>Math.hypot(a.x-mx,a.y-my)-Math.hypot(b.x-mx,b.y-my));
+      return[P[0].x,P[0].y,mx,my,P[1].x,P[1].y];}
+    let A=null,bd=Infinity;for(const p of f.all){const d=Math.hypot(p.x-mx,p.y-my);if(d<bd){bd=d;A=p;}}
+    const dx=mx-A.x,dy=my-A.y,L=Math.hypot(dx,dy)||1;return[A.x,A.y,mx,my,mx+dx/L*3,my+dy/L*3];};
+  const gapTxt=d=>d<0.1?d.toFixed(3):d.toFixed(2);
   /* 9. 判斷 */
   const inner=f=>{// 區域裡的一點：重心不在裡面就取過重心那條水平線最寬的一段中點
     const r=f.ring;let cx=0,cy=0,a=0;for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const c=r[j]*r[i+1]-r[i]*r[j+1];a+=c;cx+=(r[j]+r[i])*c;cy+=(r[j+1]+r[i+1])*c;}
     cx/=3*a;cy/=3*a;if(inRing(r,cx,cy))return[cx,cy];const xs=[];
     for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const yi=r[i+1],yj=r[j+1];if((yi>cy)!==(yj>cy))xs.push(r[i]+(r[j]-r[i])*(cy-yi)/(yj-yi));}
     xs.sort((p,q)=>p-q);let bw=-1,bx=cx;for(let i=0;i+1<xs.length;i+=2)if(xs[i+1]-xs[i]>bw){bw=xs[i+1]-xs[i];bx=(xs[i]+xs[i+1])/2;}return[bx,cy];};
-  const cnt={mix:0,addout:0,empty:0,open:marks.length};
+  const cnt={mix:0,road:0,addout:0,empty:0,open:marks.length};
   for(const f of F){const rl=b=>f.rl[b]||0;
-    if(f.kinds.size>1){const P=[...f.kinds.values()],names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k);
-      let g=null;for(const v of f.ends||[]){const n=nearest(nX[v],nY[v],v);if(n&&(!g||n.d<g.d))g=Object.assign(n,{x:nX[v],y:nY[v]});}
-      if(g)mark({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.d<0.1?g.d.toFixed(3):g.d.toFixed(2)}m）`,ring:f.ring,gap:[g.x,g.y,g.x2,g.y2]});
-      else mark({x:(P[0].x+P[1].x)/2,y:(P[0].y+P[1].y)/2,type:'mix',msg:'一區兩種屬性：'+names.join('＋'),ring:f.ring});cnt.mix++;continue;}
+    if(f.kinds.size>1){const names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k),g=findGap(f,'mix');
+      if(g)mark({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
+      else{const cntK=new Map();for(const p of f.all)cntK.set(p.k,(cntK.get(p.k)||0)+1);const mk=[...cntK].sort((x,y)=>x[1]-y[1])[0][0],a=f.all.find(p=>p.k===mk);// 標在比較少的那種
+        mark({x:a.x,y:a.y,type:'mix',msg:'一區兩種屬性：'+names.join('＋')+'（找不到 3m 內的缺口：可能少畫地類界，或圖例壓在線上）',ring:f.ring,path:pathOf(f,null,'mix')});}cnt.mix++;continue;}
+    if(f.kinds.size&&(f.ends||[]).length&&rl(AR_ROAD)+rl(AR_WALK)>=f.per*0.5){const g=findGap(f,'road');
+      if(g){const nm=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k).join('＋');mark({x:g.x,y:g.y,type:'road',msg:`${nm}和道路／人行道相通（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'road')});cnt.road++;continue;}}
     if(f.add.length&&!f.kinds.has('H')&&(f.kinds.size||rl(AR_HOUSE)+rl(AR_TEMP)+rl(AR_ADD)<f.per*0.5)){const p=f.add[0];
       mark({x:p.x,y:p.y,type:'addout',msg:'增建註記不在房屋／增建範圍裡'+(f.kinds.size?'（和'+[...f.kinds.keys()][0]+'同區）':''),ring:f.ring});cnt.addout++;continue;}
     if(f.kinds.size||f.add.length)continue;
