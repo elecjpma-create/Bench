@@ -1508,16 +1508,9 @@ async function exportDXF(share){
   try{
     if(!share&&P.SupportFolder&&P.SupportFolder.saveAs){await P.SupportFolder.saveAs({name,data,mime:'application/dxf'});toast('已存檔：'+name);return;}
     if(P.Filesystem&&P.Share){const r=await P.Filesystem.writeFile({path:name,data,directory:'CACHE'});await P.Share.share({title:name,files:[r.uri],dialogTitle:'分享 DXF'});return;}
-    // 網頁版：分享鍵、或 iPhone/iPad（下載不可靠）→ 系統分享選單（iOS 內有「儲存到檔案」）
-    const iOS=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-    if((share||iOS)&&navigator.canShare){
-      let f=null;for(const ty of['application/dxf','application/octet-stream','text/plain']){const c=new File([bytes],name,{type:ty});try{if(navigator.canShare({files:[c]})){f=c;break;}}catch(_){}}
-      if(f){try{await navigator.share({files:[f],title:name});return;}catch(e){if(e&&e.name==='AbortError')return;if(!(e&&e.name==='NotAllowedError'))throw e;}}
-    }
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:'application/dxf'}));a.download=name;document.body.appendChild(a);a.click();a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href),60000);
-    toast((share?'這個瀏覽器不支援分享檔案，改為下載：':'已下載：')+name,share?4000:2500);
-  }catch(err){if(!/cancel|abort/i.test((err&&(err.name+' '+err.message))||''))toast('匯出失敗：'+(err.message||err),4000);}
+    toast('已下載：'+name);
+  }catch(err){if(!/cancel/i.test(err.message||''))toast('匯出失敗：'+(err.message||err),4000);}
 }
 $('expSave').onclick=()=>{closeSheet('fileSheet');exportDXF(false);};
 $('expShare').onclick=()=>{closeSheet('fileSheet');exportDXF(true);};
