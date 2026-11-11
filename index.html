@@ -21,6 +21,8 @@ button{font-family:inherit;color:var(--text)}
 .fl button:disabled{opacity:.35}
 #topbar{top:8px;left:8px}
 #cmdbar{top:58px;right:8px;display:none}
+#smallBar{top:58px;left:8px;display:none;align-items:center}
+#smallTxt{font-size:13px;padding:0 8px;white-space:nowrap}
 #cmdbar button{width:auto;min-width:44px;padding:0 10px;font-size:14px}
 #cmdbar .ok{background:var(--acc2)}
 #cmdbar .mode{font-size:13px;min-width:40px;padding:0 8px;opacity:.75}
@@ -125,6 +127,7 @@ button{font-family:inherit;color:var(--text)}
       <button id="tSet" title="設定"></button>
     </div>
     <div id="cmdbar" class="fl"></div>
+    <div id="smallBar" class="fl"><span id="smallTxt"></span><button id="smPrev">◀</button><button id="smNext">▶</button><button id="smOff">✕</button></div>
     <div id="penbar" class="fl"></div>
     <div id="penW" class="fl"><div class="pwh"><span>手寫粗細</span><b id="penWv"></b></div><input type="range" id="penWr" min="0.5" max="20" step="0.5"><div class="pwp"><div id="penWp"></div></div><div class="pwq"><button data-w="1">1</button><button data-w="2">2</button><button data-w="3">3</button><button data-w="5">5</button><button data-w="8">8</button><button data-w="12">12</button></div></div>
   </div>
@@ -143,6 +146,7 @@ button{font-family:inherit;color:var(--text)}
   <div class="shh"><b>檔案</b><button data-close>關閉</button></div>
   <div class="sec">
     <label class="fbtn big" style="border:1px solid var(--line);border-radius:8px;background:var(--panel2)">開啟圖檔（DWG / DXF）<input type="file" id="cadFile"></label>
+    <button class="big" id="newBlank" style="margin-top:8px">開新空白圖…</button>
     <div class="small" id="drawInfo"></div>
   </div>
   <div class="sec" id="recentSec" style="display:none">
@@ -152,7 +156,7 @@ button{font-family:inherit;color:var(--text)}
   </div>
   <div class="sec">
     <div class="lab">交件：匯出我畫的東西（DXF）</div>
-    <button class="big" id="expSave">另存 DXF 到手機…</button>
+    <button class="big" id="expSave">另存新檔（DXF）到手機…</button>
     <button class="big" id="expShare">分享 DXF（LINE、Email、雲端硬碟…）</button>
     <div class="small">只輸出你畫的線、文字、手寫，圖層照你訂的名稱。座標跟原圖相同，編輯人員用插入或外部參考疊上去就對齊。</div>
   </div>
@@ -192,6 +196,8 @@ button{font-family:inherit;color:var(--text)}
   <div class="sec" id="baseSec">
     <div class="lab">底圖圖層</div>
     <div class="row2" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button></div>
+    <div class="row2" style="margin-bottom:6px"><button id="lyOld">關閉舊圖（a 開頭）</button><button id="lySmall">標出新圖層小線段（&lt;1m）</button></div>
+    <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
     <div id="baseLayers"></div>
   </div>
 </div></div>
