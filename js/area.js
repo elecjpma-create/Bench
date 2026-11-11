@@ -1,7 +1,8 @@
 /* ---------- 區域檢查：地物相通、房屋未封閉、空白區 ----------
    邊界線打散後在交點、T 字接點互相接起來，切成一塊塊封閉區域（不必是 close 的聚合線），
    再看每一區裡的註記和圖例。純計算，不碰畫面；坐標請先減掉原點。 */
-const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32;
+const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64;// HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）
+const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
 const AR_IGN=/行道樹|防風林|獨立樹|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電力桿|電信桿|路燈|人孔|變壓|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小徑|小水溝|纜車|索道|金爐|水塔|抽水站|變電所|噴泉|廣告|升旗|候車|獨立墓|GIS/;
 const AR_KIND93=/墓地|堆積場|廢墟|游泳池|球場|運動場/;
@@ -11,14 +12,14 @@ const AR_SINGLE=new Set(['94216','95116','95153','94901','94902','9420901','9420
 /** 圖層角色：{b:邊界種類, a:地物代碼（圖塊、文字算這種地物）, land:散線也算地物, t:'house'|'add' 房屋文字層} 或 null */
 function areaRole(name){
   const m=/^(a?)(\d{5,7})([A-Za-z]*)/i.exec(name);
-  if(!m)return/增建/.test(name)&&!/TXT|註記/i.test(name)?{b:AR_ADD}:null;
+  if(!m)return/增建/.test(name)?(/TXT|註記/i.test(name)?{t:'add'}:{b:AR_ADD,t:'add'}):null;
   const code=m[2],suf=m[3].toUpperCase(),isTxt=suf==='TXT'||suf==='X';
   if(AR_IGN.test(name)||AR_SINGLE.has(code)||code==='9310101')return null;
   if(code.startsWith('931')){
     if(isTxt)return{t:(code==='9310102'||/增建/.test(name))?'add':'house'};
-    if(suf==='ADD'||code==='9310102'||/增建/.test(name))return{b:AR_ADD};
+    if(suf==='ADD'||code==='9310102'||/增建/.test(name))return{b:AR_ADD,t:'add'};
     if(code==='93111')return{b:AR_OTHER};
-    return{b:AR_HOUSE};
+    return AR_TEMPC.has(code)||/建築中|臨時/.test(name)?{b:AR_TEMP,t:'house'}:{b:AR_HOUSE,t:'house'};
   }
   if(isTxt)return null;
   if(code.startsWith('97')){
@@ -40,7 +41,7 @@ const areaKindName=n=>n.replace(/^a?\d+[A-Za-z]*_?/,'')||n;
  * 回傳 {marks:[{x,y,type,msg,ring}], st:統計}
  */
 function areaCheck(lines,points,opt){
-  opt=Object.assign({tol:0.005,minArea:0.2,thin:0.05,maxArea:1e5,maxMarks:5000},opt||{});
+  opt=Object.assign({tol:0.005,minArea:0.05,thin:0.02,maxArea:1e5,maxMarks:5000},opt||{});
   const tol=opt.tol,t0=Date.now();
   /* 1. 線段 */
   let n=0;for(const L of lines)n+=Math.max(0,L.p.length/2-1);
@@ -101,7 +102,7 @@ function areaCheck(lines,points,opt){
   for(let v=0;v<NN;v++)if(deg[v]===1)Q.push(v);
   const cutHouse=[];
   while(Q.length){const v=Q.pop();if(deg[v]!==1)continue;
-    for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(!alive[e])continue;alive[e]=0;if(eR[e]&AR_HOUSE)cutHouse.push(e);
+    for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(!alive[e])continue;alive[e]=0;if(eR[e]&(AR_HOUSE|AR_TEMP))cutHouse.push(e);
       const w=other(e,v);deg[v]--;deg[w]--;if(deg[w]===1)Q.push(w);break;}}
   const marks=[];
   const mark=m=>{if(marks.length<opt.maxMarks)marks.push(m);};
@@ -130,7 +131,7 @@ function areaCheck(lines,points,opt){
   for(const f of faces){if(!(f.area>1e-9))continue;
     const ring=new Float64Array(f.hs.length*2);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,per=0;const rl={};
     f.hs.forEach((h,i)=>{const a=hFrom(h),b=hTo(h);ring[2*i]=nX[a];ring[2*i+1]=nY[a];x0=Math.min(x0,nX[a]);y0=Math.min(y0,nY[a]);x1=Math.max(x1,nX[a]);y1=Math.max(y1,nY[a]);
-      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(const bit of[1,2,4,8,16,32])if(r&bit)rl[bit]=(rl[bit]||0)+l;});
+      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(const bit of[1,2,4,8,16,32,64])if(r&bit)rl[bit]=(rl[bit]||0)+l;});
     F.push({ring,area:f.area,bb:[x0,y0,x1,y1],per,rl,kinds:new Map(),add:[]});}
   /* 8. 點落在哪一區：包含它的面裡面積最小的（洞裡的小區自然優先） */
   const fcs=Math.max(5,cs*2),FX=Math.ceil((bx1-bx0)/fcs)+1,FY=Math.ceil((by1-by0)/fcs)+1,fcells=new Map(),fbig=[];
@@ -153,12 +154,13 @@ function areaCheck(lines,points,opt){
   for(const f of F){const rl=b=>f.rl[b]||0;
     if(f.kinds.size>1){const P=[...f.kinds.values()],names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k);
       mark({x:(P[0].x+P[1].x)/2,y:(P[0].y+P[1].y)/2,type:'mix',msg:'一區兩種屬性：'+names.join('＋'),ring:f.ring});cnt.mix++;continue;}
-    if(f.add.length&&!f.kinds.has('H')&&(f.kinds.size||rl(AR_HOUSE)+rl(AR_ADD)<f.per*0.5)){const p=f.add[0];
+    if(f.add.length&&!f.kinds.has('H')&&(f.kinds.size||rl(AR_HOUSE)+rl(AR_TEMP)+rl(AR_ADD)<f.per*0.5)){const p=f.add[0];
       mark({x:p.x,y:p.y,type:'addout',msg:'增建註記不在房屋／增建範圍裡'+(f.kinds.size?'（和'+[...f.kinds.keys()][0]+'同區）':''),ring:f.ring});cnt.addout++;continue;}
     if(f.kinds.size||f.add.length)continue;
     if(f.area<opt.minArea||f.area>opt.maxArea||2*f.area/f.per<opt.thin)continue;
-    if(rl(AR_WALK)>0||rl(AR_ADD)>=f.per*0.5||rl(AR_ROAD)+rl(AR_WATER)>=f.per*0.5)continue;
+    // 只抓永久性房屋之間（或房屋裡）的空白：碰到增建線、臨時性／建築中房屋的都略過
+    if(rl(AR_ADD)>0||rl(AR_TEMP)>0||rl(AR_HOUSE)<f.per*0.5)continue;
     const c=inner(f);mark({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});cnt.empty++;}
   return{marks,st:Object.assign(cnt,{seg:ns,node:NN,edge:NE,face:F.length,pts:points.length,inside,ms:Date.now()-t0})};
 }
-if(typeof module!=='undefined')module.exports={areaRole,areaCheck,areaKindName,AR_HOUSE,AR_ADD,AR_WALK,AR_ROAD,AR_WATER,AR_OTHER};
+if(typeof module!=='undefined')module.exports={areaRole,areaCheck,areaKindName,AR_HOUSE,AR_ADD,AR_WALK,AR_ROAD,AR_WATER,AR_OTHER,AR_TEMP};

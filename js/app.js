@@ -1333,16 +1333,16 @@ function areaCollect(){
     else if(r.t==='add')points.push({x,y,add:true});
     else if(r.a)points.push({x,y,k:areaKindName(e.ly)});};
   if(nativeOn){
-    const req={b:[],p:[],l:[]};for(const[n,r]of roles){if(r.b)req.b.push(n);if(r.a)req.p.push(n);if(r.land)req.l.push(n);}
+    const req={b:[],p:[],l:[]};for(const[n,r]of roles){if(r.b)req.b.push(n);if(r.a||(r.t&&r.b))req.p.push(n);if(r.land)req.l.push(n);}
     const D=JSON.parse(CadNative.areaData(JSON.stringify(req))||'null');if(!D)return null;if(D.err)throw new Error(D.err);
     ox=D.ox;oy=D.oy;
     for(const a of D.s){const r=roles.get(D.L[a[0]]);if(r&&r.b)lines.push({p:a.slice(1),r:r.b});}
-    for(const a of D.p){const n=D.L[a[0]];points.push({x:a[1],y:a[2],k:areaKindName(n)});}
+    for(const a of D.p){const n=D.L[a[0]],r=roles.get(n);if(r&&r.t&&!r.a)points.push({x:a[1],y:a[2],add:true});else points.push({x:a[1],y:a[2],k:areaKindName(n)});}
   }else{
     const f=imp.find(e=>e.bb&&isFinite(e.bb[0]));if(f){ox=Math.floor(f.bb[0]);oy=Math.floor(f.bb[1]);}
     const grp=new Map();
     for(const e of imp){if(e.t==='text')continue;const r=roles.get(e.ly);if(!r)continue;const b=e.bb||entBox(e);
-      if(e.g){if(!r.a)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
+      if(e.g){if(r.t&&!r.a){const b2=b;points.push({x:(b2[0]+b2[2])/2-ox,y:(b2[1]+b2[3])/2-oy,add:true,g:e.g});continue;}if(!r.a)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
       if(r.land){points.push({x:(b[0]+b[2])/2-ox,y:(b[1]+b[3])/2-oy,k:areaKindName(e.ly)});continue;}
       if(!r.b||e.t==='point'||e.t==='fill')continue;
       for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);lines.push({p:a,r:r.b});}}
