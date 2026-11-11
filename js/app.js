@@ -1267,7 +1267,9 @@ function showSelLayer(){if(!selE)return;const n=selE.ly||'0';fillLayerSheet();op
 $('selOff').onclick=closeSelLayer;$('selList').onclick=showSelLayer;
 
 /* ---------- 舊圖（a 開頭圖層）一鍵開關、小線段標記 ---------- */
-const OLD_RE=/^a/i,NEW_RE=/^\d/,Q_RE=/^q/i,CONTOUR_RE=/^a?9811|曲線/i;// 等高線（98111 計曲線、98112 首曲線…）不抓小線段const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
+// 舊圖 a 開頭、新圖數字開頭、Q 不確定線；等高線（98111 計曲線、98112 首曲線…）不抓小線段
+const OLD_RE=/^a/i,NEW_RE=/^\d/,Q_RE=/^q/i,CONTOUR_RE=/^a?9811|曲線/i;
+const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
 const oldLayers=()=>impLayers.filter(l=>OLD_RE.test(l.name)).map(l=>l.name);
 const newLayers=()=>impLayers.filter(l=>NEW_RE.test(l.name)&&l.name!=='0'&&!CONTOUR_RE.test(l.name)).map(l=>l.name);
 const qLayers=()=>impLayers.filter(l=>Q_RE.test(l.name)).map(l=>l.name);
