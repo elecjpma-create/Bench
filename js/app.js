@@ -1317,7 +1317,8 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
     ctx.strokeStyle=on?'#ffea00':'#ff2bd6';ctx.lineWidth=on?3.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
   ctx.restore();}
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
-$('lySmall').onclick=()=>{if(smallMarks){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');findSmall();};
+$('lySmall').onclick=()=>{if(smallMarks){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
+  findSmall().catch(err=>{console.error(err);toast('找小線段出錯：'+(err&&err.message||err),5000);});};
 $('smPrev').onclick=()=>smallGo(-1);$('smNext').onclick=()=>smallGo(1);$('smOff').onclick=()=>{smallMarks=null;updSmallBar();schedule();};
 
 /* ---------- AutoCAD 索引色色盤 ---------- */
