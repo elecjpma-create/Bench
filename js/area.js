@@ -4,10 +4,10 @@
 const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256;// HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）
 const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
-const AR_IGN=/行道樹|防風林|獨立樹|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小徑|小水溝|纜車|索道|金爐|水塔|抽水站|變電所|噴泉|廣告|升旗|候車|獨立墓|GIS/;
+const AR_IGN=/行道樹|防風林|獨立樹|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|金爐|水塔|抽水站|變電所|噴泉|廣告|升旗|候車|獨立墓|GIS/;
 const AR_KIND93=/墓地|堆積場|廢墟|游泳池|球場|運動場/;
 const AR_KIND93C=new Set(['93523','93726','93902','93553','93555','93556']);
-const AR_SINGLE=new Set(['94216','95116','95153','94901','94902','9420901','9420902','9510110','9510503']);
+const AR_SINGLE=new Set(['95116','95153','94901','94902','9510110','9510503']);
 
 /** 圖層角色：{b:邊界種類, a:地物代碼（圖塊、文字算這種地物）, land:散線也算地物, t:'house'|'add' 房屋文字層} 或 null */
 function areaRole(name){
@@ -32,7 +32,7 @@ function areaRole(name){
   }
   if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER};// 門：兩個門之間有一條看不見的地類界
   if(/停車場/.test(name)||code.startsWith('94229'))return/出入口/.test(name)||suf==='D'?{b:AR_OTHER|AR_GATE,gb:true}:{b:AR_OTHER,a:code};
-  if(/分隔島/.test(name)||code==='94224'||code==='9421003')return{b:AR_OTHER};
+  if(/分隔島|小徑/.test(name)||['94224','9421003','94216','94217','9420901','9420902'].includes(code))return{b:AR_OTHER};// 小徑（單線步道）也算分界
   if(code.startsWith('942'))return(/人行道/.test(name)||code==='94218'||code==='9421006')?{b:AR_WALK}:{b:AR_ROAD};
   if(code.startsWith('944'))return/橋|涵/.test(name)?{b:AR_OTHER,wing:true}:{b:AR_OTHER};// 橋、涵的 45° 小翅膀不算
   if(code.startsWith('95'))return/土坎/.test(name)||code==='95134'?{b:AR_OTHER}:{b:AR_WATER};
@@ -200,10 +200,11 @@ function areaCheck(lines,points,opt){
       const i0=Math.max(0,Math.floor((f.bb[0]-bx0)/cs)),i1=Math.min(NX-1,Math.floor((f.bb[2]-bx0)/cs)),j0=Math.max(0,Math.floor((f.bb[1]-by0)/cs)),j1=Math.min(NY-1,Math.floor((f.bb[3]-by0)/cs));const seen=new Set();
       for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const a=cells.get(j*NX+i);if(!a)continue;for(const q of a){if(seen.has(q))continue;seen.add(q);const mx=(X0[q]+X1[q])/2,my=(Y0[q]+Y1[q])/2;
         if(mx<f.bb[0]||mx>f.bb[2]||my<f.bb[1]||my>f.bb[3])continue;if(inRing(f.ring,mx,my))base.push({p:[X0[q],Y0[q],X1[q],Y1[q]],r:R[q]});}}}
-    const ok=SF=>{if(mode==='mix'){let mx=0;for(const g of SF)mx=Math.max(mx,g.kinds.size);return mx<f.kinds.size;}
+    let full=true;// 先找能把每一種都分開的缺口組合，找不到才退而求其次
+    const ok=SF=>{if(mode==='mix'){let mx=0;for(const g of SF)mx=Math.max(mx,g.kinds.size);return full?mx<=1:mx<f.kinds.size;}
       const g=SF.find(g=>g.kinds.size);if(!g)return false;return((g.rl[AR_ROAD]||0)+(g.rl[AR_WALK]||0))<g.per*0.5&&g.area<f.area*0.9;};
     const test=set=>{const d={};areaCheck(base.concat(set.map(c=>({p:[c.x,c.y,c.x2,c.y2],r:AR_OTHER}))),f.all,{tol,sub:true,debug:d});return!!(d.dbg&&ok(d.dbg.F));};
-    if(!test(C))return null;// 全部補起來都分不開，就沒有缺口
+    if(!test(C)){if(mode!=='mix'||f.kinds.size<3)return null;full=false;if(!test(C))return null;}// 全部補起來都分不開，就沒有缺口
     for(const c of C)if(test([c]))return Object.assign({all:[c]},c);
     // 不只一個缺口：逐一拿掉不需要的
     if(C.length<2)return null;

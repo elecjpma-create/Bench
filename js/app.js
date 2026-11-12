@@ -1353,7 +1353,7 @@ function areaCollect(){
   const rangeLy=new Set(impLayers.map(l=>l.name).filter(n=>!roles.has(n)&&!/^a?\d/.test(n)&&!/^Q/i.test(n)&&!/圖框|圖號/.test(n)));
   const lines=[],points=[],ranges=[],gates=[];let ox=0,oy=0;
   const pushLine=(a,r,ly)=>{if(r.wing&&a.length<=6){const n=a.length/2;let L=0;for(let i=2;i<a.length;i+=2)L+=Math.hypot(a[i]-a[i-2],a[i+1]-a[i-1]);if(L<3&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)return;}lines.push({p:a,r:r.b,ly});};// 橋、涵的小翅膀不算
-  const grpPt=(x,y,r,ly,w,h)=>{if(r.gate)gates.push([x,y]);else if(r.t&&!r.a)points.push(r.t==='temp'?{x,y,k:'H'}:{x,y,add:true});else if(r.a)points.push({x,y,k:kind(ly),w,h});};
+  const grpPt=(x,y,r,ly)=>{/* 圖例只看插入點 */if(r.gate)gates.push([x,y]);else if(r.t&&!r.a)points.push(r.t==='temp'?{x,y,k:'H'}:{x,y,add:true});else if(r.a)points.push({x,y,k:kind(ly)});};
   const kind=ly=>kindOf.get(ly)||ly;
   const textPt=(e,r)=>{const s=e.lines.join('').replace(/\s/g,'');if(!s)return;const x=e.p[0]-ox,y=e.p[1]-oy;// 以插入點為準
     if(r.t==='temp')points.push({x,y,k:'H'});// 位置用插入點
@@ -1365,7 +1365,7 @@ function areaCollect(){
     const D=JSON.parse(CadNative.areaData(JSON.stringify(req))||'null');if(!D)return null;if(D.err)throw new Error(D.err);
     ox=D.ox;oy=D.oy;
     for(const a of D.s){const ly=D.L[a[0]],r=roles.get(ly);if(r&&r.b)pushLine(a.slice(1),r,ly);else if(r&&r.land)lines.push({p:a.slice(1),r:AR_OTHER,ly});else if(rangeLy.has(ly))ranges.push(a.slice(1));}
-    for(const a of D.p){const n=D.L[a[0]],r=roles.get(n);if(r)grpPt(a[1],a[2],r,n,a[5]?a[3]:0,a[5]?a[4]:0);}
+    for(const a of D.p){const n=D.L[a[0]],r=roles.get(n);if(r)grpPt(a[1],a[2],r,n);}
   }else{
     const f=imp.find(e=>e.bb&&isFinite(e.bb[0]));if(f){ox=Math.floor(f.bb[0]);oy=Math.floor(f.bb[1]);}
     const grp=new Map();
@@ -1373,12 +1373,12 @@ function areaCollect(){
       if(rangeLy.has(e.ly)&&!e.g){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);ranges.push(a);}continue;}
       const r=roles.get(e.ly);if(!r)continue;const b=e.bb||entBox(e);
       if(e.g&&r.gb&&!r.gate){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);pushLine(a,r,e.ly);}continue;}
-      if(e.g){if(!r.a&&!r.t&&!r.gate)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
+      if(e.g){if(!r.a&&!r.t&&!r.gate)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly,gi:e.gi});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
       if(r.land&&Math.hypot(b[2]-b[0],b[3]-b[1])<=4){points.push({x:(b[0]+b[2])/2-ox,y:(b[1]+b[3])/2-oy,k:kind(e.ly)});continue;}
       if(r.land){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);lines.push({p:a,r:AR_OTHER,ly:e.ly});}continue;}// 地物圖層上的長線是範圍線
       if(!r.b||e.t==='point'||e.t==='fill')continue;
       for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);pushLine(a,r,e.ly);}}
-    for(const g of grp.values())grpPt((g.b[0]+g.b[2])/2-ox,(g.b[1]+g.b[3])/2-oy,roles.get(g.ly),g.ly,(g.b[2]-g.b[0])/2,(g.b[3]-g.b[1])/2);
+    for(const g of grp.values())grpPt((g.gi?g.gi[0]:(g.b[0]+g.b[2])/2)-ox,(g.gi?g.gi[1]:(g.b[1]+g.b[3])/2)-oy,roles.get(g.ly),g.ly);
   }
   for(const e of imp){if(e.t!=='text')continue;const r=roles.get(e.ly);if(r)textPt(e,r);}
   return{lines,points,gates,withHouse,ox,oy,range:areaPickRange(ranges,lines)};
