@@ -1,7 +1,7 @@
 /* ---------- 區域檢查：地物相通、房屋未封閉、空白區 ----------
    邊界線打散後在交點、T 字接點互相接起來，切成一塊塊封閉區域（不必是 close 的聚合線），
    再看每一區裡的註記和圖例。純計算，不碰畫面；坐標請先減掉原點。 */
-const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256;// HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）
+const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512;// HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）
 const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
 const AR_IGN=/行道樹|防風林|獨立樹|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|金爐|水塔|抽水站|變電所|噴泉|廣告|升旗|候車|獨立墓|GIS/;
@@ -156,11 +156,11 @@ function areaCheck(lines,points,opt){
       const L=out[b],tw=h^1;h=L[(pos[tw]-1+L.length)%L.length];}while(h!==h0&&++guard<5e6);
     faces.push({hs,area:area/2});}
   /* 7. 有界面（逆時針、面積為正）的資料 */
-  const F=[];
-  for(const f of faces){if(!(f.area>1e-9))continue;
+  const F=[],f2F=new Int32Array(faces.length).fill(-1);
+  for(let fi=0;fi<faces.length;fi++){const f=faces[fi];if(!(f.area>1e-9))continue;f2F[fi]=F.length;
     const ring=new Float64Array(f.hs.length*2);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,per=0;const rl={};
     f.hs.forEach((h,i)=>{const a=hFrom(h),b=hTo(h);ring[2*i]=nX[a];ring[2*i+1]=nY[a];x0=Math.min(x0,nX[a]);y0=Math.min(y0,nY[a]);x1=Math.max(x1,nX[a]);y1=Math.max(y1,nY[a]);
-      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(const bit of[1,2,4,8,16,32,64,128,256])if(r&bit)rl[bit]=(rl[bit]||0)+l;});
+      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(const bit of[1,2,4,8,16,32,64,128,256,512])if(r&bit)rl[bit]=(rl[bit]||0)+l;});
     F.push({ring,hs:f.hs,area:f.area,bb:[x0,y0,x1,y1],per,rl,kinds:new Map(),add:[],all:[]});}
   /* 8. 點落在哪一區：包含它的面裡面積最小的（洞裡的小區自然優先） */
   const fcs=Math.max(5,cs*2),FX=Math.ceil((bx1-bx0)/fcs)+1,FY=Math.ceil((by1-by0)/fcs)+1,fcells=new Map(),fbig=[];
@@ -219,13 +219,32 @@ function areaCheck(lines,points,opt){
     let A=null,bd=Infinity;for(const p of f.all){const d=Math.hypot(p.x-mx,p.y-my);if(d<bd){bd=d;A=p;}}
     const dx=mx-A.x,dy=my-A.y,L=Math.hypot(dx,dy)||1;return[A.x,A.y,mx,my,mx+dx/L*3,my+dy/L*3];};
   const gapTxt=d=>d<0.1?d.toFixed(3):d.toFixed(2);
+  /* 8d. 接邊：圖框兩側屬性要一樣、碰到圖框的範圍線對面要接著畫 */
+  const edgeMarks=[];
+  if(eR.some(r=>r&AR_FRAME)){
+    const FB=[];for(const L of lines)if(L.r&AR_FRAME){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<L.p.length;i+=2){x0=Math.min(x0,L.p[i]);x1=Math.max(x1,L.p[i]);y0=Math.min(y0,L.p[i+1]);y1=Math.max(y1,L.p[i+1]);}if(x1-x0>50&&y1-y0>50)FB.push([x0,y0,x1,y1]);}
+    const inFr=(x,y)=>FB.some(b=>x>b[0]&&x<b[2]&&y>b[1]&&y<b[3]);
+    const both=(x,y,dx,dy)=>{const L=Math.hypot(dx,dy)||1,nx=-dy/L*0.5,ny=dx/L*0.5;return inFr(x+nx,y+ny)&&inFr(x-nx,y-ny);};/* 兩側都有圖幅才算接邊（最外圍不算） */
+    const seenP=new Set(),cat=r=>r&(AR_HOUSE|AR_TEMP)?'房屋線':r&AR_ADD?'增建線':r&(AR_ROAD|AR_WALK)?'道路線':r&AR_WATER?'水涯線':'範圍線';
+    for(let e=0;e<NE;e++){if(!alive[e]||!(eR[e]&AR_FRAME))continue;const a=f2F[faceOf[2*e]],b=f2F[faceOf[2*e+1]];if(a<0||b<0||a===b)continue;
+      const A=F[a],B=F[b];if(!A.kinds.size||!B.kinds.size)continue;const key=Math.min(a,b)+'|'+Math.max(a,b);if(seenP.has(key))continue;
+      if([...A.kinds.keys()].some(k=>B.kinds.has(k)))continue;if(!both((nX[eU[e]]+nX[eV[e]])/2,(nY[eU[e]]+nY[eV[e]])/2,nX[eV[e]]-nX[eU[e]],nY[eV[e]]-nY[eU[e]]))continue;seenP.add(key);const nm=f=>[...f.kinds.keys()].map(k=>k==='H'?'房屋':k).join('＋');
+      edgeMarks.push({x:(nX[eU[e]]+nX[eV[e]])/2,y:(nY[eU[e]]+nY[eV[e]])/2,type:'edge',msg:`接邊：圖框兩側屬性不同（${nm(A)}｜${nm(B)}）`});}
+    for(let v=0;v<NN;v++){let fd=null;const side=[[],[]];
+      for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(eR[e]&AR_FRAME&&!fd){const w=other(e,v);fd=[nX[w]-nX[v],nY[w]-nY[v]];}}
+      if(!fd||!both(nX[v],nY[v],fd[0],fd[1]))continue;
+      for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(eR[e]&(AR_FRAME|AR_ADD))continue;/* 增建交圖時關掉，不比 */const w=other(e,v),c=fd[0]*(nY[w]-nY[v])-fd[1]*(nX[w]-nX[v]),L=Math.hypot(fd[0],fd[1])*Math.hypot(nX[w]-nX[v],nY[w]-nY[v]);if(!L||Math.abs(c)/L<0.05)continue;side[c>0?0:1].push(cat(eR[e]));}
+      if(!side[0].length&&!side[1].length)continue;
+      if(!side[0].length||!side[1].length){const s=side[0].length?side[0]:side[1];edgeMarks.push({x:nX[v],y:nY[v],type:'edge',msg:`接邊：${s[0]}碰到圖框，對面沒有接著畫`});continue;}
+      const h0=side[0].includes('房屋線'),h1=side[1].includes('房屋線');if(h0!==h1)edgeMarks.push({x:nX[v],y:nY[v],type:'edge',msg:'接邊：圖框兩側的線種類不同（一邊是房屋線）'});}
+  }
   /* 9. 判斷 */
   const inner=f=>{// 區域裡的一點：重心不在裡面就取過重心那條水平線最寬的一段中點
     const r=f.ring;let cx=0,cy=0,a=0;for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const c=r[j]*r[i+1]-r[i]*r[j+1];a+=c;cx+=(r[j]+r[i])*c;cy+=(r[j+1]+r[i+1])*c;}
     cx/=3*a;cy/=3*a;if(inRing(r,cx,cy))return[cx,cy];const xs=[];
     for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const yi=r[i+1],yj=r[j+1];if((yi>cy)!==(yj>cy))xs.push(r[i]+(r[j]-r[i])*(cy-yi)/(yj-yi));}
     xs.sort((p,q)=>p-q);let bw=-1,bx=cx;for(let i=0;i+1<xs.length;i+=2)if(xs[i+1]-xs[i]>bw){bw=xs[i+1]-xs[i];bx=(xs[i]+xs[i+1])/2;}return[bx,cy];};
-  const cnt={mix:0,road:0,addout:0,empty:0,open:marks.length};
+  const cnt={mix:0,road:0,addout:0,empty:0,open:marks.length,edge:0};
   for(const f of F){const rl=b=>f.rl[b]||0;
     if(opt.keep&&f.all.length&&!f.all.some(p=>opt.keep(p.x,p.y)))continue;// 作業範圍外的不用找
     if(f.kinds.has('H')&&opt.withHouse)for(const k of opt.withHouse)f.kinds.delete(k);// 七碼寺廟（卍）可以和樓層註記同區
@@ -243,6 +262,7 @@ function areaCheck(lines,points,opt){
     if(rl(AR_ADD)>0||rl(AR_TEMP)>0||rl(AR_GATE)>0||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
     const c=inner(f);mark({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});cnt.empty++;}
   if(opt.debug)opt.debug.dbg={nX,nY,deg0,eU,eV,eR,alive,F};
+  for(const m of edgeMarks){if(marks.some(q=>q.type==='edge'&&Math.hypot(q.x-m.x,q.y-m.y)<1))continue;mark(m);cnt.edge++;}
   return{marks,st:Object.assign(cnt,{seg:ns,node:NN,edge:NE,face:F.length,pts:points.length,inside,ms:Date.now()-t0})};
 }
 if(typeof module!=='undefined')module.exports={areaRole,areaCheck,areaKindName,AR_HOUSE,AR_ADD,AR_WALK,AR_ROAD,AR_WATER,AR_OTHER,AR_TEMP};
