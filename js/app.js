@@ -1333,6 +1333,7 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
   if(cm&&cm.ring){const r=cm.ring,o=cm.o;ctx.strokeStyle='#ffea00';ctx.lineWidth=2.5;ctx.setLineDash([8,5]);ctx.beginPath();
     for(let i=0;i<r.length;i+=2){const q=toS([o[0]+r[i],o[1]+r[i+1]]);if(i)ctx.lineTo(q[0],q[1]);else ctx.moveTo(q[0],q[1]);}ctx.closePath();ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();}
+$('areaNoAdd').checked=!!st.areaNoAdd;$('areaNoAdd').onchange=()=>{st.areaNoAdd=$('areaNoAdd').checked;saveSettings();};
 $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){st.areaTol=v;saveSettings();}else $('areaTol').value=areaTolV();};
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
 $('lySmall').onclick=()=>{if(smallMarks&&smallMode==='small'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
@@ -1352,7 +1353,8 @@ function areaCollect(){
   // 作業範圍線候選：沒有編碼的圖層上的封閉線（例如 bon）
   const rangeLy=new Set(impLayers.map(l=>l.name).filter(n=>!roles.has(n)&&!/^a?\d/.test(n)&&!/^Q/i.test(n)&&!/圖框|圖號/.test(n)));
   const lines=[],points=[],ranges=[],gates=[];let ox=0,oy=0;
-  const pushLine=(a,r,ly)=>{if(r.wing&&a.length<=6){const n=a.length/2;let L=0;for(let i=2;i<a.length;i+=2)L+=Math.hypot(a[i]-a[i-2],a[i+1]-a[i-1]);if(L<3&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)return;}lines.push({p:a,r:r.b,ly});};// 橋、涵的小翅膀不算
+  const noAdd=!!st.areaNoAdd;// 交業主前：增建圖層關掉後，房屋線要自己封得起來
+  const pushLine=(a,r,ly)=>{if(noAdd&&(r.b&AR_ADD)&&!/^a?\d{7}/.test(ly))return;/* 七碼的屋頂增建編輯當永久建物，不關 */if(r.wing&&a.length<=6){const n=a.length/2;let L=0;for(let i=2;i<a.length;i+=2)L+=Math.hypot(a[i]-a[i-2],a[i+1]-a[i-1]);if(L<3&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)return;}lines.push({p:a,r:r.b,ly});};// 橋、涵的小翅膀不算
   const grpPt=(x,y,r,ly)=>{/* 圖例只看插入點 */if(r.gate)gates.push([x,y]);else if(r.t&&!r.a)points.push(r.t==='temp'?{x,y,k:'H'}:{x,y,add:true});else if(r.a)points.push({x,y,k:kind(ly)});};
   const kind=ly=>kindOf.get(ly)||ly;
   const textPt=(e,r)=>{const s=e.lines.join('').replace(/\s/g,'');if(!s)return;const x=e.p[0]-ox,y=e.p[1]-oy;// 以插入點為準
@@ -1406,7 +1408,7 @@ async function findArea(){
   smallKey=impName;smallMode='area';setTimeout(()=>{okApply();updSmallBar();schedule();},0);
   smallMarks=R.marks.map(m=>({p:[m.x+D.ox,m.y+D.oy],msg:m.msg,type:m.type,ring:m.ring,gap:m.gap,path:m.path,o:[D.ox,D.oy]}));smallIdx=-1;
   const c=R.st,parts=[];if(c.mix)parts.push(`一區兩種屬性 ${c.mix}`);if(c.road)parts.push(`和道路相通 ${c.road}`);if(c.open)parts.push(`房屋未封閉 ${c.open}`);if(c.addout)parts.push(`增建註記位置 ${c.addout}`);if(c.empty)parts.push(`空白區 ${c.empty}`);
-  toast(smallMarks.length?`找到 ${smallMarks.length} 處：${parts.join('、')}${D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,4500);
+  toast(smallMarks.length?`${st.areaNoAdd?'（不含增建線）':''}找到 ${smallMarks.length} 處：${parts.join('、')}${D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,4500);
   if(!smallMarks.length)smallMarks=null;updSmallBar();updOldBtn();schedule();
 }
 $('lyArea').onclick=()=>{if(smallMarks&&smallMode==='area'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');busy(true,'檢查區域中…');
