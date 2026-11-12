@@ -1086,7 +1086,7 @@ function render(){
     ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.restore();}
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
-  drawGrid();drawSmall();
+  drawSmall();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
   bubble=null;
@@ -1334,19 +1334,6 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
     for(let i=0;i<r.length;i+=2){const q=toS([o[0]+r[i],o[1]+r[i+1]]);if(i)ctx.lineTo(q[0],q[1]);else ctx.moveTo(q[0],q[1]);}ctx.closePath();ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();}
 $('lyNoAdd').onclick=()=>{closeSheet('layerSheet');busy(true,'檢查中…');setTimeout(()=>{findArea(true).catch(err=>{console.error(err);toast('檢查出錯：'+(err&&err.message||err),5000);}).finally(()=>busy(false));},60);};
-/* 方格線：每一幅圖框從邊開始每 100 公尺一條 */
-let gridFrames=null,gridKey='';
-function gridLoad(){if(gridKey===impName)return gridFrames;gridKey=impName;gridFrames=[];
-  const fl=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));if(!fl.length)return gridFrames;const P=[];
-  if(nativeOn){try{const D=JSON.parse(CadNative.areaData(JSON.stringify({b:fl,p:[],l:[],g:[]}))||'null');if(D&&D.s)for(const a of D.s){const q=[];for(let i=1;i<a.length;i+=2)q.push([a[i]+D.ox,a[i+1]+D.oy]);P.push(q);}}catch(_){}}
-  else for(const e of imp)if(fl.includes(e.ly)&&!e.g)for(const q of entPolys(e))P.push(q);
-  for(const q of P){if(q.length<4)continue;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const p of q){x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);}if(x1-x0>50&&y1-y0>50)gridFrames.push([x0,y0,x1,y1]);}
-  return gridFrames;}
-function drawGrid(){if(!st.showGrid||!impName)return;const G=gridLoad();if(!G.length)return;ctx.save();ctx.strokeStyle='rgba(255,210,80,0.55)';ctx.lineWidth=1;ctx.setLineDash([6,6]);ctx.beginPath();
-  for(const[x0,y0,x1,y1]of G){for(let x=x0+100;x<x1-1;x+=100){const a=toS([x,y0]),b=toS([x,y1]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}for(let y=y0+100;y<y1-1;y+=100){const a=toS([x0,y]),b=toS([x1,y]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}}
-  ctx.stroke();ctx.restore();}
-$('lyGrid').onclick=()=>{st.showGrid=!st.showGrid;saveSettings();$('lyGrid').classList.toggle('on',!!st.showGrid);if(st.showGrid&&!gridLoad().length)toast('這張圖沒有找到圖框圖層');schedule();};
-$('lyGrid').classList.toggle('on',!!st.showGrid);
 $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){st.areaTol=v;saveSettings();}else $('areaTol').value=areaTolV();};
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
 $('lySmall').onclick=()=>{if(smallMarks&&smallMode==='small'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
@@ -1361,6 +1348,7 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
   const fd=x=>{while(par.has(x)&&par.get(x)!==x)x=par.get(x);return x;},un=(a,b)=>{if(!par.has(a))par.set(a,a);if(!par.has(b))par.set(b,b);const A=fd(a),B=fd(b);if(A!==B)par.set(B,A);};
   for(const l of impLayers){const fn=fullName(l.name),r=areaRole(fn);if(!r)continue;roles.set(l.name,r);
     if(r.a){const nm=areaKindName(fn);un('n:'+nm,'c:'+r.a);}}// 新舊圖：同編號或同名稱都算同一種地物
+  un('n:圃','n:花圃');// 圃＝花圃
   const disp=new Map();for(const l of impLayers){const r=roles.get(l.name);if(!r||!r.a)continue;const nm=areaKindName(fullName(l.name)),root=fd('n:'+nm);if(!disp.has(root))disp.set(root,nm);kindOf.set(l.name,disp.get(root));if(r.withH)withHouse.add(disp.get(root));}
   if(!roles.size)return null;
   // 作業範圍線候選：沒有編碼的圖層上的封閉線（例如 bon）

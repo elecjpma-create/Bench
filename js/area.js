@@ -223,19 +223,30 @@ function areaCheck(lines,points,opt){
   const edgeMarks=[];
   if(eR.some(r=>r&AR_FRAME)){
     const FB=[];for(const L of lines)if(L.r&AR_FRAME){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<L.p.length;i+=2){x0=Math.min(x0,L.p[i]);x1=Math.max(x1,L.p[i]);y0=Math.min(y0,L.p[i+1]);y1=Math.max(y1,L.p[i+1]);}if(x1-x0>50&&y1-y0>50)FB.push([x0,y0,x1,y1]);}
-    const inFr=(x,y)=>FB.some(b=>x>b[0]&&x<b[2]&&y>b[1]&&y<b[3]);
-    const both=(x,y,dx,dy)=>{const L=Math.hypot(dx,dy)||1,nx=-dy/L*0.5,ny=dx/L*0.5;return inFr(x+nx,y+ny)&&inFr(x-nx,y-ny);};/* 兩側都有圖幅才算接邊（最外圍不算） */
+    // 已出圖的圖幅：格子裡除了圖框以外還有東西（圖號、範圍線不在輸入裡）
+    const pub=FB.map(()=>false);for(const L of lines){if(L.r&AR_FRAME)continue;const x=L.p[0],y=L.p[1];FB.forEach((b,i)=>{if(!pub[i]&&x>b[0]&&x<b[2]&&y>b[1]&&y<b[3])pub[i]=true;});}
+    for(const p of points)FB.forEach((b,i)=>{if(!pub[i]&&p.x>b[0]&&p.x<b[2]&&p.y>b[1]&&p.y<b[3])pub[i]=true;});
+    const inFr=(x,y)=>FB.some((b,i)=>pub[i]&&x>b[0]&&x<b[2]&&y>b[1]&&y<b[3]);
+    const both=(x,y,dx,dy)=>{const L=Math.hypot(dx,dy)||1,nx=-dy/L*0.5,ny=dx/L*0.5;return inFr(x+nx,y+ny)&&inFr(x-nx,y-ny);};/* 兩側都已出圖才比 */
+    // 剛好停在圖框上的線端（差 2mm 內）才算「中斷」；停在圖框外幾公分、或越過一小段才換線的不算
+    const onFr=(x,y)=>FB.some(b=>(Math.abs(x-b[0])<0.002||Math.abs(x-b[2])<0.002)&&y>=b[1]-0.002&&y<=b[3]+0.002||(Math.abs(y-b[1])<0.002||Math.abs(y-b[3])<0.002)&&x>=b[0]-0.002&&x<=b[2]+0.002);
+    const exact=new Set();for(const L of lines){if(L.r&(AR_FRAME|AR_ADD))continue;const p=L.p,n=p.length;for(const[x,y]of[[p[0],p[1]],[p[n-2],p[n-1]]])if(onFr(x,y))exact.add(Math.round(x*10)+','+Math.round(y*10));}
+    const isExact=(x,y)=>{const a=Math.round(x*10),b=Math.round(y*10);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)if(exact.has((a+i)+','+(b+j)))return true;return false;};
     const seenP=new Set(),cat=r=>r&(AR_HOUSE|AR_TEMP)?'房屋線':r&AR_ADD?'增建線':r&(AR_ROAD|AR_WALK)?'道路線':r&AR_WATER?'水涯線':'範圍線';
+    const R0=30;// 屬性只比圖框邊附近 30m 內的圖例，遠處缺口造成的不算
     for(let e=0;e<NE;e++){if(!alive[e]||!(eR[e]&AR_FRAME))continue;const a=f2F[faceOf[2*e]],b=f2F[faceOf[2*e+1]];if(a<0||b<0||a===b)continue;
-      const A=F[a],B=F[b];if(!A.kinds.size||!B.kinds.size)continue;const key=Math.min(a,b)+'|'+Math.max(a,b);if(seenP.has(key))continue;
-      if([...A.kinds.keys()].some(k=>B.kinds.has(k)))continue;if(!both((nX[eU[e]]+nX[eV[e]])/2,(nY[eU[e]]+nY[eV[e]])/2,nX[eV[e]]-nX[eU[e]],nY[eV[e]]-nY[eU[e]]))continue;seenP.add(key);const nm=f=>[...f.kinds.keys()].map(k=>k==='H'?'房屋':k).join('＋');
-      edgeMarks.push({x:(nX[eU[e]]+nX[eV[e]])/2,y:(nY[eU[e]]+nY[eV[e]])/2,type:'edge',msg:`接邊：圖框兩側屬性不同（${nm(A)}｜${nm(B)}）`});}
+      const mx=(nX[eU[e]]+nX[eV[e]])/2,my=(nY[eU[e]]+nY[eV[e]])/2;if(!both(mx,my,nX[eV[e]]-nX[eU[e]],nY[eV[e]]-nY[eU[e]]))continue;
+      const near=f=>{const m=new Map();for(const p of f.all){const d=Math.hypot(p.x-mx,p.y-my);if(d<R0&&(!m.has(p.k)||d<m.get(p.k).d))m.set(p.k,{p,d});}return m;};
+      const A=near(F[a]),B=near(F[b]);if(!A.size||!B.size)continue;if([...A.keys()].some(k=>B.has(k)))continue;
+      const key=[...A.keys()].sort().join()+'|'+[...B.keys()].sort().join()+'|'+Math.round(mx/20)+','+Math.round(my/20);if(seenP.has(key))continue;seenP.add(key);
+      const nm=m=>[...m.keys()].map(k=>k==='H'?'房屋':k).join('＋'),pa=[...A.values()].sort((x,y)=>x.d-y.d)[0].p,pb=[...B.values()].sort((x,y)=>x.d-y.d)[0].p;
+      edgeMarks.push({x:mx,y:my,type:'edge',msg:`接邊：圖框兩側屬性不同（${nm(A)}｜${nm(B)}）`,path:[pa.x,pa.y,mx,my,pb.x,pb.y]});}
     for(let v=0;v<NN;v++){let fd=null;const side=[[],[]];
       for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(eR[e]&AR_FRAME&&!fd){const w=other(e,v);fd=[nX[w]-nX[v],nY[w]-nY[v]];}}
       if(!fd||!both(nX[v],nY[v],fd[0],fd[1]))continue;
       for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(eR[e]&(AR_FRAME|AR_ADD))continue;/* 增建交圖時關掉，不比 */const w=other(e,v),c=fd[0]*(nY[w]-nY[v])-fd[1]*(nX[w]-nX[v]),L=Math.hypot(fd[0],fd[1])*Math.hypot(nX[w]-nX[v],nY[w]-nY[v]);if(!L||Math.abs(c)/L<0.05)continue;side[c>0?0:1].push(cat(eR[e]));}
       if(!side[0].length&&!side[1].length)continue;
-      if(!side[0].length||!side[1].length){const s=side[0].length?side[0]:side[1];edgeMarks.push({x:nX[v],y:nY[v],type:'edge',msg:`接邊：${s[0]}碰到圖框，對面沒有接著畫`});continue;}
+      if(!side[0].length||!side[1].length){if(!isExact(nX[v],nY[v]))continue;const s=side[0].length?side[0]:side[1];edgeMarks.push({x:nX[v],y:nY[v],type:'edge',msg:`接邊：${s[0]}碰到圖框，對面沒有接著畫（中斷）`});continue;}
       const h0=side[0].includes('房屋線'),h1=side[1].includes('房屋線');if(h0!==h1)edgeMarks.push({x:nX[v],y:nY[v],type:'edge',msg:'接邊：圖框兩側的線種類不同（一邊是房屋線）'});}
   }
   /* 9. 判斷 */
