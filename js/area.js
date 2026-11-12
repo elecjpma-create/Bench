@@ -274,6 +274,6 @@ function areaCheck(lines,points,opt){
     const c=inner(f);mark({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});cnt.empty++;}
   if(opt.debug)opt.debug.dbg={nX,nY,deg0,eU,eV,eR,alive,F};
   for(const m of edgeMarks){if(marks.some(q=>q.type==='edge'&&Math.hypot(q.x-m.x,q.y-m.y)<1))continue;mark(m);cnt.edge++;}
-  return{marks,st:Object.assign(cnt,{seg:ns,node:NN,edge:NE,face:F.length,pts:points.length,inside,ms:Date.now()-t0})};
+  return{marks,st:Object.assign(cnt,{seg:ns,node:NN,graphEdges:NE,face:F.length,pts:points.length,inside,ms:Date.now()-t0})};
 }
 if(typeof module!=='undefined')module.exports={areaRole,areaCheck,areaKindName,AR_HOUSE,AR_ADD,AR_WALK,AR_ROAD,AR_WATER,AR_OTHER,AR_TEMP};
