@@ -143,6 +143,7 @@ function areaCheck(lines,points,opt){
     for(const g of grp.values()){const x=g.end>=0?nX[g.end]:(nX[eU[g.e]]+nX[eV[g.e]])/2,y=g.end>=0?nY[g.end]:(nY[eU[g.e]]+nY[eV[g.e]])/2;
       mark({x,y,type:'open',msg:'房屋線沒有封閉'});}
   }
+  if(opt.openOnly)return{marks,st:{open:marks.length,ms:Date.now()-t0}};
   /* 6. 找面：每個節點的出邊依角度排，沿「左手邊」繞 */
   const hAng=new Float64Array(2*NE),pos=new Int32Array(2*NE).fill(-1),out=new Array(NN);
   for(let v=0;v<NN;v++){const L=[];for(let k=aS[v];k<aS[v+1];k++){const e=aE[k];if(!alive[e])continue;const h=eU[e]===v?2*e:2*e+1,w=other(e,v);hAng[h]=Math.atan2(nY[w]-nY[v],nX[w]-nX[v]);L.push(h);}

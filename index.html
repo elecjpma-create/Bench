@@ -206,7 +206,7 @@ button{font-family:inherit;color:var(--text)}
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
     <div class="row2" style="margin-bottom:6px"><button id="lyArea">檢查區域：相通／房屋未封閉／空白區</button></div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">看起來接住（差距小於）</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就算接上</span></div>
-    <div class="row2" style="margin-bottom:6px;align-items:center"><label class="small" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="areaNoAdd">不含增建線（交業主前，增建圖層關掉後房屋要自己封閉）</label></div>
+    <div class="row2" style="margin-bottom:6px;align-items:center"><label class="small" style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="areaNoAdd">只查：關掉增建線後房屋沒封閉的地方（交業主前用；七碼的不算）</label></div>
     <div id="baseLayers"></div>
   </div>
 </div></div>
@@ -250,8 +250,8 @@ button{font-family:inherit;color:var(--text)}
 <div id="busy"><div id="busyBox"><div class="spin"></div><div id="busyMsg">讀取中…</div></div></div>
 <div id="toast"></div>
 
-<script src="js/core.js?v=1794453422"></script>
-<script src="js/area.js?v=1794453422"></script>
-<script src="js/app.js?v=1794453422"></script>
+<script src="js/core.js?v=1794453511"></script>
+<script src="js/area.js?v=1794453511"></script>
+<script src="js/app.js?v=1794453511"></script>
 </body>
 </html>
