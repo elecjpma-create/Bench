@@ -1158,7 +1158,7 @@ function onTap(sp){
   if(bubble&&cmd&&cmd.kind==='points'&&sp[0]>=bubble[0]&&sp[0]<=bubble[0]+bubble[2]&&sp[1]>=bubble[1]&&sp[1]<=bubble[1]+bubble[3]){
     kp.hidden=false;kp.show('xy');kp.keepXY=true;updateCmdBar();return;}
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
-    if(bi>=0){smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
+    if(bi>=0){if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
   if(!cmd){selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();return;}
   switch(cmd.kind){
     case'points':
@@ -1306,19 +1306,25 @@ async function findSmall(){
   if(!only.length){toast('沒有數字開頭的新圖層或 Q 圖層');return;}
   if(nativeOn){try{L=await CadCall('Cad','small',{max:smallMaxV(),only,q});}catch(err){toast('找小線段失敗：'+(err.message||err));return;}}
   else L=findSmallJS(new Set(only),smallMaxV(),new Set(nw),new Set(q));
-  smallKey=impName;smallMode='small';smallMarks=L.map(m=>({p:[m.x,m.y],len:m.len,l:m.l}));smallIdx=-1;
+  smallKey=impName;smallMode='small';setTimeout(()=>{okApply();updSmallBar();schedule();},0);smallMarks=L.map(m=>({p:[m.x,m.y],len:m.len,l:m.l}));smallIdx=-1;
   toast(smallMarks.length?`找到 ${smallMarks.length} 段小於 ${smallMaxV()}m 的線（新圖層和 Q 圖層、不含等高線、沒跟同圖層線相接的）`:'沒有找到小線段',3000);
   if(!smallMarks.length)smallMarks=null;updSmallBar();schedule();
 }
 const smallVis=()=>smallMarks?smallMarks.filter(m=>!hidLy.has(m.l)):[];
 function updSmallBar(){const b=$('smallBar');if(!smallMarks){b.style.display='none';return;}b.style.display='flex';
-  const V=smallVis(),m=smallMarks[smallIdx];$('smallTxt').textContent=m&&!hidLy.has(m.l)?(m.msg?`${V.indexOf(m)+1}/${V.length}　${m.msg}`:`${V.indexOf(m)+1}/${V.length}　${m.len.toFixed(2)}m　${m.l}`):(smallMode==='area'?`區域問題 ${V.length} 處`:`小線段 ${V.length} 段`);}
+  const V=smallVis(),m=smallMarks[smallIdx],nok=V.filter(x=>x.ok).length;$('smOk').classList.toggle('on',!!(m&&m.ok));$('smallTxt').textContent=(m&&m.ok?'✓ ':'')+(m&&!hidLy.has(m.l)?(m.msg?`${V.indexOf(m)+1}/${V.length}　${m.msg}`:`${V.indexOf(m)+1}/${V.length}　${m.len.toFixed(2)}m　${m.l}`):(smallMode==='area'?`區域問題 ${V.length} 處`:`小線段 ${V.length} 段`)+(nok?`（已確認 ${nok}）`:''));}
+/* 已確認：看過的標記點一下變灰色，記在這台裝置上（每張圖分開） */
+const okKey=m=>(m.type||'s')+'|'+m.p[0].toFixed(1)+'|'+m.p[1].toFixed(1);
+function okLoad(){try{return new Set(JSON.parse(localStorage.getItem('markOk:'+impName)||'[]'));}catch(_){return new Set();}}
+function okSave(){if(!smallMarks)return;const S=okLoad();for(const m of smallMarks){const k=okKey(m);if(m.ok)S.add(k);else S.delete(k);}try{localStorage.setItem('markOk:'+impName,JSON.stringify([...S]));}catch(_){}}
+function okApply(){const S=okLoad();if(smallMarks)for(const m of smallMarks)m.ok=S.has(okKey(m));}
+function okToggle(){const m=smallMarks&&smallMarks[smallIdx];if(!m)return;m.ok=!m.ok;okSave();updSmallBar();schedule();}
 function smallGo(d){const V=smallVis();if(!V.length){toast('目前開著的圖層沒有小線段');return;}
   let k=V.indexOf(smallMarks[smallIdx]);k=k<0?(d>0?0:V.length-1):(k+d+V.length)%V.length;const m=V[k];smallIdx=smallMarks.indexOf(m);
   const v=st.view;v.s=Math.max(v.s,40);v.ox=W/2-m.p[0]*v.s;v.oy=H/2+m.p[1]*v.s;updSmallBar();schedule();}
 function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=null;updSmallBar();}if(!smallMarks)return;const cm=smallMarks[smallIdx];ctx.save();
   for(const m of smallMarks){if(hidLy.has(m.l))continue;const q=toS(m.p);if(q[0]<-30||q[1]<-30||q[0]>W+30||q[1]>H+30)continue;const on=m===cm;
-    ctx.strokeStyle=on?'#ffea00':(AREA_COL[m.type]||'#ff2bd6');ctx.lineWidth=on?3.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
+    ctx.strokeStyle=on?'#ffea00':m.ok?'#6b6f76':(AREA_COL[m.type]||'#ff2bd6');ctx.lineWidth=on?3.5:m.ok?1.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
   if(cm&&cm.path){const o=cm.o,P=cm.path;ctx.strokeStyle='#2f6bff';ctx.lineWidth=5;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
     for(let i=0;i<P.length;i+=2){const q=toS([o[0]+P[i],o[1]+P[i+1]]);if(i)ctx.lineTo(q[0],q[1]);else ctx.moveTo(q[0],q[1]);}ctx.stroke();
     const a=toS([o[0]+P[P.length-4],o[1]+P[P.length-3]]),b=toS([o[0]+P[P.length-2],o[1]+P[P.length-1]]),an=Math.atan2(b[1]-a[1],b[0]-a[0]);ctx.fillStyle='#2f6bff';ctx.beginPath();ctx.moveTo(b[0],b[1]);ctx.lineTo(b[0]-14*Math.cos(an-0.45),b[1]-14*Math.sin(an-0.45));ctx.lineTo(b[0]-14*Math.cos(an+0.45),b[1]-14*Math.sin(an+0.45));ctx.closePath();ctx.fill();}
@@ -1337,8 +1343,11 @@ function areaCollect(){
   // 只寫編號的圖層（97321）借同編號、有名稱的那層（97321_旱作地）來判斷
   const full=new Map();for(const l of impLayers){const m=/^(a?\d+[A-Za-z]*)[_\s]*(\S.*)$/.exec(l.name);if(m&&/[^\x00-\x7f]/.test(m[2]))full.set(m[1].toUpperCase(),l.name);}
   const fullName=n=>/^a?\d+[A-Za-z]*$/.test(n)?(full.get(n.toUpperCase())||n):n;
-  const roles=new Map(),kindOf=new Map();
-  for(const l of impLayers){const fn=fullName(l.name),r=areaRole(fn);if(r){roles.set(l.name,r);kindOf.set(l.name,areaKindName(fn));}}
+  const roles=new Map(),kindOf=new Map(),par=new Map(),withHouse=new Set();
+  const fd=x=>{while(par.has(x)&&par.get(x)!==x)x=par.get(x);return x;},un=(a,b)=>{if(!par.has(a))par.set(a,a);if(!par.has(b))par.set(b,b);const A=fd(a),B=fd(b);if(A!==B)par.set(B,A);};
+  for(const l of impLayers){const fn=fullName(l.name),r=areaRole(fn);if(!r)continue;roles.set(l.name,r);
+    if(r.a){const nm=areaKindName(fn);un('n:'+nm,'c:'+r.a);}}// 新舊圖：同編號或同名稱都算同一種地物
+  const disp=new Map();for(const l of impLayers){const r=roles.get(l.name);if(!r||!r.a)continue;const nm=areaKindName(fullName(l.name)),root=fd('n:'+nm);if(!disp.has(root))disp.set(root,nm);kindOf.set(l.name,disp.get(root));if(r.withH)withHouse.add(disp.get(root));}
   if(!roles.size)return null;
   // 作業範圍線候選：沒有編碼的圖層上的封閉線（例如 bon）
   const rangeLy=new Set(impLayers.map(l=>l.name).filter(n=>!roles.has(n)&&!/^a?\d/.test(n)&&!/^Q/i.test(n)&&!/圖框|圖號/.test(n)));
@@ -1346,8 +1355,8 @@ function areaCollect(){
   const pushLine=(a,r,ly)=>{if(r.wing&&a.length<=6){const n=a.length/2;let L=0;for(let i=2;i<a.length;i+=2)L+=Math.hypot(a[i]-a[i-2],a[i+1]-a[i-1]);if(L<3&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)return;}lines.push({p:a,r:r.b,ly});};// 橋、涵的小翅膀不算
   const grpPt=(x,y,r,ly,w,h)=>{if(r.gate)gates.push([x,y]);else if(r.t&&!r.a)points.push(r.t==='temp'?{x,y,k:'H'}:{x,y,add:true});else if(r.a)points.push({x,y,k:kind(ly),w,h});};
   const kind=ly=>kindOf.get(ly)||ly;
-  const textPt=(e,r)=>{const s=e.lines.join('').replace(/\s/g,'');if(!s)return;const b=e.bb||entBox(e);const x=(b[0]+b[2])/2-ox,y=(b[1]+b[3])/2-oy;
-    if(r.t==='temp')points.push({x,y,k:'H'});
+  const textPt=(e,r)=>{const s=e.lines.join('').replace(/\s/g,'');if(!s)return;const x=e.p[0]-ox,y=e.p[1]-oy;// 以插入點為準
+    if(r.t==='temp')points.push({x,y,k:'H'});// 位置用插入點
     else if(r.t==='house'){if(/^\d/.test(s))points.push({x,y,k:'H'});else if(/^[A-Za-z]/.test(s))points.push({x,y,add:true});}
     else if(r.t==='add')points.push({x,y,add:true});
     else if(r.a)points.push({x,y,k:kind(e.ly)});};
@@ -1372,7 +1381,7 @@ function areaCollect(){
     for(const g of grp.values())grpPt((g.b[0]+g.b[2])/2-ox,(g.b[1]+g.b[3])/2-oy,roles.get(g.ly),g.ly,(g.b[2]-g.b[0])/2,(g.b[3]-g.b[1])/2);
   }
   for(const e of imp){if(e.t!=='text')continue;const r=roles.get(e.ly);if(r)textPt(e,r);}
-  return{lines,points,gates,ox,oy,range:areaPickRange(ranges,lines)};
+  return{lines,points,gates,withHouse,ox,oy,range:areaPickRange(ranges,lines)};
 }
 /** 作業範圍：沒有編碼的圖層上最能框住新畫線的封閉線；回傳 {ring, inside:新畫的在裡面還是外面} */
 function areaPickRange(ranges,lines){
@@ -1389,12 +1398,12 @@ function areaInRing(r,x,y){let c=false;for(let i=0,j=r.length-2;i<r.length;j=i,i
 async function findArea(){
   const D=areaCollect();
   if(!D||!D.lines.length){toast('這張圖沒有認得的房屋、圍牆、道路、地類界圖層（5 碼或 7 碼編碼）',4000);return;}
-  const R=areaCheck(D.lines,D.points,{tol:areaTolV(),gates:D.gates});
+  const R=areaCheck(D.lines,D.points,{tol:areaTolV(),gates:D.gates,withHouse:D.withHouse,keep:D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null});
   if(D.range){const n0=R.marks.length;R.marks=R.marks.filter(m=>areaInRing(D.range.ring,m.x,m.y)===D.range.inside);R.st.outRange=n0-R.marks.length;
     const c={mix:0,road:0,open:0,addout:0,empty:0};for(const m of R.marks)c[m.type]++;Object.assign(R.st,c);}
   const ord={mix:0,road:1,open:2,addout:3,empty:4};
   R.marks.sort((a,b)=>ord[a.type]-ord[b.type]||b.y-a.y||a.x-b.x);
-  smallKey=impName;smallMode='area';
+  smallKey=impName;smallMode='area';setTimeout(()=>{okApply();updSmallBar();schedule();},0);
   smallMarks=R.marks.map(m=>({p:[m.x+D.ox,m.y+D.oy],msg:m.msg,type:m.type,ring:m.ring,gap:m.gap,path:m.path,o:[D.ox,D.oy]}));smallIdx=-1;
   const c=R.st,parts=[];if(c.mix)parts.push(`一區兩種屬性 ${c.mix}`);if(c.road)parts.push(`和道路相通 ${c.road}`);if(c.open)parts.push(`房屋未封閉 ${c.open}`);if(c.addout)parts.push(`增建註記位置 ${c.addout}`);if(c.empty)parts.push(`空白區 ${c.empty}`);
   toast(smallMarks.length?`找到 ${smallMarks.length} 處：${parts.join('、')}${D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,4500);
@@ -1402,6 +1411,7 @@ async function findArea(){
 }
 $('lyArea').onclick=()=>{if(smallMarks&&smallMode==='area'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');busy(true,'檢查區域中…');
   setTimeout(()=>{findArea().catch(err=>{console.error(err);toast('區域檢查出錯：'+(err&&err.message||err),5000);}).finally(()=>busy(false));},60);};
+$('smOk').onclick=okToggle;
 $('smPrev').onclick=()=>smallGo(-1);$('smNext').onclick=()=>smallGo(1);$('smOff').onclick=()=>{smallMarks=null;updSmallBar();schedule();};
 
 /* ---------- AutoCAD 索引色色盤 ---------- */
