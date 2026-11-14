@@ -133,7 +133,7 @@ button{font-family:inherit;color:var(--text)}
     </div>
     <div id="cmdbar" class="fl"></div>
     <div id="selBar" class="fl"><button id="selOff">關閉此圖層</button><button id="selList">圖層列表</button></div>
-    <div id="smallBar" class="fl"><button id="smPrev">◀</button><button id="smNext">▶</button><span id="smallTxt"></span><button id="smOk" title="已確認">✓</button><button id="smOff">✕</button></div>
+    <div id="smallBar" class="fl"><button id="smPrev">◀</button><button id="smNext">▶</button><span id="smallTxt"></span><button id="smOk" title="已確認">✓</button><button id="smList" title="檢查結果分類">☰</button><button id="smOff">✕</button></div>
     <div id="penbar" class="fl"></div>
     <div id="penW" class="fl"><div class="pwh"><span>手寫粗細</span><b id="penWv"></b></div><input type="range" id="penWr" min="0.5" max="20" step="0.5"><div class="pwp"><div id="penWp"></div></div><div class="pwq"><button data-w="1">1</button><button data-w="2">2</button><button data-w="3">3</button><button data-w="5">5</button><button data-w="8">8</button><button data-w="12">12</button></div></div>
   </div>
@@ -204,13 +204,17 @@ button{font-family:inherit;color:var(--text)}
     <div class="row2" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button></div>
     <div class="row2" style="margin-bottom:6px"><button id="lyOld">關閉舊圖（a 開頭）</button><button id="lySmall">標出新圖層／Q 小線段（&lt;1m）</button></div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
-    <div class="row2" style="margin-bottom:6px"><button id="lyArea">檢查區域：相通／房屋未封閉／空白區</button></div>
+    <div class="row2" style="margin-bottom:6px"><button id="lyArea">區域檢查</button></div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">看起來接住（差距小於）</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就算接上</span></div>
-    <div class="row2" style="margin-bottom:6px"><button id="lyNoAdd">關掉增建後房屋未封閉</button></div>
+    <div class="row2" style="margin-bottom:6px"><button id="lyNoAdd">只看房屋：未封閉／樓層衝突／增建（交業主前）</button></div>
     <div id="baseLayers"></div>
   </div>
 </div></div>
 
+<div id="areaSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>區域檢查結果</b><button data-close>完成</button></div>
+  <div class="sec"><div class="lab">點燈泡開關這一類（關掉的不畫圓圈，◀▶ 也跳過）</div><div id="areaCats"></div><div class="small" id="areaInfo" style="margin-top:8px"></div></div>
+</div></div>
 <div id="aciSheet" class="sheet" style="z-index:25"><div class="sh">
   <div class="shh"><b>選取顏色</b><button data-close>取消</button></div>
   <div class="lab">AutoCAD 顏色索引（ACI）</div>
@@ -250,8 +254,9 @@ button{font-family:inherit;color:var(--text)}
 <div id="busy"><div id="busyBox"><div class="spin"></div><div id="busyMsg">讀取中…</div></div></div>
 <div id="toast"></div>
 
-<script src="js/core.js?v=1794474557"></script>
-<script src="js/area.js?v=1794474557"></script>
-<script src="js/app.js?v=1794474557"></script>
+<script src="native-shim.js"></script>
+<script src="js/core.js"></script>
+<script src="js/area.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>
