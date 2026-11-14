@@ -327,16 +327,17 @@ function areaCheck(lines,points,opt){
   /* ---- 4. 一區兩種屬性、和道路相通、增建註記位置、空白區 ---- */
   const gapR=opt.gapMax||3;
   // 懸空端點歸到所在的區（柵欄、牆、駁坎、土坎等可懸空的線，端點不當缺口）
-  for(let v=0;v<NN;v++){if(deg0[v]!==1)continue;let fr=false;for(let k=aS[v];k<aS[v+1];k++)if(eR[aE[k]]&AR_FREE)fr=true;if(fr)continue;const k=locate(nX[v],nY[v]);if(k<0)continue;(F[k].ends||(F[k].ends=[])).push(v);}
+  for(let v=0;v<NN;v++){if(deg0[v]!==1)continue;let fr=false;for(let k=aS[v];k<aS[v+1];k++)if(eR[aE[k]]&AR_FREE)fr=true;const k=locate(nX[v],nY[v]);if(k<0)continue;if(fr)(F[k].fends||(F[k].fends=[])).push(v);else(F[k].ends||(F[k].ends=[])).push(v);}
   const nearK=(x,y)=>{// 最近的幾條不同線上的點
     const L=[];const i0=Math.max(0,Math.floor((x-gapR-bx0)/cs)),i1=Math.min(NX-1,Math.floor((x+gapR-bx0)/cs)),j0=Math.max(0,Math.floor((y-gapR-by0)/cs)),j1=Math.min(NY-1,Math.floor((y+gapR-by0)/cs));const seen=new Set();
     for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const a=cells.get(j*NX+i);if(!a)continue;for(const s of a){if(seen.has(s))continue;seen.add(s);const ax=X0[s],ay=Y0[s],dx=X1[s]-ax,dy=Y1[s]-ay,l2=dx*dx+dy*dy;let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;
       const qx=ax+dx*t,qy=ay+dy*t,d=Math.hypot(qx-x,qy-y);if(d<=tol||d>gapR)continue;L.push({d,x2:qx,y2:qy});}}
     L.sort((a,b)=>a.d-b.d);const out=[];for(const c of L){if(out.some(o=>Math.hypot(o.x2-c.x2,o.y2-c.y2)<0.05))continue;out.push(c);if(out.length>=4)break;}return out;};
-  const findGap=(f,mode)=>{
-    const C=[];for(const v of f.ends||[])for(const n of nearK(nX[v],nY[v]))C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});
+  const findGap=(f,mode,tk)=>findGap1(f,mode,tk,false)||((f.fends||[]).length?findGap1(f,mode,tk,true):null);// 先不用柵欄、籬、牆等可懸空線的端點；找不到才用
+  const findGap1=(f,mode,tk,useFree)=>{
+    const C=[];for(const v of useFree?(f.ends||[]).concat(f.fends):f.ends||[])for(const n of nearK(nX[v],nY[v]))C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});
     {const seenV=new Set();for(const h of f.hs){const v=hFrom(h);if(seenV.has(v))continue;seenV.add(v);const n=nearK(nX[v],nY[v])[0];if(n&&n.d<=2)C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});}}
-    if(!C.length)return null;C.sort((a,b)=>a.d-b.d);if(C.length>60)C.length=60;
+    if(!C.length)return null;C.sort((a,b)=>a.d-b.d);if(C.length>120)C.length=120;
     const seg=e=>({p:[nX[eU[e]],nY[eU[e]],nX[eV[e]],nY[eV[e]]],r:eR[e]});
     const base=[];for(const h of f.hs)base.push(seg(h>>1));
     {const i0=Math.max(0,Math.floor((f.bb[0]-bx0)/cs)),i1=Math.min(NX-1,Math.floor((f.bb[2]-bx0)/cs)),j0=Math.max(0,Math.floor((f.bb[1]-by0)/cs)),j1=Math.min(NY-1,Math.floor((f.bb[3]-by0)/cs));const seen=new Set();
@@ -344,6 +345,7 @@ function areaCheck(lines,points,opt){
         if(mx<f.bb[0]||mx>f.bb[2]||my<f.bb[1]||my>f.bb[3])continue;if(arInRing(f.ring,mx,my))base.push({p:[X0[q],Y0[q],X1[q],Y1[q]],r:R[q]});}}}
     let full=true;
     const ok=SF=>{if(mode==='mix'){let mx=0;for(const g of SF)mx=Math.max(mx,g.kinds.size);return full?mx<=1:mx<f.kinds.size;}
+      if(mode==='roadk'){const G2=SF.filter(g=>g.kinds.has(tk));return G2.length>0&&G2.every(g=>g.kinds.size===1&&g.area<f.area*0.9);}// 補上缺口後，這種地物自己成區、不和別種同區
       const g=SF.find(g=>g.kinds.size);if(!g)return false;return((g.rl[AR_ROAD]||0)+(g.rl[AR_WALK]||0))<g.per*0.5&&g.area<f.area*0.9;};
     const test=set=>ok(arSplit(base.concat(set.map(c=>({p:[c.x,c.y,c.x2,c.y2],r:AR_OTHER}))),f.all,tol));
     if(!test(C)){if(mode!=='mix'||f.kinds.size<3)return null;full=false;if(!test(C))return null;}
@@ -373,6 +375,11 @@ function areaCheck(lines,points,opt){
         if(g)put({x:g.x,y:g.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區，缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
         else put({x:p.x,y:p.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區）`,ring:f.ring});continue;}}
     if(f.kinds.size>1&&vegF.has(f.id)){mixF.add(f.id);continue;}
+    if(f.kinds.size>1&&rl(AR_ROAD)+rl(AR_WALK)>=f.per*0.5){// 道路／人行道圍成的大區裡有好幾種地物：每種各自和道路相通（各找各的缺口）
+      mixF.add(f.id);for(const k of f.kinds.keys()){const nm=k==='H'?'房屋':k,g=findGap(f,'roadk',k);
+        if(g)put({x:g.x,y:g.y,type:'road',msg:`${nm}和道路／人行道相通（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2])});
+        else{const p=f.all.find(q=>q.k===k);put({x:p.x,y:p.y,type:'road',msg:`${nm}和道路／人行道同區（找不到 3m 內的缺口：可能少畫範圍線，或圖例放錯區）`,ring:f.ring});}}
+      continue;}
     if(f.kinds.size>1){mixF.add(f.id);const names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k),g=findGap(f,'mix');
       if(g)put({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
       else{// 找不到缺口：先找插入點跑到範圍外的圖例（離邊界 1m 內，線的另一側是同種地物或沒有地物）
