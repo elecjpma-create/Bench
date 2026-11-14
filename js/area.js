@@ -4,15 +4,15 @@
    ・圖框永遠不當地物邊界（G02）；接邊另外用「區域被圖框切開的兩側」和「線和圖框的交點」比對。
    ・房屋封閉只用房屋線（永久／臨時／建築中；七碼屋頂增建算永久），不借其他線、不借增建線。
    ・樓層衝突用房屋線自己圍出的區域判斷（分棟線、增建線都不算分界）。 */
-const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512,AR_FREE=1024,AR_LB=2048;// LB＝地類界、田埂（不得自由線存在）
+const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512,AR_FREE=1024,AR_LB=2048,AR_ELEV=4096,AR_WALL=8192;// LB＝地類界、田埂（不得自由線存在）；ELEV＝高架道路；WALL＝牆系（圍牆、柵欄…，臨時性房屋可借來封閉）
 // HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）；FREE＝可以單獨懸空的線（圍牆、柵欄、籬、駁坎、土坎、堤…），端點不當缺口
 const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
 const AR_IGN=/行道樹|防風林|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電線桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|噴泉|廣告|候車|獨立墓|GIS|註記|線號|等界|接邊|問題/;
 // 可單獨存在的附屬設施：圖塊＝圖例（不算主要地物），用該圖層直接畫的散線＝範圍線
-const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|亭$|煙囪/;
+const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|亭$|煙囪|紀念碑|紀念像/;// 紀念碑、紀念像：可單獨存在，底座大時可用自身圖層畫範圍
 // 大型設施：要被範圍線包起來（哪一層的線都可以）並有自己的圖例（圖例算主要地物）
-const AR_BIGFAC=/變電所|變電站|變壓站|抽水站|升旗|司令臺|司令台|捷運站出入口|地下道出入口|水池|濕地|魚池|養殖池/;
+const AR_BIGFAC=/變電所|變電站|變壓站|抽水站|升旗|司令臺|司令台|捷運站出入口|地下道出入口|水池|濕地|魚池|養殖池|游泳池|加油站|牌樓|牌坊/;
 const AR_KIND93=/墓地|堆積場|堆置場|廢墟|游泳池|球場|運動場|體育場/;
 const AR_KIND93C=new Set(['93523','93726','93902','93553','93555','93556']);
 const AR_SINGLE=new Set(['95116','95153','94901','94902','9510110','9510503']);
@@ -30,8 +30,9 @@ function areaRole(name){
     if(code==='93111')return{b:AR_OTHER};
     return AR_TEMPC.has(code)||/建築中|臨時/.test(name)?{b:AR_TEMP,t:'temp'}:{b:AR_HOUSE,t:'house'};// 臨時性房屋上的 T（文字或圖塊）就是房屋註記
   }
-  if(isTxt)return null;
+  if(isTxt)return/加油站/.test(name)?{a:code,big:true}:null;
   if(/獨立樹/.test(name))return{fac:true};// 獨立樹：可和其他地物共存，也可單獨在一個封閉區（人行道、欄杆、地類界、駁坎圍起來的）
+  if(/高架/.test(name))return{b:AR_ROAD|AR_ELEV};// 高架道路：當邊界，橋頭懸空不報；平面道路不可跨越
   if(AR_BIGFAC.test(name))return{b:AR_OTHER,a:code,big:true};
   if(AR_FAC.test(name))return{b:AR_OTHER,fac:true};
   if(AR_KIND93.test(name)&&!AR_IGN.test(name))return{b:AR_OTHER,a:code};
@@ -42,7 +43,7 @@ function areaRole(name){
     if(/地類界|田埂/.test(name)||['97920','97921','97922','9790201','9790202'].includes(code))return{b:AR_OTHER|AR_LB};
     return{a:code,land:true};
   }
-  if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER|AR_FREE};// 門：兩個門之間有一條看不見的地類界
+  if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER|AR_FREE|AR_WALL};// 門：兩個門之間有一條看不見的地類界
   if(/停車場/.test(name)||code.startsWith('94229'))return/出入口/.test(name)||suf==='D'?{b:AR_OTHER|AR_GATE,gb:true}:{b:AR_OTHER,a:code};
   if(/分隔島|小徑/.test(name)||['94224','9421003','94216','94217','9420901','9420902'].includes(code))return{b:AR_OTHER};// 小徑（單線步道）也算分界
   if(code.startsWith('942'))return(/人行道/.test(name)||code==='94218'||code==='9421006')?{b:AR_WALK}:{b:AR_ROAD};
@@ -131,7 +132,9 @@ function arGraph(lines,tol){
   const aS=new Int32Array(NN+1);for(let v=0;v<NN;v++)aS[v+1]=aS[v]+deg0[v];
   const aE=new Int32Array(2*NE),fill=aS.slice(0,NN);
   for(let e=0;e<NE;e++){aE[fill[eU[e]]++]=e;aE[fill[eV[e]]++]=e;}
-  return Object.assign(G,{bx0,by0,bx1,by1,cs,NX,NY,cellOf,cells,nX,nY,eU,eV,eR,eL,NN,NE,deg0,aS,aE,other:(e,v)=>eU[e]===v?eV[e]:eU[e]});
+  const nearSeg=(x,y,d)=>{const a=cells.get(cellOf(x,y));if(!a)return null;let b=null,bd=d;
+    for(const s of a){const ax=X0[s],ay=Y0[s],dx=X1[s]-ax,dy=Y1[s]-ay,l2=dx*dx+dy*dy;let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;const q=Math.hypot(ax+dx*t-x,ay+dy*t-y);if(q<=bd){bd=q;const l=Math.sqrt(l2);b={d:q,nx:-dy/l,ny:dx/l};}}return b;};
+  return Object.assign(G,{nearSeg,bx0,by0,bx1,by1,cs,NX,NY,cellOf,cells,nX,nY,eU,eV,eR,eL,NN,NE,deg0,aS,aE,other:(e,v)=>eU[e]===v?eV[e]:eU[e]});
 }
 /** 一直剪掉懸空的線，回傳 {alive, cut:被剪掉的邊} */
 function arPrune(G){
@@ -160,7 +163,7 @@ function arFaces(G,alive){
   for(let fi=0;fi<faces.length;fi++){const f=faces[fi];if(!(f.area>1e-9))continue;f2F[fi]=F.length;
     const ring=new Float64Array(f.hs.length*2);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,per=0;const rl={};
     f.hs.forEach((h,i)=>{const a=hFrom(h),b=hTo(h);ring[2*i]=nX[a];ring[2*i+1]=nY[a];x0=Math.min(x0,nX[a]);y0=Math.min(y0,nY[a]);x1=Math.max(x1,nX[a]);y1=Math.max(y1,nY[a]);
-      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(let bit=1;bit<=AR_LB;bit<<=1)if(r&bit)rl[bit]=(rl[bit]||0)+l;});
+      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(let bit=1;bit<=AR_WALL;bit<<=1)if(r&bit)rl[bit]=(rl[bit]||0)+l;});
     F.push({id:F.length,ring,hs:f.hs,area:f.area,bb:[x0,y0,x1,y1],per,rl,kinds:new Map(),add:[],all:[],fl:[],fac:[]});}
   // 點落在哪一區：包含它的面裡面積最小的（洞裡的小區自然優先）
   const{bx0,by0,bx1,by1,cs}=G,fcs=Math.max(5,cs*2),FX=Math.ceil((bx1-bx0)/fcs)+1,FY=Math.ceil((by1-by0)/fcs)+1,fcells=new Map(),fbig=[];
@@ -172,12 +175,12 @@ function arFaces(G,alive){
   return{F,f2F,faceOf,locate,hFrom,hTo};
 }
 /** 點放進區域：圖例跨在線上時，看它大部分落在哪一區 */
-function arPlace(T,points){
+function arPlace(T,points,G){
   const{F,locate}=T;let inside=0;
-  const locP=p=>{if(!(p.w>0&&p.h>0)||p.w>0.6||p.h>0.6)return locate(p.x,p.y);
-    const c=locate(p.x,p.y),v=new Map();for(const a of[-0.8,0,0.8])for(const b of[-0.8,0,0.8]){const k=locate(p.x+a*p.w,p.y+b*p.h);v.set(k,(v.get(k)||0)+1);}
-    let best=c,bn=v.get(c)||0;for(const[k,n]of v)if(k>=0&&n>bn){best=k;bn=n;}return best;};
-  for(const p of points){if(p.cx!=null&&p._x==null){const dx=p.cx-p.x,dy=p.cy-p.y,l=Math.hypot(dx,dy);p._x=1;if(l>1e-6){p.x+=dx/l*0.02;p.y+=dy/l*0.02;}}const k=locP(p);p._f=k;if(k<0)continue;inside++;const f=F[k];
+  for(const p of points){if(G&&p._x==null){p._x=1;const n=G&&G.nearSeg?G.nearSeg(p.x,p.y,0.001):null;
+      if(n){// 插入點剛好壓在線上：往文字中心（沒有就往線的一側）偏 1mm
+        let dx=p.cx!=null?p.cx-p.x:n.nx,dy=p.cx!=null?p.cy-p.y:n.ny;const l=Math.hypot(dx,dy)||1;p.x+=dx/l*0.001;p.y+=dy/l*0.001;}}
+    const k=locate(p.x,p.y);p._f=k;if(k<0)continue;inside++;const f=F[k];// 圖例一律以插入點為準
     if(p.add)f.add.push(p);else if(p.fac)f.fac.push(p);else if(p.k){f.all.push(p);if(p.fl)f.fl.push(p);if(!f.kinds.has(p.k))f.kinds.set(p.k,p);}}
   return inside;
 }
@@ -242,33 +245,53 @@ function areaCheck(lines,points,opt){
   if(!G.ns)return{marks:[],st:{seg:0,ms:Date.now()-t0}};
   const{nX,nY,eU,eV,eR,deg0,aS,aE,NN,NE,X0,Y0,X1,Y1,R,cells,bx0,by0,NX,NY,cs}=G;
   const P=arPrune(G),alive=P.alive;
-  // 自由線：道路、人行道懸空要報（圖框邊、作業範圍外的不算）
+  // 高架道路的線段（格網），用來判斷「碰到高架」
+  const EV=[],EG=new Map(),EC=10;
+  for(const L of lines){if(!(L.r&AR_ELEV))continue;const p=L.p;for(let i=2;i<p.length;i+=2){const k=EV.length;EV.push([p[i-2],p[i-1],p[i],p[i+1]]);
+    const i0=Math.floor(Math.min(p[i-2],p[i])/EC),i1=Math.floor(Math.max(p[i-2],p[i])/EC),j0=Math.floor(Math.min(p[i-1],p[i+1])/EC),j1=Math.floor(Math.max(p[i-1],p[i+1])/EC);
+    if((i1-i0+1)*(j1-j0+1)>400)continue;for(let a=i0;a<=i1;a++)for(let b=j0;b<=j1;b++){const q=a*1e7+b;let l=EG.get(q);if(!l)EG.set(q,l=[]);l.push(k);}}}
+  const evNear=(x,y)=>{const l=EG.get(Math.floor(x/EC)*1e7+Math.floor(y/EC));if(!l)return[];return l;};
+  const nearElev=(x,y,d)=>{for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const l=EG.get((Math.floor(x/EC)+a)*1e7+Math.floor(y/EC)+b);if(!l)continue;for(const k of l){const[ax,ay,cx,cy]=EV[k],dx=cx-ax,dy=cy-ay,l2=dx*dx+dy*dy;if(!l2)continue;let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;if(Math.hypot(ax+dx*t-x,ay+dy*t-y)<=d)return true;}}return false;};
+  const freeEnd=v=>!nearFrame(nX[v],nY[v],0.5)&&!nearElev(nX[v],nY[v],0.3);// 碰到圖框、高架的端點都不算懸空
+  // 平面道路、人行道不可跨越高架道路（要在高架處中斷）
+  if(EV.length){const seen=[];for(const L of lines){if(!(L.r&(AR_ROAD|AR_WALK))||(L.r&AR_ELEV))continue;const p=L.p;
+    for(let i=2;i<p.length;i+=2){const ax=p[i-2],ay=p[i-1],rx=p[i]-ax,ry=p[i+1]-ay,Ls=Math.hypot(rx,ry);if(Ls<1e-6)continue;const cand=new Set();
+      const i0=Math.floor(Math.min(ax,p[i])/EC),i1=Math.floor(Math.max(ax,p[i])/EC),j0=Math.floor(Math.min(ay,p[i+1])/EC),j1=Math.floor(Math.max(ay,p[i+1])/EC);
+      if((i1-i0+1)*(j1-j0+1)>400)continue;for(let a=i0;a<=i1;a++)for(let b=j0;b<=j1;b++){const l=EG.get(a*1e7+b);if(l)for(const k of l)cand.add(k);}
+      for(const k of cand){const[bx,by,cx,cy]=EV[k],qx=cx-bx,qy=cy-by,d=rx*qy-ry*qx;if(Math.abs(d)<1e-12)continue;const wx=bx-ax,wy=by-ay,t=(wx*qy-wy*qx)/d,v=(wx*ry-wy*rx)/d;
+        const Lq=Math.hypot(qx,qy);if(t<0||t>1||v<0||v>1||v*Lq<=tol||(1-v)*Lq<=tol)continue;
+        const x=ax+rx*t,y=ay+ry*t;if(Math.hypot(x-p[0],y-p[1])<=0.3||Math.hypot(x-p[p.length-2],y-p[p.length-1])<=0.3)continue;// 停在高架線上（線的頭尾）是正常的if(seen.some(q=>Math.hypot(q[0]-x,q[1]-y)<1))continue;seen.push([x,y]);
+        put({x,y,type:'elevcross',msg:`平面${L.nm||'道路'}跨越高架道路（應在高架處中斷）`});}}}}
+  // 自由線：道路、人行道懸空要報（圖框邊、作業範圍外、碰到高架的不算；高架道路自己的橋頭不算）
   for(const c of arChains(G,P.cut,e=>(eR[e]&(AR_ROAD|AR_WALK))&&!(eR[e]&~(AR_ROAD|AR_WALK)))){
-    const ends=c.ends.filter(v=>!nearFrame(nX[v],nY[v],0.5));if(!ends.length)continue;const v=ends[0];
+    const ends=c.ends.filter(freeEnd);if(!ends.length)continue;const v=ends[0];
     put({x:nX[v],y:nY[v],type:'roadfree',msg:'道路／人行道線懸空（不可單獨存在，須搭接其他範圍線）'});}
   // 地類界、田埂也不得以自由線存在
   for(const c of arChains(G,P.cut,e=>eR[e]===(AR_OTHER|AR_LB))){
-    const ends=c.ends.filter(v=>!nearFrame(nX[v],nY[v],0.5));if(!ends.length)continue;const v=ends[0];
+    const ends=c.ends.filter(freeEnd);if(!ends.length)continue;const v=ends[0];
     put({x:nX[v],y:nY[v],type:'lbfree',msg:'地類界懸空（不得以自由線存在，須搭接其他範圍線）'});}
   // 增建線懸空（B02）
   const addFree=arChains(G,P.cut,e=>eR[e]===AR_ADD&&!lines[G.eL[e]].k7);
-  for(const c of addFree){if(!c.ends.length)continue;put({x:c.x,y:c.y,type:'addline',msg:'增建線有自由端點（突出房屋、沒有接住）'});}
+  for(const c of addFree){const ends=c.ends.filter(freeEnd);if(!ends.length)continue;put({x:nX[ends[0]],y:nY[ends[0]],type:'addline',msg:'增建線有自由端點（突出房屋、沒有接住）'});}
   const T=arFaces(G,alive),F=T.F,{f2F,faceOf,locate,hFrom}=T;
-  const inside=arPlace(T,points);
+  const inside=arPlace(T,points,G);
 
   /* ---- 2. 房屋拓樸：只用房屋線（不借其他線、不借增建線；七碼屋頂增建算永久） ---- */
   const hR=L=>L.r&(AR_HOUSE|AR_TEMP)?L.r&(AR_HOUSE|AR_TEMP):L.k7?AR_HOUSE:AR_ADD;
   const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L)}));
   const GA=arGraph(hAll,tol);let TA=null;
   if(GA.ns){const PA=arPrune(GA);// 房屋未封閉：只算房屋線和增建線，不借圍牆、道路、地類界、圖框
-    for(const c of arChains(GA,PA.cut,e=>GA.eR[e]&(AR_HOUSE|AR_TEMP)))put({x:c.x,y:c.y,type:'open',msg:'房屋線沒有封閉（不借圍牆、道路、地類界或圖框）'});
+    for(const c of arChains(GA,PA.cut,e=>GA.eR[e]&AR_HOUSE))put({x:c.x,y:c.y,type:'open',msg:'永久性房屋線沒有封閉（只能用房屋線，不借圍牆、道路、地類界或圖框）'});
     TA=arFaces(GA,PA.alive);}
+  {// 臨時性、建築中房屋：可以和牆系線（圍牆、柵欄…）接成封閉
+    const GW=arGraph(hAll.concat(lines.filter(L=>(L.r&AR_WALL)&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER}))),tol);
+    if(GW.ns){const PW=arPrune(GW);for(const c of arChains(GW,PW.cut,e=>(GW.eR[e]&AR_TEMP)&&!(GW.eR[e]&AR_HOUSE)))put({x:c.x,y:c.y,type:'open',msg:'臨時性／建築中房屋線沒有封閉（可借牆系線，不借道路、地類界或圖框）'});}}
   const hLines=hAll.filter(L=>L.r!==AR_ADD);
   const GH=arGraph(hLines,tol);let TH=null;
   if(GH.ns){const PH=arPrune(GH);
     // 關掉增建線（五碼）後才出現的缺口（B03）
     const openA=marks.filter(m=>m.type==='open');
-    for(const c of arChains(GH,PH.cut)){if(openA.some(m=>c.ends.some(v=>Math.hypot(GH.nX[v]-m.x,GH.nY[v]-m.y)<0.05)||Math.hypot(c.x-m.x,c.y-m.y)<0.05))continue;
+    for(const c of arChains(GH,PH.cut,e=>GH.eR[e]&AR_HOUSE)){if(openA.some(m=>c.ends.some(v=>Math.hypot(GH.nX[v]-m.x,GH.nY[v]-m.y)<0.05)||Math.hypot(c.x-m.x,c.y-m.y)<0.05))continue;
       if(c.es.every(e=>{const x=(GH.nX[GH.eU[e]]+GH.nX[GH.eV[e]])/2,y=(GH.nY[GH.eU[e]]+GH.nY[GH.eV[e]])/2;return openA.some(m=>Math.hypot(x-m.x,y-m.y)<0.05);}))continue;
       put({x:c.x,y:c.y,type:'openadd',msg:'關掉增建線後，房屋線沒有封閉（房屋要用房屋線自己封閉）'});}
     TH=arFaces(GH,PH.alive);
@@ -291,10 +314,15 @@ function areaCheck(lines,points,opt){
         put({x:out[i][0],y:out[i][1],type:'addline',msg:'增建線越出永久房屋範圍'});}}
   }
 
-  /* ---- 3. 增建線兩側屬性（B01）：兩側都沒有增建註記 ---- */
-  {const bad=[];for(let e=0;e<NE;e++){if(!alive[e]||eR[e]!==AR_ADD||lines[G.eL[e]].k7)continue;const a=f2F[faceOf[2*e]],b=f2F[faceOf[2*e+1]];
-      if((a>=0&&F[a].add.length)||(b>=0&&F[b].add.length))continue;bad.push(e);}
-    for(const c of arChains(G,bad)){const e=c.es[Math.floor(c.es.length/2)];put({x:(nX[eU[e]]+nX[eV[e]])/2,y:(nY[eU[e]]+nY[eV[e]])/2,type:'addside',msg:'增建線兩側都沒有增建註記'});}}
+  /* ---- 3. 增建線找不到增建註記（B01）：相連的一組增建線，圍到的各區裡至少一區要有增建註記
+     （增建線旁邊沒加蓋、維持原樓層的區塊本來就沒有增建註記，所以不逐段要求兩側） ---- */
+  {const ae=[];for(let e=0;e<NE;e++)if(alive[e]&&eR[e]===AR_ADD&&!lines[G.eL[e]].k7)ae.push(e);
+    for(const c of arChains(G,ae)){let ok=false;
+      for(const e of c.es){const x0=nX[eU[e]],y0=nY[eU[e]],x1=nX[eV[e]],y1=nY[eV[e]],l=Math.hypot(x1-x0,y1-y0);if(l<1e-6)continue;
+        const mx=(x0+x1)/2,my=(y0+y1)/2,nx=-(y1-y0)/l*0.02,ny=(x1-x0)/l*0.02;// 往兩邊各偏 2cm 找區（島狀的增建框外側也找得到）
+        for(const k of[locate(mx+nx,my+ny),locate(mx-nx,my-ny)])if(k>=0&&F[k].add.length){ok=true;break;}if(ok)break;}
+      if(ok)continue;const e=c.es[Math.floor(c.es.length/2)];
+      put({x:(nX[eU[e]]+nX[eV[e]])/2,y:(nY[eU[e]]+nY[eV[e]])/2,type:'addside',msg:'增建線找不到增建註記（這組增建線圍到的區域都沒有增建註記）'});}}
 
   /* ---- 4. 一區兩種屬性、和道路相通、增建註記位置、空白區 ---- */
   const gapR=opt.gapMax||3;
@@ -335,15 +363,27 @@ function areaCheck(lines,points,opt){
     const A=near(null),dx=mx-A.x,dy=my-A.y,L=Math.hypot(dx,dy)||1;return[...clip(A),mx,my,mx+dx/L*3,my+dy/L*3];};
   const gapTxt=d=>d<0.1?d.toFixed(3):d.toFixed(2);
   const mixF=new Set();
+  const vegF=new Set((opt.veg||[]).map(v=>locate(v.x,v.y)));// 植被圖層畫的範圍線不當邊界；那一區的兩種屬性已由「植被圖層畫範圍線」報
   for(const f of F){const rl=b=>f.rl[b]||0;
     if(f.all.length&&!f.all.some(p=>keep(p.x,p.y)))continue;// 作業範圍外的不用找
     if(f.kinds.has('H')&&opt.withHouse)for(const k of opt.withHouse)f.kinds.delete(k);// 七碼寺廟（卍）可以和樓層註記同區
     if(f.kinds.size>1&&opt.bigKinds){const big=[...f.kinds.keys()].filter(k=>opt.bigKinds.has(k));
       if(big.length){mixF.add(f.id);const oth=[...f.kinds.keys()].filter(k=>!opt.bigKinds.has(k)).map(k=>k==='H'?'房屋':k),p=f.kinds.get(big[0]);
-        put({x:p.x,y:p.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區）`,ring:f.ring});continue;}}
+        const g=findGap(f,'mix');
+        if(g)put({x:g.x,y:g.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區，缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
+        else put({x:p.x,y:p.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區）`,ring:f.ring});continue;}}
+    if(f.kinds.size>1&&vegF.has(f.id)){mixF.add(f.id);continue;}
     if(f.kinds.size>1){mixF.add(f.id);const names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k),g=findGap(f,'mix');
       if(g)put({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
-      else{const cntK=new Map();for(const p of f.all)cntK.set(p.k,(cntK.get(p.k)||0)+1);const mk=[...cntK].sort((x,y)=>x[1]-y[1])[0][0],a=f.all.find(p=>p.k===mk);
+      else{// 找不到缺口：先找插入點跑到範圍外的圖例（離邊界 1m 內，線的另一側是同種地物或沒有地物）
+        const r=f.ring,stray=[];
+        for(const p of f.all){let bd=1.0,bq=null;for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const ax=r[j],ay=r[j+1],dx=r[i]-ax,dy=r[i+1]-ay,l2=dx*dx+dy*dy;if(!l2)continue;
+            let t=((p.x-ax)*dx+(p.y-ay)*dy)/l2;t=t<0?0:t>1?1:t;const qx=ax+dx*t,qy=ay+dy*t,d=Math.hypot(qx-p.x,qy-p.y);if(d<bd){bd=d;bq=[qx,qy];}}
+          if(!bq||bd<1e-6)continue;const ux=(bq[0]-p.x)/bd,uy=(bq[1]-p.y)/bd,k=locate(bq[0]+ux*0.05,bq[1]+uy*0.05);if(k<0||k===f.id)continue;const o=F[k];
+          if(o.kinds.has(p.k)||!o.kinds.size)stray.push({p,d:bd,same:o.kinds.has(p.k)});}
+        for(const s of stray)put({x:s.p.x,y:s.p.y,type:'stray',msg:`圖例插入點跑到範圍外：${s.p.k==='H'?'房屋':s.p.k}（${s.d<0.01?'壓在邊界線上':'離邊界 '+gapTxt(s.d)+'m'}，線的另一側${s.same?'是同種地物':'沒有地物'}）`,ring:f.ring});
+        const rest=new Set(f.all.filter(p=>!stray.some(s=>s.p===p)).map(p=>p.k));if(stray.length&&rest.size<=1)continue;
+        const cntK=new Map();for(const p of f.all)cntK.set(p.k,(cntK.get(p.k)||0)+1);const mk=[...cntK].sort((x,y)=>x[1]-y[1])[0][0],a=f.all.find(p=>p.k===mk);
         put({x:a.x,y:a.y,type:'mix',msg:'一區兩種屬性：'+names.join('＋')+'（找不到 3m 內的缺口：可能少畫地類界，或圖例壓在線上）',ring:f.ring,path:pathOf(f,null,'mix')});}continue;}
     if(f.kinds.size&&(f.ends||[]).length&&rl(AR_ROAD)+rl(AR_WALK)>=f.per*0.5){const g=findGap(f,'road');
       if(g){mixF.add(f.id);const nm=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k).join('＋');put({x:g.x,y:g.y,type:'road',msg:`${nm}和道路／人行道相通（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'road')});continue;}}
@@ -431,6 +471,7 @@ function areaCheck(lines,points,opt){
         mk(q[0],q[1],`接邊：${nmOf(a.L)||'範圍線'}碰到圖框，對面沒有接著畫（中斷）`,[a.x,a.y,q[0],q[1]]);}
     }
   }
+  for(const v of opt.veg||[])put({x:v.x,y:v.y,type:'veg',msg:`用植被圖層（${v.nm}）畫範圍線：範圍應改用地類界等範圍類圖層`});
   if(opt.debug)opt.debug.dbg={G,F,GH,TH};
   return{marks,st:Object.assign(cnt,{seg:G.ns,node:NN,graphEdges:NE,face:F.length,pts:points.length,inside,frames:FB.length,pub:pub.filter(Boolean).length,ms:Date.now()-t0})};
 }
