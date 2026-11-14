@@ -4,15 +4,15 @@
    ・圖框永遠不當地物邊界（G02）；接邊另外用「區域被圖框切開的兩側」和「線和圖框的交點」比對。
    ・房屋封閉只用房屋線（永久／臨時／建築中；七碼屋頂增建算永久），不借其他線、不借增建線。
    ・樓層衝突用房屋線自己圍出的區域判斷（分棟線、增建線都不算分界）。 */
-const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512,AR_FREE=1024;
+const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512,AR_FREE=1024,AR_LB=2048;// LB＝地類界、田埂（不得自由線存在）
 // HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）；FREE＝可以單獨懸空的線（圍牆、柵欄、籬、駁坎、土坎、堤…），端點不當缺口
 const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
-const AR_IGN=/行道樹|防風林|獨立樹|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電線桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|噴泉|廣告|候車|獨立墓|GIS|註記|線號|等界|接邊|問題/;
+const AR_IGN=/行道樹|防風林|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電線桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|噴泉|廣告|候車|獨立墓|GIS|註記|線號|等界|接邊|問題/;
 // 可單獨存在的附屬設施：圖塊＝圖例（不算主要地物），用該圖層直接畫的散線＝範圍線
-const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|升旗|亭$|煙囪/;
-// 大型設施：要用自己的圖層封閉並有自己的圖例（圖例算主要地物）
-const AR_BIGFAC=/變電所|變壓站|抽水站|捷運站出入口|地下道出入口|水池|濕地|魚池|養殖池/;
+const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|亭$|煙囪/;
+// 大型設施：要被範圍線包起來（哪一層的線都可以）並有自己的圖例（圖例算主要地物）
+const AR_BIGFAC=/變電所|變電站|變壓站|抽水站|升旗|司令臺|司令台|捷運站出入口|地下道出入口|水池|濕地|魚池|養殖池/;
 const AR_KIND93=/墓地|堆積場|堆置場|廢墟|游泳池|球場|運動場|體育場/;
 const AR_KIND93C=new Set(['93523','93726','93902','93553','93555','93556']);
 const AR_SINGLE=new Set(['95116','95153','94901','94902','9510110','9510503']);
@@ -31,6 +31,7 @@ function areaRole(name){
     return AR_TEMPC.has(code)||/建築中|臨時/.test(name)?{b:AR_TEMP,t:'temp'}:{b:AR_HOUSE,t:'house'};// 臨時性房屋上的 T（文字或圖塊）就是房屋註記
   }
   if(isTxt)return null;
+  if(/獨立樹/.test(name))return{fac:true};// 獨立樹：可和其他地物共存，也可單獨在一個封閉區（人行道、欄杆、地類界、駁坎圍起來的）
   if(AR_BIGFAC.test(name))return{b:AR_OTHER,a:code,big:true};
   if(AR_FAC.test(name))return{b:AR_OTHER,fac:true};
   if(AR_KIND93.test(name)&&!AR_IGN.test(name))return{b:AR_OTHER,a:code};
@@ -38,7 +39,7 @@ function areaRole(name){
   if(/階梯/.test(name)||code==='93904'||code==='9390004')return{b:AR_OTHER|AR_STAIR};// 階梯格子不用註記
   if(/寺廟|廟宇/.test(name)||code==='93612')return{b:AR_OTHER,a:code,withH:code.length===7};// 卍；七碼可以和樓層註記同區
   if(code.startsWith('97')){
-    if(/地類界|田埂/.test(name)||['97921','97922','9790201','9790202'].includes(code))return{b:AR_OTHER};
+    if(/地類界|田埂/.test(name)||['97920','97921','97922','9790201','9790202'].includes(code))return{b:AR_OTHER|AR_LB};
     return{a:code,land:true};
   }
   if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER|AR_FREE};// 門：兩個門之間有一條看不見的地類界
@@ -159,7 +160,7 @@ function arFaces(G,alive){
   for(let fi=0;fi<faces.length;fi++){const f=faces[fi];if(!(f.area>1e-9))continue;f2F[fi]=F.length;
     const ring=new Float64Array(f.hs.length*2);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,per=0;const rl={};
     f.hs.forEach((h,i)=>{const a=hFrom(h),b=hTo(h);ring[2*i]=nX[a];ring[2*i+1]=nY[a];x0=Math.min(x0,nX[a]);y0=Math.min(y0,nY[a]);x1=Math.max(x1,nX[a]);y1=Math.max(y1,nY[a]);
-      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(let bit=1;bit<=AR_FREE;bit<<=1)if(r&bit)rl[bit]=(rl[bit]||0)+l;});
+      const l=Math.hypot(nX[b]-nX[a],nY[b]-nY[a]);per+=l;const r=eR[h>>1];for(let bit=1;bit<=AR_LB;bit<<=1)if(r&bit)rl[bit]=(rl[bit]||0)+l;});
     F.push({id:F.length,ring,hs:f.hs,area:f.area,bb:[x0,y0,x1,y1],per,rl,kinds:new Map(),add:[],all:[],fl:[],fac:[]});}
   // 點落在哪一區：包含它的面裡面積最小的（洞裡的小區自然優先）
   const{bx0,by0,bx1,by1,cs}=G,fcs=Math.max(5,cs*2),FX=Math.ceil((bx1-bx0)/fcs)+1,FY=Math.ceil((by1-by0)/fcs)+1,fcells=new Map(),fbig=[];
@@ -245,6 +246,10 @@ function areaCheck(lines,points,opt){
   for(const c of arChains(G,P.cut,e=>(eR[e]&(AR_ROAD|AR_WALK))&&!(eR[e]&~(AR_ROAD|AR_WALK)))){
     const ends=c.ends.filter(v=>!nearFrame(nX[v],nY[v],0.5));if(!ends.length)continue;const v=ends[0];
     put({x:nX[v],y:nY[v],type:'roadfree',msg:'道路／人行道線懸空（不可單獨存在，須搭接其他範圍線）'});}
+  // 地類界、田埂也不得以自由線存在
+  for(const c of arChains(G,P.cut,e=>eR[e]===(AR_OTHER|AR_LB))){
+    const ends=c.ends.filter(v=>!nearFrame(nX[v],nY[v],0.5));if(!ends.length)continue;const v=ends[0];
+    put({x:nX[v],y:nY[v],type:'lbfree',msg:'地類界懸空（不得以自由線存在，須搭接其他範圍線）'});}
   // 增建線懸空（B02）
   const addFree=arChains(G,P.cut,e=>eR[e]===AR_ADD&&!lines[G.eL[e]].k7);
   for(const c of addFree){if(!c.ends.length)continue;put({x:c.x,y:c.y,type:'addline',msg:'增建線有自由端點（突出房屋、沒有接住）'});}
@@ -335,7 +340,7 @@ function areaCheck(lines,points,opt){
     if(f.kinds.has('H')&&opt.withHouse)for(const k of opt.withHouse)f.kinds.delete(k);// 七碼寺廟（卍）可以和樓層註記同區
     if(f.kinds.size>1&&opt.bigKinds){const big=[...f.kinds.keys()].filter(k=>opt.bigKinds.has(k));
       if(big.length){mixF.add(f.id);const oth=[...f.kinds.keys()].filter(k=>!opt.bigKinds.has(k)).map(k=>k==='H'?'房屋':k),p=f.kinds.get(big[0]);
-        put({x:p.x,y:p.y,type:'facility',msg:`大型設施範圍不完整：${big.join('、')}的圖例沒有被自身圖層封閉（和${oth.join('、')}同區）`,ring:f.ring});continue;}}
+        put({x:p.x,y:p.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區）`,ring:f.ring});continue;}}
     if(f.kinds.size>1){mixF.add(f.id);const names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k),g=findGap(f,'mix');
       if(g)put({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
       else{const cntK=new Map();for(const p of f.all)cntK.set(p.k,(cntK.get(p.k)||0)+1);const mk=[...cntK].sort((x,y)=>x[1]-y[1])[0][0],a=f.all.find(p=>p.k===mk);
@@ -344,7 +349,7 @@ function areaCheck(lines,points,opt){
       if(g){mixF.add(f.id);const nm=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k).join('＋');put({x:g.x,y:g.y,type:'road',msg:`${nm}和道路／人行道相通（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'road')});continue;}}
     if(f.add.length&&!f.kinds.has('H')&&(f.kinds.size||rl(AR_HOUSE)+rl(AR_TEMP)+rl(AR_ADD)<f.per*0.5)){const p=f.add[0];
       put({x:p.x,y:p.y,type:'addout',msg:'增建註記不在房屋／增建範圍裡'+(f.kinds.size?'（和'+[...f.kinds.keys()][0]+'同區）':''),ring:f.ring});continue;}
-    if(f.kinds.size||f.add.length)continue;
+    if(f.kinds.size||f.add.length||f.fac.length)continue;
     if(f.area<opt.minArea||f.area>opt.maxArea||2*f.area/f.per<opt.thin)continue;
     if(rl(AR_ADD)>0||rl(AR_TEMP)>0||rl(AR_GATE)>0||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
     const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}

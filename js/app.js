@@ -1339,10 +1339,10 @@ $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.s
 $('lySmall').onclick=()=>{if(smallMarks&&smallMode==='small'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
   findSmall().catch(err=>{console.error(err);toast('找小線段出錯：'+(err&&err.message||err),5000);});};
 /* ---------- 區域檢查：一區兩種屬性、房屋未封閉、增建註記位置、空白區（規則在 js/area.js） ---------- */
-const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0'};
+const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',lbfree:'#ff7ad9',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0'};
 // 區域檢查結果分類（副圖層列表）：順序＝列表順序＝◀▶ 順序
-const AREA_CAT=[['edge','接邊不合／中斷'],['mix','一區兩種屬性'],['road','和道路／人行道相通'],['roadfree','道路線懸空'],['open','房屋未封閉'],['floor','永久樓層衝突'],['floorout','樓層註記在房屋外'],
-  ['openadd','關掉增建後房屋缺口（5 碼）'],['flooradd','關掉增建後樓層衝突（5 碼）'],['addside','增建線兩側沒有增建註記'],['addline','增建線越界／自由端點'],['addout','增建註記位置'],['facility','大型設施範圍不完整'],['empty','區域內無地物']];
+const AREA_CAT=[['edge','接邊不合／中斷'],['mix','一區兩種屬性'],['road','和道路／人行道相通'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['open','房屋未封閉'],['floor','永久樓層衝突'],['floorout','樓層註記在房屋外'],
+  ['openadd','關掉增建後房屋缺口（5 碼）'],['flooradd','關掉增建後樓層衝突（5 碼）'],['addside','增建線兩側沒有增建註記'],['addline','增建線越界／自由端點'],['addout','增建註記位置'],['facility','大型設施沒有範圍線'],['empty','區域內無地物']];
 let areaOff=new Set();try{areaOff=new Set(JSON.parse(localStorage.getItem('areaOff')||'[]'));}catch(_){}
 const markVis=m=>!hidLy.has(m.l)&&!(m.type&&smallMode==='area'&&areaOff.has(m.type));
 function fillAreaSheet(){const box=$('areaCats');box.innerHTML='';if(!smallMarks||smallMode!=='area'){$('areaInfo').textContent='還沒有區域檢查結果';return;}
