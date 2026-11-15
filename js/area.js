@@ -36,7 +36,8 @@ function areaRole(name){
   if(AR_BIGFAC.test(name))return{b:AR_OTHER,a:code,big:true};
   if(AR_FAC.test(name))return{b:AR_OTHER,fac:true};
   if(AR_KIND93.test(name)&&!AR_IGN.test(name))return{b:AR_OTHER,a:code};
-  if(AR_IGN.test(name)||AR_SINGLE.has(code)||code==='9310101')return null;
+  if(AR_SINGLE.has(code)||/小水溝|單線水|暗溝|溝、渠/.test(name))return{ditch:true};// 單線水溝：不當邊界，只用來認「水溝接進水體」
+  if(AR_IGN.test(name)||code==='9310101')return null;
   if(/階梯/.test(name)||code==='93904'||code==='9390004')return{b:AR_OTHER|AR_STAIR};// 階梯格子不用註記
   if(/寺廟|廟宇/.test(name)||code==='93612')return{b:AR_OTHER,a:code,withH:code.length===7};// 卍；七碼可以和樓層註記同區
   if(code.startsWith('97')){
@@ -46,6 +47,7 @@ function areaRole(name){
   if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER|AR_FREE|AR_WALL};// 門：兩個門之間有一條看不見的地類界
   if(/停車場/.test(name)||code.startsWith('94229'))return/出入口/.test(name)||suf==='D'?{b:AR_OTHER|AR_GATE,gb:true}:{b:AR_OTHER,a:code};
   if(/分隔島|小徑/.test(name)||['94224','9421003','94216','94217','9420901','9420902'].includes(code))return{b:AR_OTHER};// 小徑（單線步道）也算分界
+  if(/陸橋/.test(name))return{b:AR_OTHER|AR_FREE};// 行人陸橋：橋頭小線段本來就懸空，不當道路
   if(code.startsWith('942'))return(/人行道/.test(name)||code==='94218'||code==='9421006')?{b:AR_WALK}:{b:AR_ROAD};
   if(AR_FREEN.test(name)||code==='94436'||code==='94433'||code==='95134')return{b:AR_OTHER|AR_FREE};
   if(code.startsWith('944'))return/橋|涵/.test(name)?{b:AR_OTHER,wing:true}:{b:AR_OTHER};// 橋、涵的 45° 小翅膀不算
@@ -176,12 +178,16 @@ function arFaces(G,alive){
 }
 /** 點放進區域：圖例跨在線上時，看它大部分落在哪一區 */
 function arPlace(T,points,G){
-  const{F,locate}=T;let inside=0;
-  for(const p of points){if(G&&p._x==null){p._x=1;const n=G&&G.nearSeg?G.nearSeg(p.x,p.y,0.001):null;
-      if(n){// 插入點剛好壓在線上：往文字中心（沒有就往線的一側）偏 1mm
-        let dx=p.cx!=null?p.cx-p.x:n.nx,dy=p.cx!=null?p.cy-p.y:n.ny;const l=Math.hypot(dx,dy)||1;p.x+=dx/l*0.001;p.y+=dy/l*0.001;}}
-    const k=locate(p.x,p.y);p._f=k;if(k<0)continue;inside++;const f=F[k];// 圖例一律以插入點為準
-    if(p.add)f.add.push(p);else if(p.fac)f.fac.push(p);else if(p.k){f.all.push(p);if(p.fl)f.fl.push(p);if(!f.kinds.has(p.k))f.kinds.set(p.k,p);}}
+  const{F,locate}=T;let inside=0;const online=[];
+  const put=(p,k)=>{p._f=k;if(k<0)return;inside++;const f=F[k];// 圖例一律以插入點為準
+    if(p.add)f.add.push(p);else if(p.fac)f.fac.push(p);else if(p.k){f.all.push(p);if(p.fl)f.fl.push(p);if(!f.kinds.has(p.k))f.kinds.set(p.k,p);}};
+  for(const p of points){if(G&&p._x==null){p._x=1;const n=G.nearSeg?G.nearSeg(p.x,p.y,0.005):null;// 5mm 內算壓在線上
+      if(n){// 插入點剛好壓在線上：先放著，等兩側都有圖例了，再歸到已經有同種圖例的那一側
+        const q=[p.x-n.nx*n.d,p.y-n.ny*n.d];online.push({p,a:locate(q[0]+n.nx*0.01,q[1]+n.ny*0.01),b:locate(q[0]-n.nx*0.01,q[1]-n.ny*0.01)});continue;}}
+    put(p,locate(p.x,p.y));}
+  for(const o of online){const p=o.p,has=k=>k>=0&&(p.k?F[k].kinds.has(p.k):p.add?F[k].add.length>0:false);
+    const k=has(o.a)?o.a:has(o.b)?o.b:(p.fl||p.add)?(o.a>=0?o.a:o.b):-1;// 兩側都沒有同種圖例：地物圖例不算進任何一區（樓層、增建註記照樣歸一側）
+    put(p,k);}
   return inside;
 }
 /** 只要分區（找缺口時試補線用） */
@@ -255,6 +261,16 @@ function areaCheck(lines,points,opt){
     const best=E.map((e,i)=>{if(cont[i])return null;let b=null,bd=MC;nbr(e,o=>{const j=E.indexOf(o);if(o===e||o.li===e.li||o.ty!==e.ty||cont[j])return;const d=Math.hypot(o.x-e.x,o.y-e.y);if(d>tol&&d<bd){bd=d;b=o;}});return b;});
     const nm=[];E.forEach((e,i)=>{const b=best[i];if(!b)return;const j=E.indexOf(b);if(best[j]!==e||j<i)return;nm.push({p:[e.x,e.y,b.x,b.y],r:e.r,nm:e.nm,mouth:true});});
     lines=lines.concat(nm);opt._mouths=nm.length;}
+  /* ---- 0b. 植被圖層的散線：封閉 4 點以上、長度超過 3m、或兩端都接在其他線上的＝拿來當範圍線（圖層用錯）→ 照樣當範圍線，另外報；其餘是炸開的圖例碎片，當圖例 ---- */
+  const vegBad=[];
+  if((opt.veg||[]).length){const SG=new Map(),SC=4,seg=[];lines.forEach((L,li)=>{const p=L.p;for(let i=2;i<p.length;i+=2){const k=seg.length;seg.push([p[i-2],p[i-1],p[i],p[i+1]]);
+      const i0=Math.floor(Math.min(p[i-2],p[i])/SC),i1=Math.floor(Math.max(p[i-2],p[i])/SC),j0=Math.floor(Math.min(p[i-1],p[i+1])/SC),j1=Math.floor(Math.max(p[i-1],p[i+1])/SC);
+      if((i1-i0+1)*(j1-j0+1)>2500)continue;for(let a=i0;a<=i1;a++)for(let b=j0;b<=j1;b++){const q=a*1e7+b;let l=SG.get(q);if(!l)SG.set(q,l=[]);l.push(k);}}});
+    const touch=(x,y)=>{const l=SG.get(Math.floor(x/SC)*1e7+Math.floor(y/SC));if(!l)return false;for(const k of l){const[ax,ay,cx,cy]=seg[k],dx=cx-ax,dy=cy-ay,l2=dx*dx+dy*dy;if(!l2)continue;let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;if(Math.hypot(ax+dx*t-x,ay+dy*t-y)<=Math.max(tol,0.05))return true;}return false;};
+    const add=[];for(const v of opt.veg){const a=v.p,n=a.length/2,closed=n>=4&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])<0.01;
+      if(closed||v.L>3||(touch(a[0],a[1])&&touch(a[a.length-2],a[a.length-1]))){add.push({p:a,r:AR_OTHER,nm:v.nm});vegBad.push(v);}
+      else{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<a.length;i+=2){x0=Math.min(x0,a[i]);x1=Math.max(x1,a[i]);y0=Math.min(y0,a[i+1]);y1=Math.max(y1,a[i+1]);}points.push({x:(x0+x1)/2,y:(y0+y1)/2,k:v.k});}}
+    lines=lines.concat(add);}
   /* ---- 1. 一般拓樸（不含圖框） ---- */
   const G=arGraph(lines,tol);
   if(!G.ns)return{marks:[],st:{seg:0,ms:Date.now()-t0}};
@@ -404,7 +420,6 @@ function areaCheck(lines,points,opt){
       const adj=(nr(A.b[2],B.b[0])||nr(A.b[0],B.b[2]))&&A.b[1]<B.b[3]&&B.b[1]<A.b[3]||(nr(A.b[3],B.b[1])||nr(A.b[1],B.b[3]))&&A.b[0]<B.b[2]&&B.b[0]<A.b[2];
       if(adj&&crossPt(f,A.b,B.b))hit=true;}
     if(hit)edgeF.add(f.id);}
-  const vegF=new Set((opt.veg||[]).map(v=>locate(v.x,v.y)));// 植被圖層畫的範圍線不當邊界；那一區的兩種屬性已由「植被圖層畫範圍線」報
   for(const f of F){const rl=b=>f.rl[b]||0;
     if(f.all.length&&!f.all.some(p=>keep(p.x,p.y)))continue;// 作業範圍外的不用找
     if(edgeF.has(f.id)){mixF.add(f.id);continue;}
@@ -416,9 +431,10 @@ function areaCheck(lines,points,opt){
     if(f.kinds.size>1&&opt.bigKinds){const big=[...f.kinds.keys()].filter(k=>opt.bigKinds.has(k));
       if(big.length){mixF.add(f.id);const oth=[...f.kinds.keys()].filter(k=>!opt.bigKinds.has(k)).map(k=>k==='H'?'房屋':k),p=f.kinds.get(big[0]);
         const g=findGap(f,'mix');
+        const water=big.some(k=>/池|濕地/.test(k)),dNear=(x,y)=>(opt.ditch||[]).some(a=>{for(let i=2;i<a.length;i+=2){const ax=a[i-2],ay=a[i-1],dx=a[i]-ax,dy=a[i+1]-ay,l2=dx*dx+dy*dy;let t=l2?((x-ax)*dx+(y-ay)*dy)/l2:0;t=t<0?0:t>1?1:t;if(Math.hypot(ax+dx*t-x,ay+dy*t-y)<=1)return true;}return false;});
+        if(g&&water&&g.all.every(c=>dNear((c.x+c.x2)/2,(c.y+c.y2)/2)))continue;// 水溝接進水體，外框在那裡斷開是正常的
         if(g)put({x:g.x,y:g.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區，缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
         else put({x:p.x,y:p.y,type:'facility',msg:`大型設施沒有用範圍線包起來：${big.join('、')}（和${oth.join('、')}同區）`,ring:f.ring});continue;}}
-    if(f.kinds.size>1&&vegF.has(f.id)){mixF.add(f.id);continue;}
     if(opt.roadFill!==false&&f.all.length&&2*f.area/f.per<=8){// 路面（窄長、周邊大多是同一種道路線）裡的圖例都是放錯的
       const by={},src=new Set();for(const h of f.hs){const e=h>>1;if(!lines[G.eL[e]].mouth)src.add(G.eL[e]);if(!(eR[e]&(AR_ROAD|AR_WALK))||(eR[e]&AR_ELEV))continue;const L=lines[G.eL[e]],t=roadTy(L);by[t]=(by[t]||0)+Math.hypot(nX[eU[e]]-nX[eV[e]],nY[eU[e]]-nY[eV[e]]);}
       const top=Object.entries(by).sort((a,b)=>b[1]-a[1])[0];
@@ -433,7 +449,10 @@ function areaCheck(lines,points,opt){
         else{const p=f.all.find(q=>q.k===k);put({x:p.x,y:p.y,type:'road',msg:`${nm}和道路／人行道同區（找不到 3m 內的缺口：可能少畫範圍線，或圖例放錯區）`,ring:f.ring});}}
       continue;}
     if(f.kinds.size>1){mixF.add(f.id);const names=[...f.kinds.keys()].map(k=>k==='H'?'房屋':k),g=findGap(f,'mix');
-      if(g)put({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
+      const rEnd=g&&(f.rends||[]).find(v=>g.all.some(c=>Math.hypot(nX[v]-c.x,nY[v]-c.y)<0.01||Math.hypot(nX[v]-c.x2,nY[v]-c.y2)<0.01));
+      if(rEnd!=null){const L=lines[G.eL[aE[aS[rEnd]]]]||{},t=/人行道/.test(L.nm||'')?'人行道':/鬆路面/.test(L.nm||'')?'鬆路面道路':'道路';
+        put({x:g.x,y:g.y,type:'road',msg:`${t}沒有封閉（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）：${names.join('＋')}從這裡相通`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});}
+      else if(g)put({x:g.x,y:g.y,type:'mix',msg:`一區兩種屬性：${names.join('＋')}（缺口 ${g.all.map(c=>gapTxt(c.d)).join('、')}m）`,ring:f.ring,gap:g.all.flatMap(c=>[c.x,c.y,c.x2,c.y2]),path:pathOf(f,g,'mix')});
       else{// 找不到缺口：先找插入點跑到範圍外的圖例（離邊界 1m 內，線的另一側是同種地物或沒有地物）
         const r=f.ring,stray=[];
         for(const p of f.all){let bd=1.0,bq=null;for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const ax=r[j],ay=r[j+1],dx=r[i]-ax,dy=r[i+1]-ay,l2=dx*dx+dy*dy;if(!l2)continue;
@@ -545,7 +564,7 @@ function areaCheck(lines,points,opt){
     const onF=(x,y)=>nearFrame(x,y,0.3);
     for(const m of marks){if(!m.gap||m.type==='edge')continue;let all=true;for(let i=0;i<m.gap.length;i+=4)if(!(onF(m.gap[i],m.gap[i+1])&&onF(m.gap[i+2],m.gap[i+3])))all=false;
       if(all){cnt[m.type]--;m.type='edge';m.msg='接邊：圖框處'+(m.msg.startsWith('房屋')?'屋線':'範圍線')+'不接（'+m.msg+'）';cnt.edge=(cnt.edge||0)+1;}}}
-  for(const v of opt.veg||[])put({x:v.x,y:v.y,type:'veg',msg:`用植被圖層（${v.nm}）畫範圍線：範圍應改用地類界等範圍類圖層`});
+  for(const v of vegBad){const a=v.p,m=Math.floor(a.length/4)*2;put({x:a[m],y:a[m+1],type:'veg',msg:`範圍線用錯圖層：畫在${v.nm}（植被圖層），應改成地類界等範圍類圖層`});}
   {// 同一處（1m 內）有好幾種問題：接邊最優先，房屋優先於植被／道路類
     const rank=t=>t==='edge'?0:['open','floor','floorout','openadd','flooradd','addside','addline','addout'].includes(t)?1:2;
     const keepM=[];const sorted=marks.slice().sort((a,b)=>rank(a.type)-rank(b.type));
