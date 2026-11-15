@@ -1338,7 +1338,6 @@ const newLayers=()=>impLayers.filter(l=>NEW_RE.test(l.name)&&l.name!=='0'&&!CONT
 const qLayers=()=>impLayers.filter(l=>Q_RE.test(l.name)).map(l=>l.name);
 function oldOff(){const o=oldLayers();return o.length&&o.every(n=>offLy.has(n));}
 function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!==$('smallMax'))$('smallMax').value=smallMaxV();const o=oldLayers();b.disabled=!o.length;b.textContent=o.length?(oldOff()?'開啟舊圖（a 開頭）':'關閉舊圖（a 開頭）'):'沒有 a 開頭的舊圖層';
-  $('lySmall').textContent=smallMarks&&smallMode==='small'?'取消小線段標記':`標出新圖層／Q 小線段（<${smallMaxV()}m）`;
   if(document.activeElement!==$('areaTol'))$('areaTol').value=areaTolV();
   $('lyArea').textContent=smallMarks&&smallMode==='area'?'取消區域檢查標記':'區域檢查';}
 $('lyOld').onclick=()=>{const o=oldLayers();if(!o.length)return;if(oldOff())o.forEach(n=>offLy.delete(n));else o.forEach(n=>offLy.add(n));syncHid();fillLayerSheet();schedule();};
@@ -1396,8 +1395,6 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
   ctx.restore();}
 $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){st.areaTol=v;saveSettings();}else $('areaTol').value=areaTolV();};
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
-$('lySmall').onclick=()=>{if(smallMarks&&smallMode==='small'){smallMarks=null;updSmallBar();fillLayerSheet();schedule();return;}closeSheet('layerSheet');toast('找小線段中…',800);
-  findSmall().catch(err=>{console.error(err);toast('找小線段出錯：'+(err&&err.message||err),5000);});};
 /* ---------- 區域檢查：一區兩種屬性、房屋未封閉、增建註記位置、空白區（規則在 js/area.js） ---------- */
 const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',lbfree:'#ff7ad9',stray:'#ff4fa0',small:'#ffe14d',onroad:'#ff8a3d',elevcross:'#9f7bff',veg:'#7ddc4a',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0'};
 // 區域檢查結果分類（副圖層列表）：順序＝列表順序＝◀▶ 順序
@@ -1408,7 +1405,7 @@ let areaOff=new Set();try{areaOff=new Set(JSON.parse(localStorage.getItem('areaO
 const markVis=m=>!hidLy.has(m.l)&&!(m.type&&smallMode==='area'&&areaOff.has(m.type));
 function fillAreaSheet(){const box=$('areaCats');box.innerHTML='';if(!smallMarks||smallMode!=='area'){$('areaInfo').textContent='還沒有區域檢查結果';return;}
   const n=new Map(),ok=new Map();for(const m of smallMarks){n.set(m.type,(n.get(m.type)||0)+1);if(m.ok)ok.set(m.type,(ok.get(m.type)||0)+1);}
-  for(const[t,nm]of AREA_CAT){const c=n.get(t)||0;const r=document.createElement('div');r.className='lyr';r.style.gridTemplateColumns='22px 1fr 36px 34px';r.style.gridTemplateColumns='22px 1fr 36px 34px';
+  for(const[t,nm]of AREA_CAT){const c=n.get(t)||0;const r=document.createElement('div');r.className='lyr';r.style.gridTemplateColumns='22px 1fr 36px 34px';
     const chip=document.createElement('div');chip.className='chip';chip.style.background=AREA_COL[t]||'#ff2bd6';
     const lab=document.createElement('span');lab.style.flex='1';lab.textContent=`${nm}　${c}`+(ok.get(t)?`（已確認 ${ok.get(t)}）`:'');if(!c)lab.style.opacity='.45';
     const eye=document.createElement('button');eye.className='lyb';eye.innerHTML=lyIcon('bulb',!areaOff.has(t));
