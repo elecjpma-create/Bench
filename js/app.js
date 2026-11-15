@@ -1106,6 +1106,10 @@ function nEnt(o){let e=nCache.get(o.i);if(e)return e;
 function nativeNear(x0,y0,x1,y1,max){if(!nativeOn)return[];try{return JSON.parse(CadNative.query(x0,y0,x1,y1,max)).map(nEnt);}catch(_){return[];}}
 function nativeView(max){if(!nativeOn)return[];const a=toW([0,H]),b=toW([W,0]);return nativeNear(a[0],a[1],b[0],b[1],max);}
 function nativeGroup(g){if(!nativeOn)return[];try{return JSON.parse(CadNative.group(g)).map(nEnt);}catch(_){return[];}}
+// 從檔案管理員等 App 用「開啟檔案」選本 App 帶進來的圖；回傳是否有開
+async function cadIntent(){if(!NATIVE)return false;let m;try{m=await CadCall('Cad','openIntent',{});}catch(err){busy(false);if(!/none/.test(err.message||''))toast('開檔失敗：'+(err.message||err),5000);return false;}
+  closeSheet('fileSheet');await nativeLoaded(m);return true;}
+window.cadIntent=cadIntent;
 async function nativeOpen(){try{const m=await CadCall('Cad','open',{});await nativeLoaded(m);}catch(err){busy(false);if(!/cancel/i.test(err.message||''))toast('開檔失敗：'+(err.message||err),5000);}}
 async function nativeLoaded(m){
   if(m.dxf){busy(false);await openDrawing(m.name,unb64(m.data),true);return;}
@@ -1740,7 +1744,7 @@ resize();setHint(baseHintText());updateUI();
   if(NP().SupportFolder&&localStorage.getItem('simplecad.supUri'))await scanSupport(false);
   // 舊版只存一個 'last'：搬進最近檔案清單
   const old=await idbFileGet('last');if(old&&old.bytes){await addRecent(old.name,new Uint8Array(old.bytes));await idbFile('last',null);}
-  const lk=localStorage.getItem('simplecad.lastKey');if(lk)await openRecent(lk,true);
+  const lk=localStorage.getItem('simplecad.lastKey');if(!(await cadIntent())&&lk)await openRecent(lk,true);
   schedule();
 })();
 window.__cad={get cmd(){return cmd;},get cur(){return cur;},get st(){return st;},get imp(){return imp;},get lts(){return lts;},schedule,zoomFit,shxFiles:()=>shxFiles,buildDXF,tm2ll,set view(v){st.view=v;},get view(){return st.view;}};
