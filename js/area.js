@@ -571,6 +571,7 @@ function areaCheck(lines,points,opt){
     for(const m of sorted){if(keepM.some(k=>(rank(k.type)<rank(m.type)&&Math.hypot(k.x-m.x,k.y-m.y)<1)||(k.type==='edge'&&m.type==='edge'&&Math.hypot(k.x-m.x,k.y-m.y)<0.5))){cnt[m.type]--;continue;}keepM.push(m);}// 同一點的接邊只留一筆
     marks.length=0;marks.push(...keepM);}
   if(opt.debug)opt.debug.dbg={G,F,GH,TH};
+  if(opt.keepTopo)opt.keepTopo.T={F,locate};// 填色用：留下分好的區
   return{marks,st:Object.assign(cnt,{seg:G.ns,node:NN,graphEdges:NE,face:F.length,pts:points.length,inside,frames:FB.length,pub:pub.filter(Boolean).length,ms:Date.now()-t0})};
 }
 if(typeof module!=='undefined')module.exports={areaRole,areaCheck,areaKindName,areaSyn,AR_HOUSE,AR_ADD,AR_WALK,AR_ROAD,AR_WATER,AR_OTHER,AR_TEMP,AR_FRAME,AR_FREE};
