@@ -4,7 +4,7 @@
    ・圖框永遠不當地物邊界（G02）；接邊另外用「區域被圖框切開的兩側」和「線和圖框的交點」比對。
    ・房屋封閉只用房屋線（永久／臨時／建築中；七碼屋頂增建算永久），不借其他線、不借增建線。
    ・樓層衝突用房屋線自己圍出的區域判斷（分棟線、增建線都不算分界）。 */
-const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512,AR_FREE=1024,AR_LB=2048,AR_ELEV=4096,AR_WALL=8192;// LB＝地類界、田埂（不得自由線存在）；ELEV＝高架道路；WALL＝牆系（圍牆、柵欄…，臨時性房屋可借來封閉）
+const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64,AR_GATE=128,AR_STAIR=256,AR_FRAME=512,AR_FREE=1024,AR_LB=2048,AR_ELEV=4096,AR_WALL=8192,AR_Q=16384;// Q＝立製無法判定的線（看不清楚時用來封閉房屋等）// LB＝地類界、田埂（不得自由線存在）；ELEV＝高架道路；WALL＝牆系（圍牆、柵欄…，臨時性房屋可借來封閉）
 // HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）；FREE＝可以單獨懸空的線（圍牆、柵欄、籬、駁坎、土坎、堤…），端點不當缺口
 const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
@@ -21,9 +21,10 @@ const AR_FREEN=/圍牆|牆|圍籬|垣|柵欄|欄|網|籬|駁坎|擋土牆|土坎
 /** 圖層角色：{b:邊界種類, a:地物代碼（圖塊、文字算這種地物）, land:散線也算地物, t:'house'|'add'|'temp' 房屋文字層, fac:附屬設施} 或 null */
 function areaRole(name){
   const m=/^(a?)(\d{5,7})([A-Za-z]*)/i.exec(name);
-  if(/^Q(-|$)/i.test(name))return{b:AR_OTHER};// 立製無法判定的線也算邊界
+  if(/^Q(-|$)/i.test(name))return{b:AR_OTHER|AR_Q};// 立製無法判定的線也算邊界；房屋接在 Q 線上不算未封閉
   if(!m)return/增建/.test(name)?(/TXT|註記/i.test(name)?{t:'add'}:{b:AR_ADD,t:'add'}):null;
   const code=m[2],suf=m[3].toUpperCase(),isTxt=suf==='TXT'||suf==='X';
+  if(code.startsWith('931')&&(code==='9310101'||/分棟/.test(name)))return null;// 分棟線（七碼 9310101）檢查前排除：不當邊界
   if(code.startsWith('931')){
     if(isTxt)return{t:(code==='9310102'||/增建/.test(name))?'add':'house'};
     if(suf==='ADD'||code==='9310102'||/增建/.test(name))return{b:AR_ADD,t:'add'};
@@ -309,7 +310,7 @@ function areaCheck(lines,points,opt){
 
   /* ---- 2. 房屋拓樸：只用房屋線（不借其他線、不借增建線；七碼屋頂增建算永久） ---- */
   const hR=L=>L.r&(AR_HOUSE|AR_TEMP)?L.r&(AR_HOUSE|AR_TEMP):L.k7?AR_HOUSE:AR_ADD;
-  const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L)}));
+  const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L)})).concat(lines.filter(L=>(L.r&AR_Q)&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER})));// Q 線也算：看不清楚用 Q 線封閉的房屋不算未封閉
   const GA=arGraph(hAll,tol);let TA=null;
   if(GA.ns){const PA=arPrune(GA);// 房屋未封閉：只算房屋線和增建線，不借圍牆、道路、地類界、圖框
     for(const c of arChains(GA,PA.cut,e=>GA.eR[e]&AR_HOUSE))put({x:c.x,y:c.y,type:'open',msg:'永久性房屋線沒有封閉（只能用房屋線，不借圍牆、道路、地類界或圖框）'});
