@@ -24,6 +24,8 @@ button{font-family:inherit;color:var(--text)}
 #cmdbar{top:58px;right:8px;display:none}
 #smallBar{top:58px;left:8px;right:8px;display:none;align-items:center}
 #selBar{top:58px;right:8px;display:none}
+#gripMenu{display:none;flex-direction:column;padding:4px;gap:2px;z-index:30}
+#gripMenu button{width:auto;white-space:nowrap;padding:0 16px;height:40px;font-size:15px;text-align:left}
 #selBar button{width:auto;white-space:nowrap;padding:0 14px;font-size:14px}
 #selBar button+button{border-left:1px solid #fff2;border-radius:0 9px 9px 0}
 .lyhl{outline:2px solid #ffcc00;border-radius:6px;background:#ffcc0022}
@@ -132,6 +134,7 @@ button{font-family:inherit;color:var(--text)}
       <button id="tSet" title="設定"></button>
     </div>
     <div id="cmdbar" class="fl"></div>
+    <div id="gripMenu" class="fl"></div>
     <div id="selBar" class="fl"><button id="selOff">關閉此圖層</button><button id="selList">圖層列表</button></div>
     <div id="smallBar" class="fl"><button id="smPrev">◀</button><button id="smNext">▶</button><span id="smallTxt"></span><button id="smOk" title="已確認">✓</button><button id="smList" title="檢查結果分類">☰</button><button id="smOff">✕</button></div>
     <div id="penbar" class="fl"></div>

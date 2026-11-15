@@ -243,7 +243,7 @@ function commitPoint(){if(!cmd||!cur)return;const p=cur.p.slice();kp.unlockAll()
   cmd.onPoint(p);if(cmd&&cmd.kind==='points'&&cmd.keypad==='la'&&cmdBase()&&kp.mode==='xy'&&!kp.keepXY)kp.setMode('la');kp.keepXY=false;refreshCmd();}
 function cmdUndoPt(){if(cmd&&cmd.pts&&cmd.pts.length){cmd.pts.pop();if(cmd.onUndoPt)cmd.onUndoPt();refreshCmd();}}
 /** 點到底圖圖塊裡的一段線：整個圖塊一起亮、顯示插入點（像 CAD） */
-let selGrpKey=null,selGrp=null,selIns=null;
+let selGrpKey=null,selGrp=null,selIns=null,selE0=null,gripHit0=null;
 function selBlock(){if(!selE||!selE.imp||!selE.g){selGrpKey=null;selGrp=null;selIns=null;return null;}
   if(selGrpKey!==selE){selGrpKey=selE;selGrp=groupOf(selE);selIns=selE.gi||selGrp.find(x=>x.gi)?.gi||null;
     if(!selIns&&nativeOn){try{selIns=JSON.parse(CadNative.groupIns(selE.g));}catch(_){selIns=null;}}}
@@ -569,7 +569,7 @@ function rotEnt(e,b,a){const c=Math.cos(a),s=Math.sin(a);xform(e,q=>[b[0]+(q[0]-
 function xform(e,f,da){
   switch(e.t){
     case'line':e.a=f(e.a);e.b=f(e.b);break;
-    case'pline':case'ink':e.pts=e.pts.map(f);if(e.spl)e.spl.fit=e.spl.fit.map(f);break;
+    case'pline':case'ink':e.pts=e.pts.map(f);if(e.spl)e.spl.fit=e.spl.fit.map(f);if(e.av)e.av=e.av.map(f);break;
     case'circle':e.o=f(e.o);break;
     case'arc':e.o=f(e.o);e.a0+=da;e.a1+=da;break;
     case'text':e.p=f(e.p);e.rot=(e.rot||0)+da;delete e._sg;delete e.rc;break;
@@ -691,12 +691,33 @@ function breakEnt(e,p1,p2){
 }
 
 /* ---------- 夾點：選到自己畫的物件，拖端點／頂點改形狀，拖中點／圓心整個移動 ---------- */
+/* ---------- 含弧聚合線：av＝頂點、bu＝每段凸度（0＝直線），pts／kv 依它們展開 ---------- */
+function bulgeArc(a,b,bu,out){// 從 a 到 b、凸度 bu 的弧，展開成點（不含 a）
+  const th=4*Math.atan(bu),c=dist(a,b);if(Math.abs(bu)<1e-9||c<1e-12){out.push(b.slice());return;}
+  const r=c/(2*Math.sin(Math.abs(th)/2)),mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,ux=(b[0]-a[0])/c,uy=(b[1]-a[1])/c,h=r*Math.cos(th/2)*Math.sign(bu);
+  const o=[mx-uy*h,my+ux*h],a0=Math.atan2(a[1]-o[1],a[0]-o[0]),n=Math.max(8,Math.min(96,Math.ceil(Math.abs(th)*r*2)));
+  for(let k=1;k<=n;k++){const t=a0+th*k/n;out.push(k===n?b.slice():[o[0]+r*Math.cos(t),o[1]+r*Math.sin(t)]);}}
+function plBuild(e){// 依 av／bu 重新展開；全是直線就變回一般聚合線
+  if(!e.av)return e;const V=e.av,n=V.length,B=e.bu||[];
+  if(!B.some(b=>Math.abs(b||0)>1e-9)){e.pts=V.map(p=>p.slice());delete e.av;delete e.bu;delete e.kv;return e;}
+  const P=[V[0].slice()],kv=[0];const segs=e.closed?n:n-1;
+  for(let i=0;i<segs;i++){bulgeArc(V[i],V[(i+1)%n],B[i]||0,P);if(i+1<n)kv.push(P.length-1);}
+  if(e.closed)P.pop();e.pts=P;e.kv=kv;delete e.bb;return e;}
+function plVerts(e){return e.av||e.pts;}
+function segMid(e,i){const V=plVerts(e),n=V.length,a=V[i],b=V[(i+1)%n],bu=(e.bu||[])[i]||0;if(!bu)return midp(a,b);
+  const c=dist(a,b),s=c/2*bu,mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,ux=(b[0]-a[0])/c,uy=(b[1]-a[1])/c;return[mx+uy*s,my-ux*s];}
+function bulge3(a,m,b){// 過 a、m、b 三點、從 a 經 m 到 b 的弧的凸度（tan(圓心角/4)，逆時針為正）
+  const ax=a[0],ay=a[1],bx=m[0],by=m[1],cx=b[0],cy=b[1],d=2*(ax*(by-cy)+bx*(cy-ay)+cx*(ay-by));if(Math.abs(d)<1e-12)return 0;
+  const ox=((ax*ax+ay*ay)*(by-cy)+(bx*bx+by*by)*(cy-ay)+(cx*cx+cy*cy)*(ay-by))/d,oy=((ax*ax+ay*ay)*(cx-bx)+(bx*bx+by*by)*(ax-cx)+(cx*cx+cy*cy)*(bx-ax))/d;
+  const A=Math.atan2(ay-oy,ax-ox),M=Math.atan2(by-oy,bx-ox),B=Math.atan2(cy-oy,cx-ox),T=2*Math.PI,ccw=(u,v)=>((v-u)%T+T)%T;
+  const th=ccw(A,M)<=ccw(A,B)?ccw(A,B):-ccw(B,A);// m 在 a→b 的逆時針路徑上＝逆時針弧
+  return Math.tan(th/4);}
 function gripsOf(e){
   if(!e||e.imp)return[];const G=[];
   switch(e.t){
     case'line':G.push({p:e.a,k:'a'},{p:e.b,k:'b'},{p:midp(e.a,e.b),k:'move'});break;
     case'dim':G.push({p:e.a,k:'a'},{p:e.b,k:'b'});break;
-    case'pline':if(e.spl)e.spl.fit.forEach((p,i)=>G.push({p,k:'fit',i}));else e.pts.forEach((p,i)=>G.push({p,k:'v',i}));break;
+    case'pline':if(e.spl)e.spl.fit.forEach((p,i)=>G.push({p,k:'fit',i}));else{const V=plVerts(e),n=V.length;V.forEach((p,i)=>G.push({p,k:'v',i}));for(let i=0;i<(e.closed?n:n-1);i++)G.push({p:segMid(e,i),k:'m',i});}break;
     case'circle':G.push({p:e.o,k:'move'});for(const[a,b]of[[1,0],[0,1],[-1,0],[0,-1]])G.push({p:[e.o[0]+a*e.r,e.o[1]+b*e.r],k:'rad'});break;
     case'arc':{const[p0,p1]=arcEnds(e),m=e.a0+sweepOf(e.a0,e.a1)/2;G.push({p:p0,k:'a0'},{p:p1,k:'a1'},{p:[e.o[0]+e.r*Math.cos(m),e.o[1]+e.r*Math.sin(m)],k:'rad'},{p:e.o,k:'move'});break;}
     case'point':case'text':G.push({p:e.p,k:'move'});break;
@@ -708,7 +729,12 @@ function applyGrip(e,g,p){
   const c=JSON.parse(JSON.stringify(e)),b=g.p;
   switch(g.k){
     case'a':c.a=p.slice();break;case'b':c.b=p.slice();break;
-    case'v':c.pts[g.i]=p.slice();break;
+    case'v':if(c.av){c.av[g.i]=p.slice();plBuild(c);}else c.pts[g.i]=p.slice();break;
+    case'm':{const V=c.av||c.pts,n=V.length,dx=p[0]-b[0],dy=p[1]-b[1];for(const j of[g.i,(g.i+1)%n])V[j]=[V[j][0]+dx,V[j][1]+dy];if(c.av)plBuild(c);break;}// 整段平移
+    case'arcm':{c.bu[g.i]=bulge3(c.av[g.i],p,c.av[(g.i+1)%c.av.length]);plBuild(c);break;}// 轉換為弧：拖中點定弧
+    case'addv':{const V=c.av||c.pts;V.splice(g.i+1,0,p.slice());if(c.av){c.bu.splice(g.i+1,0,0);plBuild(c);}break;}// 加入頂點
+    case'lineadd':return plBuild({t:'pline',pts:[c.a,p.slice(),c.b],closed:false,ly:c.ly,ci:c.ci,lt:c.lt,w:c.w});
+    case'linearc':{const o={t:'pline',av:[c.a,c.b],bu:[bulge3(c.a,p,c.b)],closed:false,ly:c.ly,ci:c.ci,lt:c.lt,w:c.w};return plBuild(o);}
     case'fit':{c.spl.fit[g.i]=p.slice();const s=splinePts(c.spl.fit,!!c.closed);c.pts=s.pts;c.kv=s.kv;break;}
     case'rad':{const r=dist(c.o,p);if(r>1e-9)c.r=r;break;}
     case'a0':c.a0=angOf(c.o,p);break;case'a1':c.a1=angOf(c.o,p);break;
@@ -716,14 +742,32 @@ function applyGrip(e,g,p){
   }
   return c;
 }
-function drawGrips(e){for(const g of gripsOf(e)){const q=toS(g.p);ctx.fillStyle=g.k==='move'?'#22c55e':'#3b82f6';ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.fillRect(q[0]-5,q[1]-5,10,10);ctx.strokeRect(q[0]-5,q[1]-5,10,10);}}
-function gripCmd(e,g){
+function drawGrips(e){for(const g of gripsOf(e)){const q=toS(g.p);ctx.fillStyle=g.k==='move'?'#22c55e':'#3b82f6';ctx.strokeStyle='#fff';ctx.lineWidth=1;
+  if(g.k==='m'||(e.t==='line'&&g.k==='move')){// 段中點：沿著那一段的扁長橫條（像 CAD 的多功能夾點）
+    const V=e.t==='line'?[e.a,e.b]:plVerts(e),a=toS(V[e.t==='line'?0:g.i]),b=toS(V[e.t==='line'?1:(g.i+1)%V.length]),an=Math.atan2(b[1]-a[1],b[0]-a[0]);
+    ctx.save();ctx.translate(q[0],q[1]);ctx.rotate(an);ctx.fillRect(-9,-3.5,18,7);ctx.strokeRect(-9,-3.5,18,7);ctx.restore();continue;}
+  ctx.fillRect(q[0]-5,q[1]-5,10,10);ctx.strokeRect(q[0]-5,q[1]-5,10,10);}}
+/** 點一下夾點：跳出選單（拉伸、加入頂點、移除頂點、轉換為弧／直線） */
+function gripMenu(e,g,sp){const m=$('gripMenu');m.innerHTML='';const add=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>{hideGripMenu();f();};m.appendChild(b);};
+  const go=(gg,base)=>{startCmd(gripCmd(e,gg,base));cur=null;refreshCmd();};
+  if(e.t==='pline'&&!e.spl){const V=plVerts(e),n=V.length;
+    if(g.k==='v'){add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'addv',i:g.i},g.p));
+      if(n>2)add('移除頂點',()=>{const i=st.ents.indexOf(e);if(i<0)return;snapshot();const c=JSON.parse(JSON.stringify(e));const W=c.av||c.pts;W.splice(g.i,1);if(c.av){c.bu.splice(g.i,1);plBuild(c);}st.ents[i]=c;selE=c;saveDraw();setHint(baseHintText(),true);schedule();});}
+    else if(g.k==='m'){const arc=!!((e.bu||[])[g.i]);add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'addv',i:g.i},g.p));
+      if(arc)add('轉換為直線',()=>{const i=st.ents.indexOf(e);if(i<0)return;snapshot();const c=JSON.parse(JSON.stringify(e));c.bu[g.i]=0;plBuild(c);st.ents[i]=c;selE=c;saveDraw();setHint(baseHintText(),true);schedule();});
+      else add('轉換為弧',()=>{const c=e.av?e:Object.assign(e,{av:e.pts.map(p=>p.slice()),bu:e.pts.map(()=>0)});go({p:g.p,k:'arcm',i:g.i},g.p);});}}
+  else if(e.t==='line'){if(g.k==='move'){add('移動',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));add('轉換為弧',()=>go({p:g.p,k:'linearc'},g.p));}
+    else{add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));}}
+  else{go(g);return;}
+  m.style.display='flex';const r=cv.getBoundingClientRect();m.style.left=Math.min(r.left+sp[0]+12,window.innerWidth-170)+'px';m.style.top=Math.min(r.top+sp[1]+12,window.innerHeight-200)+'px';}
+function hideGripMenu(){const m=$('gripMenu');if(m)m.style.display='none';}
+function gripCmd(e,g,base0){
   const ctr=(g.k==='rad'||g.k==='a0'||g.k==='a1')?e.o:null;
   return pointsCmd({name:'grip',
-    hint(){return[cur?'拖曳微調位置（可鎖點、輸入長度角度），點一下或按 ✓ 確定':(g.k==='move'?'移動：點新位置':'夾點：點新位置'),!!cur];},
+    hint(){const t={move:'移動：點新位置',m:'拉伸這一段：點新位置',addv:'加入頂點：點新頂點的位置',lineadd:'加入頂點：點新頂點的位置',arcm:'轉換為弧：點弧要經過的點',linearc:'轉換為弧：點弧要經過的點'}[g.k]||'夾點：點新位置';return[cur?'拖曳微調位置（可鎖點、輸入長度角度），點一下或按 ✓ 確定':t,!!cur];},
     base(){return ctr||g.p;},
     onPoint(p){const c=applyGrip(e,g,p);const i=st.ents.indexOf(e);
-      if(i>=0&&dist(p,g.p)>1e-12){snapshot();st.ents[i]=c;saveDraw();}
+      if(i>=0&&(dist(p,g.p)>1e-12||g.k==='addv'||g.k==='lineadd')){snapshot();st.ents[i]=c;saveDraw();}
       endCmd();selE=i>=0?st.ents[i]:null;setHint(baseHintText(),!!selE);schedule();},
     ok(){endCmd();selE=e;setHint(baseHintText(),true);},
     cancel(){endCmd();selE=e;setHint(baseHintText(),true);schedule();return false;},
@@ -1127,7 +1171,8 @@ cv.addEventListener('pointerdown',e=>{
     else{ink={pts:[toW(sp)],last:sp};g={type:'ink'};}
     schedule();return;
   }
-  if(!cmd){const gr=hitGrip(sp);if(gr){const e0=selE;startCmd(gripCmd(e0,gr));cur={raw:gr.p.slice(),p:gr.p.slice(),snap:null};refreshCmd();g={type:'pending',start:sp,last:sp,moved:false,grip:true};return;}}
+  hideGripMenu();
+  if(!cmd){const gr=hitGrip(sp);if(gr){const e0=selE;selE0=e0;gripHit0=gr;startCmd(gripCmd(e0,gr));cur={raw:gr.p.slice(),p:gr.p.slice(),snap:null};refreshCmd();g={type:'pending',start:sp,last:sp,moved:false,grip:true};return;}}
   if(cmd&&cmd.kind==='select'&&boxArm){g={type:'box',start:sp};boxNow=[sp,sp];return;}
   g={type:'pending',start:sp,last:sp,moved:false};
 });
@@ -1151,7 +1196,7 @@ function endPtr(e,cancel){
   if(G.type==='ink'){const P=ink.pts;ink=null;if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
   if(G.type==='erase'){if(G.did)saveDraw();return;}
   if(G.type==='pan'){saveSettings();return;}
-  if(G.type==='pending'&&!G.moved){if(G.grip){cur=null;refreshCmd();return;}onTap(G.start);}
+  if(G.type==='pending'&&!G.moved){if(G.grip){const c0=cmd&&cmd.name==='grip'?cmd:null;const e0=selE0,g0=gripHit0;endCmd();selE=e0;setHint(baseHintText(),true);if(e0&&g0)gripMenu(e0,g0,G.start);schedule();return;}onTap(G.start);}
 }
 cv.addEventListener('pointerup',e=>endPtr(e,false));
 cv.addEventListener('pointercancel',e=>endPtr(e,true));
@@ -1627,7 +1672,8 @@ function buildDXF(){
         let ang=Math.atan2(uy,ux);if(Math.cos(ang)<-1e-6)ang+=Math.PI;const m=midp(A2,B2),tp=[m[0]-Math.sin(ang)*h*0.4,m[1]+Math.cos(ang)*h*0.4];
         head('TEXT',e);pt(10,tp);w(40,nf(h));w(1,fmt(L));w(50,nf(normA(deg(ang))));w(7,'STANDARD');w(72,1);pt(11,tp);break;}
       case'pline':case'ink':head('POLYLINE',e);w(66,1);pt(10,[0,0]);w(70,e.closed?1:0);
-        for(const p of e.pts){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));break;
+        if(e.av)e.av.forEach((p,i)=>{w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);if(e.bu&&e.bu[i])w(42,nf(e.bu[i]));w(70,0);});
+        else for(const p of e.pts){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));break;
       case'circle':head('CIRCLE',e);pt(10,e.o);w(40,nf(e.r));break;
       case'arc':head('ARC',e);pt(10,e.o);w(40,nf(e.r));w(50,nf(normA(deg(e.a0))));w(51,nf(normA(deg(e.a1))));break;
       case'text':e.lines.forEach((ln,i)=>{head('TEXT',e);const off=(e.y0||0)+i*(e.ls||e.h*1.667),r=e.rot||0,p=[e.p[0]+Math.sin(r)*off,e.p[1]-Math.cos(r)*off];pt(10,p);w(40,nf(e.h));w(1,encDxf(ln));w(50,nf(normA(deg(r))));if(e.wf&&e.wf!==1)w(41,nf(e.wf));w(7,'STANDARD');if(e.ha){w(72,e.ha);pt(11,p);}});break;
