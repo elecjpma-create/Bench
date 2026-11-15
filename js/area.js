@@ -8,12 +8,12 @@ const AR_HOUSE=1,AR_ADD=2,AR_WALK=4,AR_ROAD=8,AR_WATER=16,AR_OTHER=32,AR_TEMP=64
 // HOUSE＝永久性房屋，TEMP＝建築中、臨時性（也要封閉）；FREE＝可以單獨懸空的線（圍牆、柵欄、籬、駁坎、土坎、堤…），端點不當缺口
 const AR_TEMPC=new Set(['93120','93130','9310200','9310300']);
 // 不當邊界也不當地物的圖層
-const AR_IGN=/行道樹|防風林|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電線桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|噴泉|廣告|候車|獨立墓|GIS|註記|線號|等界|接邊|問題/;
+const AR_IGN=/行道樹|防風林|流向|號誌|標誌|水管|油管|瓦斯管|輸送|配電|電信線|高壓|電桿|電線桿|電力桿|電信桿|路燈|人孔|變壓器|交接箱|消防栓|曲線|標高|地名|編號|分棟|郵筒|電話亭|單線水|小水溝|纜車|索道|噴泉|廣告|獨立墓|GIS|註記|線號|等界|接邊|問題/;
 // 可單獨存在的附屬設施：圖塊＝圖例（不算主要地物），用該圖層直接畫的散線＝範圍線
-const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|亭$|煙囪|紀念碑|紀念像/;// 紀念碑、紀念像：可單獨存在，底座大時可用自身圖層畫範圍
+const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|亭$|煙囪|紀念碑|紀念像|候車/;// 候車站＝候車亭（七碼用公車車頭圖例）// 紀念碑、紀念像：可單獨存在，底座大時可用自身圖層畫範圍
 // 大型設施：要被範圍線包起來（哪一層的線都可以）並有自己的圖例（圖例算主要地物）
 const AR_BIGFAC=/變電所|變電站|變壓站|抽水站|升旗|司令臺|司令台|捷運站出入口|地下道出入口|水池|濕地|魚池|養殖池|游泳池|加油站|牌樓|牌坊/;
-const AR_KIND93=/墓地|堆積場|堆置場|廢墟|游泳池|球場|運動場|體育場/;
+const AR_KIND93=/墓地|堆積場|堆置場|廢墟|游泳池|球場|運動場|體育場|兒童遊樂|遊戲場|遊樂場|遊戲區/;// 兒童遊樂設施＝遊戲場、遊樂場、兒童遊樂區
 const AR_KIND93C=new Set(['93523','93726','93902','93553','93555','93556']);
 const AR_SINGLE=new Set(['95116','95153','94901','94902','9510110','9510503']);
 const AR_FREEN=/圍牆|牆|圍籬|垣|柵欄|欄|網|籬|駁坎|擋土牆|土坎|堤/;
@@ -24,7 +24,7 @@ function areaRole(name){
   if(/^Q(-|$)/i.test(name))return{b:AR_OTHER|AR_Q};// 立製無法判定的線也算邊界；房屋接在 Q 線上不算未封閉
   if(!m)return/增建/.test(name)?(/TXT|註記/i.test(name)?{t:'add'}:{b:AR_ADD,t:'add'}):null;
   const code=m[2],suf=m[3].toUpperCase(),isTxt=suf==='TXT'||suf==='X';
-  if(code.startsWith('931')&&(code==='9310101'||/分棟/.test(name)))return null;// 分棟線（七碼 9310101）檢查前排除：不當邊界
+  if(code.startsWith('931')&&(code==='9310101'||/分棟|分戶/.test(name)))return null;// 分棟線＝分戶線（七碼 9310101）檢查前排除：不當邊界
   if(code.startsWith('931')){
     if(isTxt)return{t:(code==='9310102'||/增建/.test(name))?'add':'house'};
     if(suf==='ADD'||code==='9310102'||/增建/.test(name))return{b:AR_ADD,t:'add'};
@@ -48,7 +48,7 @@ function areaRole(name){
   if(code.startsWith('932'))return/門/.test(name)||code==='93270'||code==='9320700'?{b:AR_OTHER|AR_GATE,gb:true,gate:true}:{b:AR_OTHER|AR_FREE|AR_WALL};// 門：兩個門之間有一條看不見的地類界
   if(/停車場/.test(name)||code.startsWith('94229'))return/出入口/.test(name)||suf==='D'?{b:AR_OTHER|AR_GATE,gb:true}:{b:AR_OTHER,a:code};
   if(/分隔島|小徑/.test(name)||['94224','9421003','94216','94217','9420901','9420902'].includes(code))return{b:AR_OTHER};// 小徑（單線步道）也算分界
-  if(/陸橋/.test(name))return{b:AR_OTHER|AR_FREE};// 行人陸橋：橋頭小線段本來就懸空，不當道路
+  if(/陸橋|無障礙坡道/.test(name)||code==='9421007')return{b:AR_OTHER|AR_FREE};// 無障礙坡道不會封閉// 行人陸橋：橋頭小線段本來就懸空，不當道路
   if(code.startsWith('942'))return(/人行道/.test(name)||code==='94218'||code==='9421006')?{b:AR_WALK}:{b:AR_ROAD};
   if(AR_FREEN.test(name)||code==='94436'||code==='94433'||code==='95134')return{b:AR_OTHER|AR_FREE};
   if(code.startsWith('944'))return/橋|涵/.test(name)?{b:AR_OTHER,wing:true}:{b:AR_OTHER};// 橋、涵的 45° 小翅膀不算
