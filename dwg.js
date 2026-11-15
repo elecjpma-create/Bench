@@ -167,8 +167,9 @@ export function convertDb(db) {
   }
   let grp = 0;// 目前所屬圖塊（最上層 INSERT）編號，複製時整個圖塊一起選
   let grpIns = null;// 最上層圖塊的插入點（區域檢查用）
+  let grpName = '';// 最上層圖塊名稱（點選圖塊時顯示）
   function push(o, pr) {
-    Object.assign(o, pr); o.imp = 1; if (grp) { o.g = grp; if (grpIns) o.gi = grpIns; }
+    Object.assign(o, pr); o.imp = 1; if (grp) { o.g = grp; if (grpIns) o.gi = grpIns; if (grpName) o.gn = grpName; }
     const L = layers.get(pr.ly); if (L) L.n++;
     out.push(o);
   }
@@ -307,7 +308,7 @@ export function convertDb(db) {
     }
   }
   let gid = 0;
-  for (const e of top) { grp = e.type === 'INSERT' ? ++gid : 0; grpIns = null; try { conv(e, I, null, 0); } catch (err) { skipped['錯誤'] = (skipped['錯誤'] || 0) + 1; } }
+  for (const e of top) { grp = e.type === 'INSERT' ? ++gid : 0; grpIns = null; grpName = e.type === 'INSERT' ? String(e.name || '') : ''; try { conv(e, I, null, 0); } catch (err) { skipped['錯誤'] = (skipped['錯誤'] || 0) + 1; } }
   const H = db.header || {};
   return { ents: out, layers: [...layers.values()].filter(l => l.n > 0), lts, ltscale: H.LTSCALE || 1, skipped };
 }

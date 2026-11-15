@@ -242,7 +242,15 @@ function cmdOk(){if(!cmd)return;if(cmd.kind==='points'&&cur&&!cmd.live){const la
 function commitPoint(){if(!cmd||!cur)return;const p=cur.p.slice();kp.unlockAll();
   cmd.onPoint(p);if(cmd&&cmd.kind==='points'&&cmd.keypad==='la'&&cmdBase()&&kp.mode==='xy'&&!kp.keepXY)kp.setMode('la');kp.keepXY=false;refreshCmd();}
 function cmdUndoPt(){if(cmd&&cmd.pts&&cmd.pts.length){cmd.pts.pop();if(cmd.onUndoPt)cmd.onUndoPt();refreshCmd();}}
-function baseHintText(){return selE?entInfo(selE):'單指拖曳平移、雙指縮放；點物件看資訊。下方選工具開始畫。';}
+/** 點到底圖圖塊裡的一段線：整個圖塊一起亮、顯示插入點（像 CAD） */
+let selGrpKey=null,selGrp=null,selIns=null;
+function selBlock(){if(!selE||!selE.imp||!selE.g){selGrpKey=null;selGrp=null;selIns=null;return null;}
+  if(selGrpKey!==selE){selGrpKey=selE;selGrp=groupOf(selE);selIns=selE.gi||selGrp.find(x=>x.gi)?.gi||null;
+    if(!selIns&&nativeOn){try{selIns=JSON.parse(CadNative.groupIns(selE.g));}catch(_){selIns=null;}}}
+  return selGrp;}
+function baseHintText(){if(selE&&selBlock()&&selGrp.length>1){const ly=`［${selE.ly}］`,nm=selE.gn||(selGrp.find(x=>x.gn)||{}).gn;
+    return`${ly}圖塊${nm?'「'+nm+'」':''}（${selGrp.length} 個物件）`+(selIns?`　插入點 X ${fmt(selIns[0])}　Y ${fmt(selIns[1])}`:'');}
+  return selE?entInfo(selE):'單指拖曳平移、雙指縮放；點物件看資訊。下方選工具開始畫。';}
 function updateCmdBar(){
   const bar=$('cmdbar');bar.innerHTML='';
   if(!cmd||cmd.kind==='pen'){bar.style.display='none';return;}
@@ -1079,7 +1087,9 @@ window.cadBack=()=>{const s=[...document.querySelectorAll('.sheet.show')];if(s.l
 function render(){
   raf=0;ctx.setTransform(DPR,0,0,DPR,0,0);if(NATIVE){ctx.clearRect(0,0,W,H);nativeSync();}else{ctx.fillStyle=st.bg==='white'?'#ffffff':'#15181c';ctx.fillRect(0,0,W,H);}
   const hl=st.bg==='white'?'rgba(0,140,200,.35)':'rgba(79,179,200,.45)';
-  if(selE&&shown(selE))drawEnt(selE,hl,6,true);
+  if(selE&&shown(selE)){const G=selBlock();if(G&&G.length>1){let n=0;for(const x of G){if(shown(x))drawEnt(x,hl,6,true);if(++n>5000)break;}}else drawEnt(selE,hl,6,true);
+    if(G&&selIns){const q=toS(selIns),r=6;ctx.save();ctx.strokeStyle='#3d9bff';ctx.fillStyle='rgba(61,155,255,.35)';ctx.lineWidth=2;ctx.fillRect(q[0]-r,q[1]-r,2*r,2*r);ctx.strokeRect(q[0]-r,q[1]-r,2*r,2*r);// 插入點（藍色方塊，像 CAD 的夾點）
+      ctx.beginPath();ctx.moveTo(q[0]-r-5,q[1]);ctx.lineTo(q[0]+r+5,q[1]);ctx.moveTo(q[0],q[1]-r-5);ctx.lineTo(q[0],q[1]+r+5);ctx.stroke();ctx.restore();}}
   if(!cmd&&selE&&!selE.imp)drawGrips(selE);
   {let n=0;for(const e of selSet){if(selSet.size>500&&!visible(e))continue;drawEnt(e,'rgba(255,170,40,.6)',6,true);if(++n>4000)break;}}
   if(boxNow){const[a,b]=boxNow,cr=b[0]<a[0];ctx.save();ctx.fillStyle=cr?'rgba(60,200,90,.12)':'rgba(70,130,255,.12)';ctx.strokeStyle=cr?'#3cc85a':'#4682ff';ctx.lineWidth=1.5;if(cr)ctx.setLineDash([6,4]);
