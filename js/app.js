@@ -1450,7 +1450,7 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
     const req={b:[...rangeLy,...frameLy],p:[],l:[],g:[]};for(const[n,r]of roles){if(r.b||r.ditch)req.b.push(n);if(r.gb&&!r.gate)req.g.push(n);if(r.a||r.gate||r.fac||(r.t&&r.b))req.p.push(n);if(r.land)req.l.push(n);}
     const D=JSON.parse(CadNative.areaData(JSON.stringify(req))||'null');if(!D)return null;if(D.err)throw new Error(D.err);
     ox=D.ox;oy=D.oy;
-    for(const a of D.s){const ly=D.L[a[0]],r=roles.get(ly);if(r&&r.ditch){ditch.push(a.slice(1));continue;}if(r&&r.b)pushLine(a.slice(1),r,ly);else if(r&&r.land)areaVeg(a.slice(1),ly,ox,oy,points,veg,kind,lnm);else if(frameLy.has(ly))lines.push({p:a.slice(1),r:AR_FRAME,ly});else if(rangeLy.has(ly))ranges.push(a.slice(1));}
+    for(const a of D.s){const ly=D.L[a[0]],r=roles.get(ly);if(r&&r.ditch){ditch.push(a.slice(1));if(!r.b)continue;}if(r&&r.b)pushLine(a.slice(1),r,ly);else if(r&&r.land)areaVeg(a.slice(1),ly,ox,oy,points,veg,kind,lnm);else if(frameLy.has(ly))lines.push({p:a.slice(1),r:AR_FRAME,ly});else if(rangeLy.has(ly))ranges.push(a.slice(1));}
     for(const a of D.p){const n=D.L[a[0]],r=roles.get(n);if(r)grpPt(a[1],a[2],r,n);}
   }else{
     const f=imp.find(e=>e.bb&&isFinite(e.bb[0]));if(f){ox=Math.floor(f.bb[0]);oy=Math.floor(f.bb[1]);}
@@ -1461,7 +1461,7 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
       const r=roles.get(e.ly);if(!r)continue;const b=e.bb||entBox(e);
       if(e.g&&r.gb&&!r.gate){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);pushLine(a,r,e.ly);}continue;}
       if(e.g){if(!r.a&&!r.t&&!r.gate&&!r.fac)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly,gi:e.gi});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
-      if(r.ditch){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);ditch.push(a);}continue;}
+      if(r.ditch){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);ditch.push(a);}if(!r.b)continue;}
       if(r.land){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);if(e.closed&&a.length>=4&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)a.push(a[0],a[1]);areaVeg(a,e.ly,ox,oy,points,veg,kind,lnm);}continue;}// 植被圖層的散線
       if(!r.b||e.t==='point'||e.t==='fill')continue;
       for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);pushLine(a,r,e.ly);}}

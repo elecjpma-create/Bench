@@ -37,7 +37,7 @@ function areaRole(name){
   if(AR_BIGFAC.test(name))return{b:AR_OTHER,a:code,big:true};
   if(AR_FAC.test(name))return{b:AR_OTHER,fac:true};
   if(AR_KIND93.test(name)&&!AR_IGN.test(name))return{b:AR_OTHER,a:code};
-  if(AR_SINGLE.has(code)||/小水溝|單線水|暗溝|溝、渠/.test(name))return{ditch:true};// 單線水溝：不當邊界，只用來認「水溝接進水體」
+  if(AR_SINGLE.has(code)||/小水溝|單線水|暗溝|溝、渠/.test(name))return{b:AR_OTHER|AR_FREE,ditch:true};// 單線水溝（五碼小水溝＝七碼單線水，寬 1m 以下）：是範圍線、可懸空中斷，常和地類界、田埂圍出水田果園；另外用來認「水溝接進水體」
   if(AR_IGN.test(name)||code==='9310101')return null;
   if(/階梯/.test(name)||code==='93904'||code==='9390004')return{b:AR_OTHER|AR_STAIR};// 階梯格子不用註記
   if(/寺廟|廟宇/.test(name)||code==='93612')return{b:AR_OTHER,a:code,withH:code.length===7};// 卍；七碼可以和樓層註記同區
@@ -464,6 +464,7 @@ function areaCheck(lines,points,opt){
             let t=((p.x-ax)*dx+(p.y-ay)*dy)/l2;t=t<0?0:t>1?1:t;const qx=ax+dx*t,qy=ay+dy*t,d=Math.hypot(qx-p.x,qy-p.y);if(d<bd){bd=d;bq=[qx,qy];}}
           if(!bq||bd<1e-6)continue;const ux=(bq[0]-p.x)/bd,uy=(bq[1]-p.y)/bd,k=locate(bq[0]+ux*0.05,bq[1]+uy*0.05);if(k<0||k===f.id)continue;const o=F[k];
           if(o.kinds.has(p.k))stray.push({p,d:bd,same:true});}// 只算對面是同種地物的（圖例從自己那區跑出來）；對面沒有地物的（例如緊貼人行陸橋）不報
+        {const allIn=k=>f.all.filter(p=>p.k===k).every(p=>stray.some(s=>s.p===p));for(let i=stray.length-1;i>=0;i--)if(!allIn(stray[i].p.k))stray.splice(i,1);}// 這區裡同種圖例還有別的、不在邊界旁：這種是這區本來的地物，不是跑出來的
         for(const s of stray)put({x:s.p.x,y:s.p.y,type:'stray',msg:`圖例插入點跑到範圍外：${s.p.k==='H'?'房屋':s.p.k}（${s.d<0.01?'壓在邊界線上':'離邊界 '+gapTxt(s.d)+'m'}，線的另一側${s.same?'是同種地物':'沒有地物'}）`,ring:f.ring});
         const rest=new Set(f.all.filter(p=>!stray.some(s=>s.p===p)).map(p=>p.k));if(stray.length&&rest.size<=1)continue;
         const cntK=new Map();for(const p of f.all)cntK.set(p.k,(cntK.get(p.k)||0)+1);const mk=[...cntK].sort((x,y)=>x[1]-y[1])[0][0],a=f.all.find(p=>p.k===mk);
