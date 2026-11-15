@@ -284,7 +284,11 @@ function areaCheck(lines,points,opt){
     if((i1-i0+1)*(j1-j0+1)>400)continue;for(let a=i0;a<=i1;a++)for(let b=j0;b<=j1;b++){const q=a*1e7+b;let l=EG.get(q);if(!l)EG.set(q,l=[]);l.push(k);}}}
   const evNear=(x,y)=>{const l=EG.get(Math.floor(x/EC)*1e7+Math.floor(y/EC));if(!l)return[];return l;};
   const nearElev=(x,y,d)=>{for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){const l=EG.get((Math.floor(x/EC)+a)*1e7+Math.floor(y/EC)+b);if(!l)continue;for(const k of l){const[ax,ay,cx,cy]=EV[k],dx=cx-ax,dy=cy-ay,l2=dx*dx+dy*dy;if(!l2)continue;let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;if(Math.hypot(ax+dx*t-x,ay+dy*t-y)<=d)return true;}}return false;};
-  const freeEnd=v=>!nearFrame(nX[v],nY[v],0.5)&&!nearElev(nX[v],nY[v],0.3);// 碰到圖框、高架的端點都不算懸空
+  // 單線水溝（五碼小水溝＝七碼單線水）也是範圍線：線頭搭在它上面不算懸空（它自己不參與圍區，因為很少自己圍成一圈）
+  const DG=new Map(),DC=20,DS=[];for(const a of (opt.ditch||[]))for(let i=2;i<a.length;i+=2){const k=DS.length;DS.push([a[i-2],a[i-1],a[i],a[i+1]]);
+    for(let x=Math.floor(Math.min(a[i-2],a[i])/DC);x<=Math.floor(Math.max(a[i-2],a[i])/DC);x++)for(let y=Math.floor(Math.min(a[i-1],a[i+1])/DC);y<=Math.floor(Math.max(a[i-1],a[i+1])/DC);y++){const g=x*1e7+y;let l=DG.get(g);if(!l)DG.set(g,l=[]);l.push(k);}}
+  const nearDitch=(x,y,d)=>{const l=DG.get(Math.floor(x/DC)*1e7+Math.floor(y/DC));if(!l)return false;for(const k of l){const[ax,ay,cx,cy]=DS[k],dx=cx-ax,dy=cy-ay,l2=dx*dx+dy*dy;let t=l2?((x-ax)*dx+(y-ay)*dy)/l2:0;t=t<0?0:t>1?1:t;if(Math.hypot(ax+dx*t-x,ay+dy*t-y)<=d)return true;}return false;};
+  const freeEnd=v=>!nearFrame(nX[v],nY[v],0.5)&&!nearElev(nX[v],nY[v],0.3)&&!nearDitch(nX[v],nY[v],0.05);// 碰到圖框、高架、單線水溝的端點都不算懸空
   // 平面道路、人行道不可跨越高架道路（要在高架處中斷）
   if(EV.length){const seen=[];for(const L of lines){if(!(L.r&(AR_ROAD|AR_WALK))||(L.r&AR_ELEV)||L.mouth)continue;const p=L.p;
     for(let i=2;i<p.length;i+=2){const ax=p[i-2],ay=p[i-1],rx=p[i]-ax,ry=p[i+1]-ay,Ls=Math.hypot(rx,ry);if(Ls<1e-6)continue;const cand=new Set();
@@ -491,7 +495,7 @@ function areaCheck(lines,points,opt){
       if(!S.some(p=>p.s.n))continue;// 兩側都沒有屬性：不是接邊的問題（空白區另外檢查）
       if(rl(AR_ROAD)+rl(AR_WALK)>=f.per*0.3&&!f.kinds.size&&!f.add.length)continue;// 道路、人行道本來就免註記
       for(let a=0;a<S.length;a++)for(let b=a+1;b<S.length;b++){const A=S[a],B=S[b];
-        const nr=(u,v)=>Math.abs(u-v)<1,adj=(nr(A.b[2],B.b[0])||nr(A.b[0],B.b[2]))&&A.b[1]<B.b[3]&&B.b[1]<A.b[3]||(nr(A.b[3],B.b[1])||nr(A.b[1],B.b[3]))&&A.b[0]<B.b[2]&&B.b[0]<A.b[2];// 圖框坐標可能有小數誤差if(!adj)continue;
+        const nr=(u,v)=>Math.abs(u-v)<1,adj=(nr(A.b[2],B.b[0])||nr(A.b[0],B.b[2]))&&A.b[1]<B.b[3]&&B.b[1]<A.b[3]||(nr(A.b[3],B.b[1])||nr(A.b[1],B.b[3]))&&A.b[0]<B.b[2]&&B.b[0]<A.b[2];/* 圖框坐標可能有小數誤差 */if(!adj)continue;
         if(!pub[A.i]||!pub[B.i])continue;// 兩側都已出圖才比（E01）
         const q=crossPt(f,A.b,B.b);if(!q||!keep(q[0],q[1]))continue;
         if(!edgeF.has(f.id)&&!cellNew(q[0],q[1]))continue;// 被圖框切開、各幅地物不同的區：已出圖就比（不然問題會消失）
