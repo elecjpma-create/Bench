@@ -207,7 +207,8 @@ button{font-family:inherit;color:var(--text)}
     <div class="row2" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button></div>
     <div class="row2" style="margin-bottom:6px"><button id="lyOld">關閉舊圖（a 開頭）</button></div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
-    <div class="row2" style="margin-bottom:6px"><button id="lyArea">區域檢查</button></div>
+    <div class="row2" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="addrLoad" style="flex:none">門牌檔</button><input type="file" id="addrFile" accept=".csv,text/csv,text/plain" style="display:none"></div>
+    <div class="small" id="addrInfo" style="margin:-2px 0 6px">路名對門牌：還沒載入門牌位置資料（CSV）</div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">看起來接住（差距小於）</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就算接上</span></div>
     <div id="baseLayers"></div>
   </div>
