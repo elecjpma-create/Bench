@@ -55,6 +55,7 @@ const IC={
   move:'<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
   copy:'<rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V4h12"/>',
   rot:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/>',
+  ins:'<rect x="3" y="3" width="9" height="9" rx="1"/><path d="M16 12v8M12 16h8"/>',
   offset:'<path d="M4 19c3-7 8-10 16-10"/><path d="M4 13c3-5 7-8 14-8" stroke-dasharray="3 2"/>',
   trim:'<circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="M8 8.5l12 8M8 15.5l12-8"/><path d="M14 3v18" stroke-dasharray="2 2"/>',
   extend:'<path d="M3 12h10"/><path d="M13 12h5" stroke-dasharray="2 2"/><path d="M20 5v14"/><path d="M11 9l3 3-3 3"/>',
@@ -590,6 +591,24 @@ function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
     preview(){if(this.pts.length&&cur){const b=this.pts[0];const a=kp.num('A')!=null?rad(kp.num('A')):Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]);ctx.globalAlpha=.6;sel.forEach(e=>{const c=JSON.parse(JSON.stringify(e));rotEnt(c,b,a);drawTemp(c);});ctx.globalAlpha=1;previewPath([b],cur.p,false,true);}}
   }));
 },extra:{name:'rot',filter:ownOnly}});}
+/* 插入圖塊：點一個圖塊當樣本（底圖或自己複製的都行，也可以先選好），再連續點插入點；角度可改 */
+function blockIns(sel){for(const e of sel)if(e.gi)return e.gi;const e=sel[0];
+  if(e&&e.imp&&e.g&&nativeOn){try{const p=JSON.parse(CadNative.groupIns(e.g));if(p)return p;}catch(_){}}
+  let b=[1e18,1e18,-1e18,-1e18];for(const x of sel){const r=entBox(x);if(r){b=[Math.min(b[0],r[0]),Math.min(b[1],r[1]),Math.max(b[2],r[2]),Math.max(b[3],r[3])];}}return[(b[0]+b[2])/2,(b[1]+b[3])/2];}
+function cmdInsert(){return selectStage({title:'插入圖塊',verb:'當樣本',next(){
+  const sel=[...selSet],ins=blockIns(sel);let ang=0;
+  const place=(p,draw)=>{const a=rad(ang),c=Math.cos(a),s=Math.sin(a),gm=new Map(),out=[];
+    for(const e of sel){const k=draw?JSON.parse(JSON.stringify(e)):ownCopy(e,gm);
+      xform(k,q=>{const x=q[0]-ins[0],y=q[1]-ins[1];return[p[0]+x*c-y*s,p[1]+x*s+y*c];},a);if(!draw&&!k.og&&sel.length>1)k.og=gm.get('one')||(gm.set('one',newOg()),gm.get('one'));out.push(k);}return out;};
+  let n=0;
+  startCmdKeep(pointsCmd({name:'ins',init(){kp.setMode('xy');},
+    extraBtns(){return[{t:`角度 ${ang}°`,c:'mode',f:()=>{const v=prompt('插入角度（度，逆時針為正）',String(ang));if(v!=null&&isFinite(+v)){ang=+v;refreshCmd();}}}];},
+    hint(){return[`插入圖塊（${sel.length} 個物件${n?`，已插入 ${n} 個`:''}）：點插入點，可連續點；✓ 結束`,!!cur];},
+    onPoint(p){this.pts.push(p);snapshot();st.ents.push(...place(p,false));n++;saveDraw();refreshCmd();schedule();},
+    ok(){endCmd();if(n)toast(`已插入 ${n} 個圖塊`);},
+    preview(){if(cur){ctx.globalAlpha=.6;for(const k of place(cur.p,true))drawTemp(k);ctx.globalAlpha=1;}}}));
+  selSet=new Set(sel);
+},extra:{name:'ins',group:true,filter:e=>!!(e.g||e.og)}});}
 function rotEnt(e,b,a){const c=Math.cos(a),s=Math.sin(a);xform(e,q=>[b[0]+(q[0]-b[0])*c-(q[1]-b[1])*s,b[1]+(q[0]-b[0])*s+(q[1]-b[1])*c],a);}
 function xform(e,f,da){
   delete e.bb;// 外框要重算，不然放大時會被當成在畫面外（不畫、點不到）
@@ -603,6 +622,7 @@ function xform(e,f,da){
     case'point':e.p=f(e.p);break;
     case'fill':e.rings=e.rings.map(r=>r.map(f));break;
   }
+  if(e.gi)e.gi=f(e.gi);// 圖塊插入點跟著走
 }
 /* 刪除、改圖層 */
 function cmdDelete(){return selectStage({title:'刪除',verb:'刪除',next(){snapshot();st.ents=st.ents.filter(e=>!selSet.has(e));saveDraw();toast(`已刪除 ${selSet.size} 個`);endCmd();},extra:{name:'del',filter:ownOnly}});}
@@ -1271,7 +1291,7 @@ function onTap(sp){
 /* ---------- 底部工具列 ---------- */
 const TABS=[
   ['sel','選取',()=>{endCmd();closePanel();}],
-  ['draw','繪製',[['pline','多段線',cmdPline],['line','直線',cmdLine],['circle','圓',cmdCircle],['arc','弧',cmdArc],['spline','雲形線',cmdSpline],['polygon','多邊形',cmdPolygon],['text','文字',cmdText],['dim','標註',cmdDim]]],
+  ['draw','繪製',[['pline','多段線',cmdPline],['line','直線',cmdLine],['circle','圓',cmdCircle],['arc','弧',cmdArc],['spline','雲形線',cmdSpline],['polygon','多邊形',cmdPolygon],['text','文字',cmdText],['dim','標註',cmdDim],['ins','插入圖塊',cmdInsert]]],
   ['edit','編輯',[['move','移動',()=>cmdMove(false)],['copy','複製',()=>cmdMove(true)],['rot','旋轉',cmdRotate],['offset','偏移',cmdOffset],['trim','修剪',()=>cmdTrimExt(false)],['extend','延伸',()=>cmdTrimExt(true)],['join','接合',cmdJoin],['brk','打斷',cmdBreak],['del','刪除',cmdDelete],['chly','改圖層',cmdChLayer],['cclip','複製到剪貼簿',cmdCopyClip],['pclip','原座標貼上',cmdPasteOrig]]],
   ['meas','測量',[['len','量長度',cmdMeasure],['xy','點坐標',()=>cmdCoord(false)],['ll','經緯度',()=>cmdCoord(true)]]],
   ['layers','圖層',()=>{closePanel();fillLayerSheet();openSheet('layerSheet');}],
