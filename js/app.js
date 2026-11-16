@@ -1310,6 +1310,8 @@ window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.ta
   else if(cmd&&kp.shown&&/^[0-9.\-]$/.test(e.key))kp.key(e.key);else if(cmd&&kp.shown&&e.key==='Backspace')kp.key('⌫');});
 
 /* ---------- 圖層面板 ---------- */
+/** 線型選單顯示「編號　說明」：133　鐵欄（說明取 .lin 定義第一段文字，後面的圖樣示意不要） */
+function ltLabel(n){if(n==='CONTINUOUS')return'CONTINUOUS　連續線';const l=lts.find(x=>x.name===n);const d=l&&l.desc?l.desc.trim().split(/\s+/)[0]:'';return d&&d!==n?n+'　'+d:n;}
 function fillLayerSheet(){
   try{updOldBtn();updSmallBar();}catch(_){}
   const box=$('myLayers');box.innerHTML='';
@@ -1325,7 +1327,7 @@ function fillLayerSheet(){
     const del=document.createElement('button');del.textContent='✕';del.onclick=()=>{if(st.layers.length<=1){toast('至少要留一個圖層');return;}if(st.ents.some(e=>e.ly===L.name)){toast('這層還有東西，先刪掉或改圖層');return;}st.layers=st.layers.filter(x=>x!==L);if(st.cur===L.name)st.cur=st.layers[0].name;saveSettings();fillLayerSheet();};
     r.append(rb,chip,nm,ci,eye,del);box.appendChild(r);
     const lr=document.createElement('div');lr.style.cssText='margin:-2px 0 8px 56px';const sel=document.createElement('select');
-    const names=['CONTINUOUS',...lts.map(l=>l.name).filter(n=>n!=='CONTINUOUS')];for(const n of names){const o=document.createElement('option');o.value=n;o.textContent=n+(n===L.lt?'':'');sel.appendChild(o);}
+    const names=['CONTINUOUS',...lts.map(l=>l.name).filter(n=>n!=='CONTINUOUS')];for(const n of names){const o=document.createElement('option');o.value=n;o.textContent=ltLabel(n);sel.appendChild(o);}
     sel.value=L.lt||'CONTINUOUS';sel.onchange=()=>{L.lt=sel.value;saveSettings();schedule();};lr.appendChild(sel);box.appendChild(lr);
   }
   $('baseSec').style.display=imp.length?'block':'none';
