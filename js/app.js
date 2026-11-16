@@ -1434,7 +1434,7 @@ const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addou
 // 區域檢查結果分類（副圖層列表）：順序＝列表順序＝◀▶ 順序
 const AREA_CAT=[['edge','接邊不合／中斷'],
   ['open','房屋未封閉'],['floor','永久樓層衝突'],['floorout','樓層註記在房屋外'],['openadd','關掉增建後房屋缺口（5 碼）'],['flooradd','關掉增建後樓層衝突（5 碼）'],['addside','增建線找不到增建註記'],['addline','增建線越界／自由端點'],['addout','增建註記位置'],
-  ['mix','一區兩種屬性'],['road','和道路／人行道相通'],['onroad','圖例在土路上'],['stray','圖例插入點跑到範圍外'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['elevcross','平面道路跨越高架'],['facility','大型設施沒有範圍線'],['veg','範圍線用錯圖層（植被圖層）'],['small',`新圖小線段`],['empty','區域內無地物']];
+  ['mix','一區兩種屬性'],['road','和道路／人行道相通'],['onroad','圖例在土路上'],['stray','圖例插入點跑到範圍外'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['elevcross','平面道路跨越高架'],['facility','大型設施沒有範圍線'],['veg','範圍線用錯圖層（植被圖層）'],['small',`新圖小線段`],['rname','路名和附近門牌對不上'],['empty','區域內無地物']];
 let areaOff=new Set();try{areaOff=new Set(JSON.parse(localStorage.getItem('areaOff')||'[]'));}catch(_){}
 const markVis=m=>!hidLy.has(m.l)&&!(m.type&&smallMode==='area'&&areaOff.has(m.type));
 function fillAreaSheet(){const box=$('areaCats');box.innerHTML='';if(!smallMarks||smallMode!=='area'){$('areaInfo').textContent='還沒有區域檢查結果';return;}
@@ -1548,10 +1548,9 @@ function addrTok(s){const t={};let m;
 function addrLn(s){return s.replace(/[一二三四五六七八九十]+/g,c=>{const d='一二三四五六七八九'.indexOf(c[0])+1,i=c.indexOf('十');
   if(i<0)return String(c.length===1?d:c);const a=i===0?1:'一二三四五六七八九'.indexOf(c[i-1])+1,b=i<c.length-1?'一二三四五六七八九'.indexOf(c[i+1])+1:0;return String(a*10+b);});}
 const addrFit=(l,d)=>['rd','sec','ln','al'].every(k=>l[k]===undefined||l[k]===d[k]);
-function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`已載入：${addrName}`:'還沒載入';$('addrClear').disabled=!addrRaw;$('addrRun').disabled=!addrRaw;
-  const rn=smallMarks&&smallMode==='rname';$('addrRun').textContent=rn?'取消路名標記':'檢查路名';
+function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`已載入：${addrName}（區域檢查時一起比對路名）`:'還沒載入';$('addrClear').disabled=!addrRaw;
   const b=$('addrShow');b.disabled=!addrRaw;b.textContent=addrShow?'門牌點：開':'門牌點：關';b.classList.toggle('on',addrShow&&!!addrRaw);
-  const t=$('addrBtn');if(t)t.classList.toggle('on',!!(addrRaw&&(addrShow||rn)));}
+  const t=$('addrBtn');if(t)t.classList.toggle('on',!!(addrRaw&&addrShow));}
 function addrJoin(save){addrIdx=null;addrDot=null;const b=[...addrFiles.values()].filter(Boolean);addrRaw=b.length?b:null;addrName=[...addrFiles.keys()].join('、');
   if(save)idbFile('addr',addrFiles.size?{ver:2,files:Object.fromEntries(addrFiles)}:null);updAddrInfo();schedule();}
 /** 加一份門牌 CSV（原始或瘦身過的都行）；不是門牌資料回傳 null */
@@ -1568,14 +1567,7 @@ $('addrLoad').onclick=async()=>{
     let r;try{busy(true,'讀取門牌資料（邊讀邊瘦身）…');r=await CadCall('Cad','addrPick',{});}catch(err){if(!/cancel/i.test(err.message||''))toast(err.message||String(err),5000);return;}finally{busy(false);}
     const a=addrPut(r.name,r.text);toast(a?`門牌資料已載入：${a.n} 筆（瘦身後）`:'這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',4000);return;}
   $('addrFile').value='';$('addrFile').click();};
-$('addrClear').onclick=()=>{if(addrRaw&&confirm(`要移除「${addrName}」嗎？`)){addrFiles.clear();if(smallMode==='rname'){smallMarks=null;updSmallBar();}addrJoin(true);}};
-/** 路名檢查：結果用 ◀▶ 一個一個看，和區域檢查分開 */
-$('addrRun').onclick=()=>{if(smallMarks&&smallMode==='rname'){smallMarks=null;updSmallBar();updAddrInfo();schedule();return;}
-  if(!imp.length){toast('先開底圖');return;}closeSheet('addrSheet');busy(true,'比對路名和門牌…');
-  setTimeout(()=>{try{const A=addrCheck();A.sort((a,b)=>b.y-a.y||a.x-b.x);smallKey=impName;smallMode='rname';
-      smallMarks=A.length?A.map(m=>({p:[m.x,m.y],msg:m.msg,type:'rname'})):null;smallIdx=-1;okApply();updSmallBar();updAddrInfo();schedule();
-      toast(A.length?`路名和附近門牌對不上 ${A.length} 處（◀▶ 看下一處）`:'路名都和附近門牌對得上',3500);}
-    catch(err){console.error(err);toast('路名檢查出錯：'+(err&&err.message||err),5000);}finally{busy(false);}},60);};
+$('addrClear').onclick=()=>{if(addrRaw&&confirm(`要移除「${addrName}」嗎？`)){addrFiles.clear();addrJoin(true);}};
 $('addrShow').onclick=()=>{addrShow=!addrShow;localStorage.setItem('addrShow',addrShow?'1':'0');updAddrInfo();schedule();if(addrShow)toast('門牌點：點一下橘色的點會顯示門牌（要放大到街道才會畫）',3500);};
 $('addrFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取門牌資料…');try{const r=addrAdd(f.name,addrText(new Uint8Array(await f.arrayBuffer())));
   if(!r){toast('這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',5000);return;}
@@ -1642,6 +1634,8 @@ async function findArea(onlyNoAdd){
     if(only.length){try{L=nativeOn?await CadCall('Cad','small',{max:smallMaxV(),only,q}):findSmallJS(new Set(only),smallMaxV(),new Set(nw),new Set(q));}catch(_){L=[];}}
     const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;
     for(const m of L){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:'small',msg:`新圖小線段 ${m.len<0.1?m.len.toFixed(3):m.len.toFixed(2)}m（${m.l}，沒有接到同圖層的線）`});}}
+  {const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;let A=[];try{A=addrCheck();}catch(err){console.error(err);}// 路名對門牌（有載入門牌資料才比）
+    for(const m of A){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:'rname',msg:m.msg});}}
   const ord={};AREA_CAT.forEach(([t],i)=>ord[t]=i);
   R.marks.sort((a,b)=>(ord[a.type]??99)-(ord[b.type]??99)||b.y-a.y||a.x-b.x);
   smallKey=impName;smallMode='area';setTimeout(()=>{okApply();updSmallBar();schedule();},0);
