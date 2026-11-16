@@ -1558,7 +1558,13 @@ function addrAdd(name,txt){const h=txt.slice(0,600);if(!/x_3826|橫坐標|橫座
   if(v&&v.files)for(const k in v.files)addrFiles.set(k,v.ver===2?v.files[k]:'street,area,lane,alley,x_3826,y_3826\n'+v.files[k]);// 舊版存的沒有表頭、沒有門牌號
   else if(v&&v.text)addrFiles.set(v.name||'門牌資料',v.text);addrJoin(false);})();
 $('addrBtn').onclick=()=>{closeSheet('layerSheet');updAddrInfo();openSheet('addrSheet');};
-$('addrLoad').onclick=()=>{$('addrFile').value='';$('addrFile').click();};
+/** 已瘦身的門牌文字（原生那邊瘦好的）直接放進來 */
+function addrPut(name,sl){if(!sl)return null;addrFiles.set(name,sl);addrJoin(true);return{n:sl.split('\n').length-1};}
+$('addrLoad').onclick=async()=>{
+  if(NATIVE){// 原始檔可能好幾百 MB：交給原生邊讀邊瘦身
+    let r;try{busy(true,'讀取門牌資料（邊讀邊瘦身）…');r=await CadCall('Cad','addrPick',{});}catch(err){if(!/cancel/i.test(err.message||''))toast(err.message||String(err),5000);return;}finally{busy(false);}
+    const a=addrPut(r.name,r.text);toast(a?`門牌資料已載入：${a.n} 筆（瘦身後）`:'這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',4000);return;}
+  $('addrFile').value='';$('addrFile').click();};
 $('addrClear').onclick=()=>{if(addrRaw&&confirm(`要移除「${addrName}」嗎？`)){addrFiles.clear();if(smallMode==='rname'){smallMarks=null;updSmallBar();}addrJoin(true);}};
 /** 路名檢查：結果用 ◀▶ 一個一個看，和區域檢查分開 */
 $('addrRun').onclick=()=>{if(smallMarks&&smallMode==='rname'){smallMarks=null;updSmallBar();updAddrInfo();schedule();return;}
@@ -1711,7 +1717,8 @@ async function scanSupport(show){
     if(!todo.length){if(show)toast('Support 資料夾沒有變動');return;}
     if(show)busy(true,`載入 Support：${todo.length} 個檔案…`);else toast(`更新 Support：${todo.length} 個檔案…`);
     let i=0;for(const f of todo){i++;if(show)busy(true,`載入 Support（${i}/${todo.length}）：${f.name}`);
-      try{const{data}=await SF.read({uri:f.uri});processSupport(f.name,unb64(data));man[f.name]=f.size+':'+f.modified;}catch(err){console.warn(f.name,err);}}
+      try{if(/\.csv$/i.test(f.name)&&NATIVE){const{text}=await SF.slimCsv({uri:f.uri});addrPut(f.name,text);}// 門牌 CSV：原生瘦身後才送過來
+        else{const{data}=await SF.read({uri:f.uri});processSupport(f.name,unb64(data));}man[f.name]=f.size+':'+f.modified;}catch(err){console.warn(f.name,err);}}
     localStorage.setItem('simplecad.supMan',JSON.stringify(man));afterSupport();toast(`Support 已更新 ${todo.length} 個檔案`);
   }catch(err){toast('讀取 Support 資料夾失敗：'+(err.message||err));}
   finally{busy(false);}
