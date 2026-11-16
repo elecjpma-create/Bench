@@ -35,6 +35,7 @@ const IC={
   undo:'<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/>',
   redo:'<path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/>',
   fit:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  loc:'<circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="8"/>',
   snap:'<rect x="8" y="8" width="8" height="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   ortho:'<path d="M5 19V5M5 19h14"/><path d="M5 12h5M12 19v-5" stroke-dasharray="2 2"/>',
   set:'<circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
@@ -93,6 +94,17 @@ function tm2ll(E,N,lon0){
   const lat=p1-(N1*Math.tan(p1)/R1)*(D*D/2-(5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720);
   const lon=rad(lon0)+(D-(1+2*T1+C1)*D**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120)/cp;
   return[deg(lat),deg(lon)];
+}
+
+/* ---------- 經緯度 → TWD97 二度分帶（GRS80；WGS84 與 TWD97 差不到 1m，不另轉基準） ---------- */
+function ll2tm(lat,lon,lon0){
+  const a=6378137,f=1/298.257222101,k0=0.9999,E0=250000,e2=f*(2-f),ep2=e2/(1-e2);
+  const p=rad(lat),l=rad(lon)-rad(lon0),sp=Math.sin(p),cp=Math.cos(p),tp=Math.tan(p);
+  const N=a/Math.sqrt(1-e2*sp*sp),T=tp*tp,C=ep2*cp*cp,A=l*cp;
+  const M=a*((1-e2/4-3*e2*e2/64-5*e2**3/256)*p-(3*e2/8+3*e2*e2/32+45*e2**3/1024)*Math.sin(2*p)+(15*e2*e2/256+45*e2**3/1024)*Math.sin(4*p)-(35*e2**3/3072)*Math.sin(6*p));
+  const E=E0+k0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep2)*A**5/120);
+  const Nn=k0*(M+N*tp*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep2)*A**6/720));
+  return[E,Nn];
 }
 
 /* ---------- 圖層 ---------- */
@@ -1148,6 +1160,7 @@ function render(){
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
   drawSmall();
+  drawLoc();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
   bubble=null;
@@ -1264,8 +1277,23 @@ function updateUI(){
   $('tUndo').disabled=!undoS.length&&!(cmd&&cmd.pts&&cmd.pts.length);$('tRedo').disabled=!redoS.length;
   updateCmdBar();
 }
-for(const[id,k]of[['tFile','file'],['tUndo','undo'],['tRedo','redo'],['tFit','fit'],['tSnap','snap'],['tOrtho','ortho'],['tSet','set']])$(id).innerHTML=svg(k);
+for(const[id,k]of[['tFile','file'],['tUndo','undo'],['tRedo','redo'],['tFit','fit'],['tLoc','loc'],['tSnap','snap'],['tOrtho','ortho'],['tSet','set']])$(id).innerHTML=svg(k);
 $('tUndo').onclick=()=>{doUndo();updateUI();};$('tRedo').onclick=()=>{doRedo();updateUI();};$('tFit').onclick=zoomFit;
+/* ---------- 定位：藍點＋精度圈；按一下開始並跳到目前位置，已經在畫面中央再按一下就關掉 ---------- */
+let locW=null,locP=null,locGo=false;
+function locCenter(){if(!locP)return;st.view.ox=W/2-locP.x*st.view.s;st.view.oy=H/2+locP.y*st.view.s;schedule();saveSettings();}
+function locStop(){if(locW!==null)navigator.geolocation.clearWatch(locW);locW=null;locP=null;locGo=false;$('tLoc').classList.remove('on');schedule();}
+$('tLoc').onclick=()=>{
+  if(!navigator.geolocation){toast('這個裝置不支援定位');return;}
+  if(locW!==null){if(locP){const q=toS([locP.x,locP.y]);if(Math.hypot(q[0]-W/2,q[1]-H/2)>40){locCenter();return;}}locStop();toast('定位已關閉');return;}
+  locGo=true;$('tLoc').classList.add('on');toast('定位中…（空曠處約 3～10m，巷弄、室內會飄）',3000);
+  locW=navigator.geolocation.watchPosition(p=>{const[x,y]=ll2tm(p.coords.latitude,p.coords.longitude,st.lon0||121);locP={x,y,acc:p.coords.accuracy||0};
+      if(locGo){locGo=false;if(st.view.s<2)st.view.s=clampS(2);locCenter();}else schedule();},
+    err=>{toast('定位失敗：'+(err.code===1?'沒有定位權限':err.code===2?'找不到位置（GPS 有開嗎？）':'逾時'),5000);locStop();},
+    {enableHighAccuracy:true,maximumAge:2000,timeout:30000});};
+function drawLoc(){if(!locP)return;const q=toS([locP.x,locP.y]),r=locP.acc*st.view.s;ctx.save();
+  if(r>8){ctx.beginPath();ctx.arc(q[0],q[1],r,0,TAU);ctx.fillStyle='rgba(66,133,244,.15)';ctx.fill();ctx.strokeStyle='rgba(66,133,244,.6)';ctx.lineWidth=1;ctx.stroke();}
+  ctx.beginPath();ctx.arc(q[0],q[1],8,0,TAU);ctx.fillStyle='#4285f4';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();}
 // 點一下：鎖點開關；長按：選要用哪幾種鎖點
 {let lp=0;const b=$('tSnap');b.onpointerdown=()=>{lp=setTimeout(()=>{lp=-1;fillOsnaps($('osnapsQ'));openSheet('snapSheet');},500);};b.onpointerup=b.onpointerleave=()=>{if(lp>0)clearTimeout(lp);};
   b.oncontextmenu=e=>e.preventDefault();
