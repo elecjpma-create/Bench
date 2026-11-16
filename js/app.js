@@ -1436,11 +1436,11 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
 $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){st.areaTol=v;saveSettings();}else $('areaTol').value=areaTolV();};
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
 /* ---------- 區域檢查：一區兩種屬性、房屋未封閉、增建註記位置、空白區（規則在 js/area.js） ---------- */
-const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',lbfree:'#ff7ad9',stray:'#ff4fa0',small:'#ffe14d',onroad:'#ff8a3d',elevcross:'#9f7bff',veg:'#7ddc4a',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0',rname:'#4da3ff'};
+const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',lbfree:'#ff7ad9',stray:'#ff4fa0',small:'#ffe14d',onroad:'#ff8a3d',elevcross:'#9f7bff',veg:'#7ddc4a',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0',rname:'#4da3ff',rmiss:'#8ab4ff'};
 // 區域檢查結果分類（副圖層列表）：順序＝列表順序＝◀▶ 順序
 const AREA_CAT=[['edge','接邊不合／中斷'],
   ['open','房屋未封閉'],['floor','永久樓層衝突'],['floorout','樓層註記在房屋外'],['openadd','關掉增建後房屋缺口（5 碼）'],['flooradd','關掉增建後樓層衝突（5 碼）'],['addside','增建線找不到增建註記'],['addline','增建線越界／自由端點'],['addout','增建註記位置'],
-  ['mix','一區兩種屬性'],['road','和道路／人行道相通'],['onroad','圖例在土路上'],['stray','圖例插入點跑到範圍外'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['elevcross','平面道路跨越高架'],['facility','大型設施沒有範圍線'],['veg','範圍線用錯圖層（植被圖層）'],['small',`新圖小線段`],['rname','路名和附近門牌對不上'],['empty','區域內無地物']];
+  ['mix','一區兩種屬性'],['road','和道路／人行道相通'],['onroad','圖例在土路上'],['stray','圖例插入點跑到範圍外'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['elevcross','平面道路跨越高架'],['facility','大型設施沒有範圍線'],['veg','範圍線用錯圖層（植被圖層）'],['small',`新圖小線段`],['rname','路名和附近門牌對不上'],['rmiss','門牌有、圖上沒寫路名'],['empty','區域內無地物']];
 let areaOff=new Set();try{areaOff=new Set(JSON.parse(localStorage.getItem('areaOff')||'[]'));}catch(_){}
 const markVis=m=>!hidLy.has(m.l)&&!(m.type&&smallMode==='area'&&areaOff.has(m.type));
 function fillAreaSheet(){const box=$('areaCats');box.innerHTML='';if(!smallMarks||smallMode!=='area'){$('areaInfo').textContent='還沒有區域檢查結果';return;}
@@ -1630,6 +1630,19 @@ function addrCheck(){if(!addrRaw)return[];const R=[];const txt=[];let x0=1e18,y0
     const c={};for(const p of n1)c[p.full]=(c[p.full]||0)+1;const top=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,3).map(a=>a[0]).join('、');
     const none=lt.rd&&!I.all.has(lt.rd)?'；整份門牌資料找不到「'+lt.rd+'」':'';
     R.push({x:t.x,y:t.y,msg:`路名「${t.nm}」和附近門牌對不上（附近門牌多是 ${top}${none}）`});}
+  // 反過來：門牌有、圖上沒寫路名。門牌依完整名稱（路＋段＋巷＋弄）分組，40m 內連成一串、3 間以上，80m 內找不到寫到這一層的路名就報
+  // 旁支門牌和主幹同名的（沒有自己的巷弄號）會歸到主幹那組，主幹有寫就不報
+  const deep=d=>d.al!==undefined?'al':d.ln!==undefined?'ln':'rd',fitFull=(l,d)=>{const k=deep(d);return l[k]!==undefined&&l[k]===d[k]&&addrFit(l,d);};
+  const TG=new Map(),TC=150;for(const t of txt){t.tk=addrTok(t.nm);const g=Math.floor(t.x/TC)+','+Math.floor(t.y/TC);let l=TG.get(g);if(!l)TG.set(g,l=[]);l.push(t);}
+  const txtNear=(x,y,r)=>{const o=[],n=Math.ceil(r/TC);for(let i=-n;i<=n;i++)for(let j=-n;j<=n;j++)for(const t of TG.get((Math.floor(x/TC)+i)+','+(Math.floor(y/TC)+j))||[])if(Math.hypot(t.x-x,t.y-y)<r)o.push(t);return o;};
+  const grp=new Map();for(const l of I.G.values())for(const p of l){if(!txtNear(p.x,p.y,150).length)continue;// 圖面範圍外（附近 150m 沒有任何路名）的門牌不管
+    const d=p.T[0];const k=[d.rd,d.sec,d.ln,d.al].join('|');let g=grp.get(k);if(!g)grp.set(k,g={d,P:[]});g.P.push(p);}
+  for(const g of grp.values()){const P=g.P,seen=new Uint8Array(P.length);
+    for(let i=0;i<P.length;i++){if(seen[i])continue;const C=[i];seen[i]=1;
+      for(let q=0;q<C.length;q++){const a=P[C[q]];for(let j=0;j<P.length;j++)if(!seen[j]&&Math.abs(P[j].x-a.x)<40&&Math.abs(P[j].y-a.y)<40&&Math.hypot(P[j].x-a.x,P[j].y-a.y)<40){seen[j]=1;C.push(j);}}
+      if(C.length<3)continue;if(C.some(c=>txtNear(P[c].x,P[c].y,80).some(t=>fitFull(t.tk,g.d))))continue;
+      let cx=0,cy=0;for(const c of C){cx+=P[c].x;cy+=P[c].y;}cx/=C.length;cy/=C.length;let m=P[C[0]],md=1e18;for(const c of C){const dd=Math.hypot(P[c].x-cx,P[c].y-cy);if(dd<md){md=dd;m=P[c];}}
+      const nm=P[C[0]].full+(g.d.al?g.d.al+'弄':'');R.push({x:m.x,y:m.y,miss:1,msg:`門牌是「${nm}」（${C.length} 間），附近 80m 圖上沒寫這個路名`});}}
   return R;}
 async function findArea(onlyNoAdd){
   const D=areaCollect();
@@ -1641,7 +1654,7 @@ async function findArea(onlyNoAdd){
     const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;
     for(const m of L){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:'small',msg:`新圖小線段 ${m.len<0.1?m.len.toFixed(3):m.len.toFixed(2)}m（${m.l}，沒有接到同圖層的線）`});}}
   {const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;let A=[];try{A=addrCheck();}catch(err){console.error(err);}// 路名對門牌（有載入門牌資料才比）
-    for(const m of A){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:'rname',msg:m.msg});}}
+    for(const m of A){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:m.miss?'rmiss':'rname',msg:m.msg});}}
   const ord={};AREA_CAT.forEach(([t],i)=>ord[t]=i);
   R.marks.sort((a,b)=>(ord[a.type]??99)-(ord[b.type]??99)||b.y-a.y||a.x-b.x);
   smallKey=impName;smallMode='area';setTimeout(()=>{okApply();updSmallBar();schedule();},0);
