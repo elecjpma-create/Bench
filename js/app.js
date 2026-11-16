@@ -1160,6 +1160,7 @@ function render(){
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
   drawSmall();
+  drawAddr();
   drawLoc();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
@@ -1235,6 +1236,7 @@ function onTap(sp){
   if(!cmd&&fillMode&&areaTopo&&smallMode==='area'&&smallMarks){const T=areaTopo,k=T.locate(w[0]-T.ox,w[1]-T.oy);
     if(k<0){toast('那裡不在任何封閉區裡');return;}if(areaFills.has(k))areaFills.delete(k);else{const P=['#ff5a5a','#4fb3ff','#5ad16a','#ffb13d','#c77dff','#3de0d0'];areaFills.set(k,P[fillCi++%P.length]);}
     const f=T.F[k];setHint(`區域面積 ${f.area<10?f.area.toFixed(2):f.area.toFixed(1)} m²　地物：${[...f.kinds.keys()].map(x=>x==='H'?'房屋':x).join('、')||'（無）'}`,true);schedule();return;}
+  if(!cmd&&addrTap(sp))return;
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
     if(bi>=0){if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
   if(!cmd){selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();return;}
@@ -1532,8 +1534,9 @@ function areaRun(D){
   if(keep){const n0=R.marks.length;R.marks=R.marks.filter(m=>keep(m.x,m.y));R.st.outRange=n0-R.marks.length;}
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;
 }
-/* ---------- 路名對門牌：門牌位置數值資料（CSV，TWD97），比對圖上路名附近的門牌 ---------- */
-let addrRaw=null,addrName='',addrIdx=null;const addrFiles=new Map();// 檔名→瘦身後內容（不含表頭）；多個縣市可以同時放
+/* ---------- 路名對門牌：門牌位置數值資料（CSV，TWD97），比對圖上路名附近的門牌；也可以把門牌點顯示在圖上 ---------- */
+let addrRaw=null,addrName='',addrIdx=null,addrDot=null;const addrFiles=new Map();// 檔名→瘦身後的 CSV（含表頭）；多個縣市可以同時放
+let addrShow=localStorage.getItem('addrShow')==='1';
 const addrFw=s=>(s||'').replace(/^"|"$/g,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\s/g,'').replace(/臺/g,'台');
 // 拆成：路名（不含段）、段、巷、弄。圖上路名太長時常省略前段（只寫「33巷2弄」），比對時只比有寫出來的部分
 function addrTok(s){const t={};let m;
@@ -1542,41 +1545,59 @@ function addrTok(s){const t={};let m;
   if(m=s.match(/([一二三四五六七八九十]+)段$/)){t.sec=m[1];s=s.slice(0,-m[0].length);}
   if(s)t.rd=s;return t;}
 const addrFit=(l,d)=>['rd','sec','ln','al'].every(k=>l[k]===undefined||l[k]===d[k]);
-function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`路名對門牌：${addrName}（區域檢查時一起比對）`:'路名對門牌：還沒載入門牌位置資料（CSV，可放在 Support 資料夾）';}
-const ADDR_H='street,area,lane,alley,x_3826,y_3826';
-function addrJoin(save){addrIdx=null;const b=[...addrFiles.values()].filter(Boolean);addrRaw=b.length?ADDR_H+'\n'+b.join('\n'):null;addrName=[...addrFiles.keys()].join('、');
-  if(save)idbFile('addr',addrFiles.size?{files:Object.fromEntries(addrFiles)}:null);updAddrInfo();}
+function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`路名對門牌：${addrName}（區域檢查時一起比對）`:'路名對門牌：還沒載入門牌位置資料（CSV，可放在 Support 資料夾）';
+  const b=$('addrShow');if(b){b.disabled=!addrRaw;b.textContent=addrShow?'門牌點：開':'門牌點：關';b.classList.toggle('on',addrShow&&!!addrRaw);}}
+function addrJoin(save){addrIdx=null;addrDot=null;const b=[...addrFiles.values()].filter(Boolean);addrRaw=b.length?b:null;addrName=[...addrFiles.keys()].join('、');
+  if(save)idbFile('addr',addrFiles.size?{ver:2,files:Object.fromEntries(addrFiles)}:null);updAddrInfo();schedule();}
 /** 加一份門牌 CSV（原始或瘦身過的都行）；不是門牌資料回傳 null */
-function addrAdd(name,txt){const h=txt.slice(0,600);if(!/x_3826|橫坐標|橫座標/i.test(h))return null;const sl=addrSlim(txt);const body=sl.slice(sl.indexOf('\n')+1);
-  addrFiles.set(name,body);addrJoin(true);return{from:txt.length,to:sl.length,n:body?body.split('\n').length:0};}
-(async()=>{const v=await idbFileGet('addr');if(v&&v.files)for(const k in v.files)addrFiles.set(k,v.files[k]);else if(v&&v.text){const t=v.text;addrFiles.set(v.name||'門牌資料',t.slice(t.indexOf('\n')+1));}addrJoin(false);})();
+function addrAdd(name,txt){const h=txt.slice(0,600);if(!/x_3826|橫坐標|橫座標/i.test(h))return null;const sl=addrSlim(txt);
+  addrFiles.set(name,sl);addrJoin(true);return{from:txt.length,to:sl.length,n:sl.split('\n').length-1};}
+(async()=>{const v=await idbFileGet('addr');
+  if(v&&v.files)for(const k in v.files)addrFiles.set(k,v.ver===2?v.files[k]:'street,area,lane,alley,x_3826,y_3826\n'+v.files[k]);// 舊版存的沒有表頭、沒有門牌號
+  else if(v&&v.text)addrFiles.set(v.name||'門牌資料',v.text);addrJoin(false);})();
 $('addrLoad').onclick=()=>{if(addrRaw&&confirm(`已載入「${addrName}」。要全部移除嗎？（取消＝再加一份）`)){addrFiles.clear();addrJoin(true);return;}$('addrFile').value='';$('addrFile').click();};
+$('addrShow').onclick=()=>{addrShow=!addrShow;localStorage.setItem('addrShow',addrShow?'1':'0');updAddrInfo();schedule();if(addrShow)toast('門牌點：點一下橘色的點會顯示門牌（要放大到街道才會畫）',3500);};
 $('addrFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取門牌資料…');try{const r=addrAdd(f.name,addrText(new Uint8Array(await f.arrayBuffer())));
   if(!r){toast('這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',5000);return;}
   toast(`門牌資料已載入（瘦身 ${(r.from/1e6).toFixed(1)}→${(r.to/1e6).toFixed(1)} M 字），下次區域檢查會一起比對路名`,4000);}finally{busy(false);}};
 function addrText(bytes){try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){return new TextDecoder('big5').decode(bytes);}}
-/** 門牌瘦身：只留比對用得到的欄位，坐標取整數公尺，同一條路／巷／弄在同一個 10m 格子只留一筆 */
-function addrSlim(raw){const t=raw.charCodeAt(0)===0xFEFF?raw.slice(1):raw;let i=t.indexOf('\n');const H=t.slice(0,i).split(',').map(s=>s.replace(/^"|"$/g,'').trim());
-  const col=re=>H.findIndex(h=>re.test(h));const cX=col(/x_3826|橫坐標|橫座標/i),cY=col(/y_3826|縱坐標|縱座標/i),cS=col(/street|街路段|街_路段|路段/i),cA=col(/^area$|地區/i),cL=col(/^lane$|^巷$/i),cB=col(/^alley$|^弄$/i);
-const seen=new Set(),out=['street,area,lane,alley,x_3826,y_3826'];
-  while(i>=0&&i<t.length){const j=t.indexOf('\n',i+1);const ln=t.slice(i+1,j<0?t.length:j);i=j;if(!ln)continue;const a=ln.split(',');
-    const x=Math.round(+String(a[cX]).replace(/"/g,'')),y=Math.round(+String(a[cY]).replace(/"/g,''));if(!x||!y)continue;
-    const k=[cS,cA,cL,cB].map(c=>c<0?'':String(a[c]||'').replace(/^"|"$/g,'').trim()).join(',');const q=k+'|'+Math.round(x/10)+','+Math.round(y/10);
-    if(seen.has(q))continue;seen.add(q);out.push(k+','+x+','+y);}
+function addrCols(t){const H=t.slice(0,t.indexOf('\n')).split(',').map(s=>s.replace(/^"|"$/g,'').trim());const col=re=>H.findIndex(h=>re.test(h));
+  return{X:col(/x_3826|橫坐標|橫座標/i),Y:col(/y_3826|縱坐標|縱座標/i),S:col(/street|街路段|街_路段|路段/i),A:col(/^area$|地區/i),L:col(/^lane$|^巷$/i),B:col(/^alley$|^弄$/i),N:col(/^number$|門牌號|^號$/i)};}
+/** 逐行走一份 CSV（跳過表頭） */
+function addrEach(raw,fn){const t=raw.charCodeAt(0)===0xFEFF?raw.slice(1):raw;const c=addrCols(t);let i=t.indexOf('\n');
+  while(i>=0&&i<t.length){const j=t.indexOf('\n',i+1);const ln=t.slice(i+1,j<0?t.length:j);i=j;if(ln&&ln!=='\r')fn(ln.replace(/\r$/,'').split(','),c);}}
+/** 門牌瘦身：只留路段、地區、巷、弄、門牌號（去掉樓層）、整數公尺坐標；同一個門牌號只留一筆 */
+function addrSlim(raw){const seen=new Set(),out=['street,area,lane,alley,number,x_3826,y_3826'];const g=v=>String(v||'').replace(/^"|"$/g,'').trim();
+  addrEach(raw,(a,c)=>{const x=Math.round(+g(a[c.X])),y=Math.round(+g(a[c.Y]));if(!x||!y)return;
+    const k=[c.S,c.A,c.L,c.B].map(i=>i<0?'':g(a[i])).join(',');const no=c.N<0?'':g(a[c.N]).replace(/號.*$/,'號');
+    const q=no?k+','+no:k+'|'+Math.round(x/10)+','+Math.round(y/10);if(seen.has(q))return;seen.add(q);out.push(k+','+no+','+x+','+y);});
   return out.join('\n');}
 /** 只取圖面範圍（外擴 300m）裡的門牌，建格網 */
 function addrBuild(x0,y0,x1,y1){const key=[x0,y0,x1,y1].map(v=>Math.round(v)).join(',');if(addrIdx&&addrIdx.key===key)return addrIdx;
-  const t=addrRaw.charCodeAt(0)===0xFEFF?addrRaw.slice(1):addrRaw;let i=t.indexOf('\n');const H=t.slice(0,i).split(',').map(s=>s.replace(/^"|"$/g,'').trim());
-  const col=re=>H.findIndex(h=>re.test(h));const cX=col(/x_3826|橫坐標|橫座標/i),cY=col(/y_3826|縱坐標|縱座標/i),cS=col(/street|街路段|街_路段|路段/i),cA=col(/^area$|地區/i),cL=col(/^lane$|^巷$/i),cB=col(/^alley$|^弄$/i);
   const G=new Map(),C=100,all=new Set();const P0=x0-300,P1=x1+300,Q0=y0-300,Q1=y1+300;
-  while(i>=0&&i<t.length){const j=t.indexOf('\n',i+1);const ln=t.slice(i+1,j<0?t.length:j);i=j;if(!ln)continue;const a=ln.split(',');
-    const st=addrFw(a[cS]),ar=cA>=0?addrFw(a[cA]):'';for(const b of [st,ar])if(b)all.add(addrTok(b).rd);
-    const x=+a[cX],y=+a[cY];if(!(x>=P0&&x<=P1&&y>=Q0&&y<=Q1))continue;
-    const la=cL>=0?addrFw(a[cL]).replace(/巷$/,''):'',al=cB>=0?addrFw(a[cB]).replace(/弄$/,''):'';const T=[];
+  for(const raw of addrRaw)addrEach(raw,(a,c)=>{
+    const st=addrFw(a[c.S]),ar=c.A>=0?addrFw(a[c.A]):'';for(const b of [st,ar])if(b)all.add(addrTok(b).rd);
+    const x=+a[c.X],y=+a[c.Y];if(!(x>=P0&&x<=P1&&y>=Q0&&y<=Q1))return;
+    const la=c.L>=0?addrFw(a[c.L]).replace(/巷$/,''):'',al=c.B>=0?addrFw(a[c.B]).replace(/弄$/,''):'';const T=[];
     for(const b of [st,ar])if(b){const k=addrTok(b);T.push({rd:k.rd,sec:k.sec,ln:la||undefined,al:al||undefined});}
-    if(!T.length&&la)T.push({ln:la,al:al||undefined});if(!T.length)continue;
-    const full=(st||ar)+(la?la+(/\d$/.test(la)?'巷':''):'');const g=Math.floor(x/C)+','+Math.floor(y/C);let l=G.get(g);if(!l)G.set(g,l=[]);l.push({x,y,T,full});}
+    if(!T.length&&la)T.push({ln:la,al:al||undefined});if(!T.length)return;
+    const full=(st||ar)+(la?la+(/\d$/.test(la)?'巷':''):'');const g=Math.floor(x/C)+','+Math.floor(y/C);let l=G.get(g);if(!l)G.set(g,l=[]);l.push({x,y,T,full});});
   return addrIdx={key,G,C,all};}
+/** 門牌點（顯示用）：全部門牌的格網，50m 一格 */
+function addrDots(){if(addrDot)return addrDot;const G=new Map(),C=50,X=[],Y=[],L=[];
+  for(const raw of addrRaw)addrEach(raw,(a,c)=>{const x=+a[c.X],y=+a[c.Y];if(!x||!y)return;
+    const s=addrFw(a[c.S]),ar=c.A>=0?addrFw(a[c.A]):'',la=c.L>=0?addrFw(a[c.L]):'',al=c.B>=0?addrFw(a[c.B]):'',no=c.N>=0?addrFw(a[c.N]):'';
+    const k=X.length;X.push(x);Y.push(y);L.push(s+(ar&&ar!==s?ar:'')+la+al+no);const g=Math.floor(x/C)*1e6+Math.floor(y/C);let l=G.get(g);if(!l)G.set(g,l=[]);l.push(k);});
+  return addrDot={G,C,X,Y,L};}
+function addrDotsIn(x0,y0,x1,y1,max){const D=addrDots(),o=[];for(let i=Math.floor(x0/D.C);i<=Math.floor(x1/D.C);i++)for(let j=Math.floor(y0/D.C);j<=Math.floor(y1/D.C);j++){
+    for(const k of D.G.get(i*1e6+j)||[]){const x=D.X[k],y=D.Y[k];if(x>=x0&&x<=x1&&y>=y0&&y<=y1){o.push(k);if(o.length>max)return null;}}}return o;}
+function drawAddr(){if(!addrShow||!addrRaw)return;const a=toW([0,H]),b=toW([W,0]);if((b[0]-a[0])*(b[1]-a[1])>4e6)return;// 拉太遠（超過約 2km×2km）不畫
+  const K=addrDotsIn(a[0],a[1],b[0],b[1],30000);if(!K)return;const D=addrDots();ctx.save();ctx.fillStyle='#ff9f1c';ctx.strokeStyle=st.bg==='white'?'#7a4300':'#1a1206';ctx.lineWidth=1;
+  for(const k of K){const q=toS([D.X[k],D.Y[k]]);ctx.beginPath();ctx.arc(q[0],q[1],3,0,TAU);ctx.fill();ctx.stroke();}ctx.restore();}
+/** 點門牌點：顯示這個位置（1m 內）所有門牌 */
+function addrTap(sp){if(!addrShow||!addrRaw)return false;const w=toW(sp),r=16/st.view.s;const K=addrDotsIn(w[0]-r,w[1]-r,w[0]+r,w[1]+r,500);if(!K||!K.length)return false;
+  const D=addrDots();let bk=-1,bd=1e18;for(const k of K){const d=Math.hypot(D.X[k]-w[0],D.Y[k]-w[1]);if(d<bd){bd=d;bk=k;}}if(bd>r)return false;
+  const same=K.filter(k=>Math.hypot(D.X[k]-D.X[bk],D.Y[k]-D.Y[bk])<1).map(k=>D.L[k]);setHint([...new Set(same)].join('、'),true);return true;}
 /** 圖上道路路名（942／944 道路、橋圖層的文字）和附近門牌比對 */
 function addrCheck(){if(!addrRaw)return[];const R=[];const txt=[];let x0=1e18,y0=1e18,x1=-1e18,y1=-1e18;
   for(const e of imp){if(e.t!=='text'||!e.p||!/^a?94[24]|道路|路名/.test(e.ly))continue;const raw=addrFw((e.lines||[]).join(''));
