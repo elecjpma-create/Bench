@@ -1505,7 +1505,7 @@ function areaRun(D){
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;
 }
 /* ---------- 路名對門牌：門牌位置數值資料（CSV，TWD97），比對圖上路名附近的門牌 ---------- */
-let addrRaw=null,addrName='',addrIdx=null;
+let addrRaw=null,addrName='',addrIdx=null;const addrFiles=new Map();// 檔名→瘦身後內容（不含表頭）；多個縣市可以同時放
 const addrFw=s=>(s||'').replace(/^"|"$/g,'').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\s/g,'').replace(/臺/g,'台');
 // 拆成：路名（不含段）、段、巷、弄。圖上路名太長時常省略前段（只寫「33巷2弄」），比對時只比有寫出來的部分
 function addrTok(s){const t={};let m;
@@ -1514,13 +1514,19 @@ function addrTok(s){const t={};let m;
   if(m=s.match(/([一二三四五六七八九十]+)段$/)){t.sec=m[1];s=s.slice(0,-m[0].length);}
   if(s)t.rd=s;return t;}
 const addrFit=(l,d)=>['rd','sec','ln','al'].every(k=>l[k]===undefined||l[k]===d[k]);
-function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`路名對門牌：${addrName}（區域檢查時一起比對）`:'路名對門牌：還沒載入門牌位置資料（CSV）';}
-(async()=>{const v=await idbFileGet('addr');if(v&&v.text){addrRaw=v.text;addrName=v.name||'門牌資料';}updAddrInfo();})();
-$('addrLoad').onclick=()=>{if(addrRaw&&confirm(`已載入「${addrName}」。要移除嗎？（取消＝換一份）`)){addrRaw=null;addrIdx=null;idbFile('addr',null);updAddrInfo();return;}$('addrFile').value='';$('addrFile').click();};
-$('addrFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取門牌資料…');try{const t=await f.text();const h=t.slice(0,600);
-  if(!/x_3826|橫坐標|橫座標/i.test(h)){toast('這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',5000);return;}
-  const sl=addrSlim(t);addrRaw=sl;addrName=f.name;addrIdx=null;await idbFile('addr',{name:f.name,text:sl});updAddrInfo();
-  toast(`門牌資料已載入（瘦身 ${(t.length/1e6).toFixed(1)}→${(sl.length/1e6).toFixed(1)} M 字），下次區域檢查會一起比對路名`,4000);}finally{busy(false);}};
+function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`路名對門牌：${addrName}（區域檢查時一起比對）`:'路名對門牌：還沒載入門牌位置資料（CSV，可放在 Support 資料夾）';}
+const ADDR_H='street,area,lane,alley,x_3826,y_3826';
+function addrJoin(save){addrIdx=null;const b=[...addrFiles.values()].filter(Boolean);addrRaw=b.length?ADDR_H+'\n'+b.join('\n'):null;addrName=[...addrFiles.keys()].join('、');
+  if(save)idbFile('addr',addrFiles.size?{files:Object.fromEntries(addrFiles)}:null);updAddrInfo();}
+/** 加一份門牌 CSV（原始或瘦身過的都行）；不是門牌資料回傳 null */
+function addrAdd(name,txt){const h=txt.slice(0,600);if(!/x_3826|橫坐標|橫座標/i.test(h))return null;const sl=addrSlim(txt);const body=sl.slice(sl.indexOf('\n')+1);
+  addrFiles.set(name,body);addrJoin(true);return{from:txt.length,to:sl.length,n:body?body.split('\n').length:0};}
+(async()=>{const v=await idbFileGet('addr');if(v&&v.files)for(const k in v.files)addrFiles.set(k,v.files[k]);else if(v&&v.text){const t=v.text;addrFiles.set(v.name||'門牌資料',t.slice(t.indexOf('\n')+1));}addrJoin(false);})();
+$('addrLoad').onclick=()=>{if(addrRaw&&confirm(`已載入「${addrName}」。要全部移除嗎？（取消＝再加一份）`)){addrFiles.clear();addrJoin(true);return;}$('addrFile').value='';$('addrFile').click();};
+$('addrFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取門牌資料…');try{const r=addrAdd(f.name,addrText(new Uint8Array(await f.arrayBuffer())));
+  if(!r){toast('這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',5000);return;}
+  toast(`門牌資料已載入（瘦身 ${(r.from/1e6).toFixed(1)}→${(r.to/1e6).toFixed(1)} M 字），下次區域檢查會一起比對路名`,4000);}finally{busy(false);}};
+function addrText(bytes){try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){return new TextDecoder('big5').decode(bytes);}}
 /** 門牌瘦身：只留比對用得到的欄位，坐標取整數公尺，同一條路／巷／弄在同一個 10m 格子只留一筆 */
 function addrSlim(raw){const t=raw.charCodeAt(0)===0xFEFF?raw.slice(1):raw;let i=t.indexOf('\n');const H=t.slice(0,i).split(',').map(s=>s.replace(/^"|"$/g,'').trim());
   const col=re=>H.findIndex(h=>re.test(h));const cX=col(/x_3826|橫坐標|橫座標/i),cY=col(/y_3826|縱坐標|縱座標/i),cS=col(/street|街路段|街_路段|路段/i),cA=col(/^area$|地區/i),cL=col(/^lane$|^巷$/i),cB=col(/^alley$|^弄$/i);
@@ -1627,7 +1633,8 @@ function supportStatus(){const n=Object.keys(shxFiles),uri=localStorage.getItem(
 function processSupport(name,bytes){
   const ext=(name.split('.').pop()||'').toLowerCase();
   if(ext==='shx'){const r=addShx(bytes,name);return`${name}：`+(r.type==='bigfont'?`大字體 ${r.idx.size} 字`:r.type==='unifont'?`Unicode 字型 ${Object.keys(r.byNum).length} 字`:r.isFont?`字型 ${Object.keys(r.byNum).length} 字`:`${Object.keys(r.byNum).length} 個形狀`);}
-  if(ext!=='lin')return`${name}：略過（只吃 .lin、.shx`+(/^(rar|zip|7z)$/.test(ext)?'，壓縮檔請先解壓縮':'')+'）';
+  if(ext==='csv'){const r=addrAdd(name,addrText(bytes));return r?`${name}：門牌 ${r.n} 筆（瘦身後）`:`${name}：不是門牌位置資料，略過`;}
+  if(ext!=='lin')return`${name}：略過（只吃 .lin、.shx、門牌 .csv`+(/^(rar|zip|7z)$/.test(ext)?'，壓縮檔請先解壓縮':'')+'）';
   let txt;try{txt=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){txt=new TextDecoder('big5').decode(bytes);}
   const list=parseLin(txt);if(!list.length)return`${name}：找不到線型定義`;
   list.forEach(x=>x.src='support');mergeLT(list);return`${name}：${list.length} 種線型`;
