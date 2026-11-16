@@ -1445,17 +1445,22 @@ let areaOff=new Set();try{areaOff=new Set(JSON.parse(localStorage.getItem('areaO
 const markVis=m=>!hidLy.has(m.l)&&!(m.type&&smallMode==='area'&&areaOff.has(m.type));
 function fillAreaSheet(){const box=$('areaCats');box.innerHTML='';if(!smallMarks||smallMode!=='area'){$('areaInfo').textContent='還沒有區域檢查結果';return;}
   const n=new Map(),ok=new Map();for(const m of smallMarks){n.set(m.type,(n.get(m.type)||0)+1);if(m.ok)ok.set(m.type,(ok.get(m.type)||0)+1);}
-  for(const[t,nm]of AREA_CAT){const c=n.get(t)||0;const r=document.createElement('div');r.className='lyr';r.style.gridTemplateColumns='22px 1fr 36px 34px';
+  for(const[t,nm]of AREA_CAT){const c=n.get(t)||0;const r=document.createElement('div');r.className='lyr';r.style.gridTemplateColumns='22px 1fr 36px 34px 34px';
     const chip=document.createElement('div');chip.className='chip';chip.style.background=AREA_COL[t]||'#ff2bd6';
     const lab=document.createElement('span');lab.style.flex='1';lab.textContent=`${nm}　${c}`+(ok.get(t)?`（已確認 ${ok.get(t)}）`:'');if(!c)lab.style.opacity='.45';
     const eye=document.createElement('button');eye.className='lyb';eye.innerHTML=lyIcon('bulb',!areaOff.has(t));
     eye.onclick=()=>{if(areaOff.has(t))areaOff.delete(t);else areaOff.add(t);try{localStorage.setItem('areaOff',JSON.stringify([...areaOff]));}catch(_){}eye.innerHTML=lyIcon('bulb',!areaOff.has(t));if(smallMarks[smallIdx]&&!markVis(smallMarks[smallIdx]))smallIdx=-1;$('areaInfo').textContent=`共 ${smallMarks.length} 處，開著的 ${smallVis().length} 處。`;updSmallBar();schedule();};
     const go=document.createElement('button');go.textContent='▶';go.title='跳到這類第一筆';go.onclick=()=>{const m=smallMarks.find(q=>q.type===t);if(!m)return;if(areaOff.has(t)){areaOff.delete(t);eye.innerHTML=lyIcon('bulb',true);}closeSheet('areaSheet');smallIdx=smallMarks.indexOf(m);smallGo(0);};
-    r.append(chip,lab,eye,go);box.appendChild(r);}
+    const un=document.createElement('button');un.textContent='↺';un.title='這一類的已確認全部取消';un.disabled=!ok.get(t);
+    un.onclick=()=>{if(!confirm(`「${nm}」已確認的 ${ok.get(t)} 處全部取消確認？`))return;for(const m of smallMarks)if(m.type===t)m.ok=false;okSave();updSmallBar();schedule();fillAreaSheet();};
+    r.append(chip,lab,eye,go,un);box.appendChild(r);}
   const V=smallVis();$('areaInfo').textContent=`共 ${smallMarks.length} 處，開著的 ${V.length} 處。`;}
 $('smFill').onclick=()=>{if(!areaTopo){toast('先跑區域檢查才能填色');return;}fillMode=!fillMode;$('smFill').classList.toggle('on',fillMode);
   toast(fillMode?'填色：點一個區域上色，再點一次取消（再按 🪣 結束）':'結束填色',2000);};
 $('smList').onclick=()=>{if(smallMode!=='area')return;fillAreaSheet();openSheet('areaSheet');};
+function areaAll(on){if(on)areaOff.clear();else for(const[t]of AREA_CAT)areaOff.add(t);try{localStorage.setItem('areaOff',JSON.stringify([...areaOff]));}catch(_){}
+  if(smallMarks&&smallMarks[smallIdx]&&!markVis(smallMarks[smallIdx]))smallIdx=-1;fillAreaSheet();updSmallBar();schedule();}
+$('areaAllOn').onclick=()=>areaAll(true);$('areaAllOff').onclick=()=>areaAll(false);
 /** 植被圖層的散線：封閉 4 點以上或長度超過 3m＝拿植被圖層畫範圍（錯）；更短的是炸開的圖例碎片 */
 /** 植被圖層的散線：先收集，areaCheck 再看它是不是當範圍線用（零長度的直接忽略：多半是同一點點兩次留下的） */
 function areaVeg(a,ly,ox,oy,points,veg,kind,lnm){let L=0;for(let i=2;i<a.length;i+=2)L+=Math.hypot(a[i]-a[i-2],a[i+1]-a[i-1]);if(L<0.1)return;// 10cm 以下：夾點編輯或連點兩次留下的殘段，不當圖例也不當範圍線
