@@ -1519,7 +1519,17 @@ function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`路�
 $('addrLoad').onclick=()=>{if(addrRaw&&confirm(`已載入「${addrName}」。要移除嗎？（取消＝換一份）`)){addrRaw=null;addrIdx=null;idbFile('addr',null);updAddrInfo();return;}$('addrFile').value='';$('addrFile').click();};
 $('addrFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取門牌資料…');try{const t=await f.text();const h=t.slice(0,600);
   if(!/x_3826|橫坐標|橫座標/i.test(h)){toast('這份 CSV 看不到 TWD97 坐標欄（x_3826／橫坐標）',5000);return;}
-  addrRaw=t;addrName=f.name;addrIdx=null;await idbFile('addr',{name:f.name,text:t});updAddrInfo();toast('門牌資料已載入，下次區域檢查會一起比對路名',3500);}finally{busy(false);}};
+  const sl=addrSlim(t);addrRaw=sl;addrName=f.name;addrIdx=null;await idbFile('addr',{name:f.name,text:sl});updAddrInfo();
+  toast(`門牌資料已載入（瘦身 ${(t.length/1e6).toFixed(1)}→${(sl.length/1e6).toFixed(1)} M 字），下次區域檢查會一起比對路名`,4000);}finally{busy(false);}};
+/** 門牌瘦身：只留比對用得到的欄位，坐標取整數公尺，同一條路／巷／弄在同一個 10m 格子只留一筆 */
+function addrSlim(raw){const t=raw.charCodeAt(0)===0xFEFF?raw.slice(1):raw;let i=t.indexOf('\n');const H=t.slice(0,i).split(',').map(s=>s.replace(/^"|"$/g,'').trim());
+  const col=re=>H.findIndex(h=>re.test(h));const cX=col(/x_3826|橫坐標|橫座標/i),cY=col(/y_3826|縱坐標|縱座標/i),cS=col(/street|街路段|街_路段|路段/i),cA=col(/^area$|地區/i),cL=col(/^lane$|^巷$/i),cB=col(/^alley$|^弄$/i);
+const seen=new Set(),out=['street,area,lane,alley,x_3826,y_3826'];
+  while(i>=0&&i<t.length){const j=t.indexOf('\n',i+1);const ln=t.slice(i+1,j<0?t.length:j);i=j;if(!ln)continue;const a=ln.split(',');
+    const x=Math.round(+String(a[cX]).replace(/"/g,'')),y=Math.round(+String(a[cY]).replace(/"/g,''));if(!x||!y)continue;
+    const k=[cS,cA,cL,cB].map(c=>c<0?'':String(a[c]||'').replace(/^"|"$/g,'').trim()).join(',');const q=k+'|'+Math.round(x/10)+','+Math.round(y/10);
+    if(seen.has(q))continue;seen.add(q);out.push(k+','+x+','+y);}
+  return out.join('\n');}
 /** 只取圖面範圍（外擴 300m）裡的門牌，建格網 */
 function addrBuild(x0,y0,x1,y1){const key=[x0,y0,x1,y1].map(v=>Math.round(v)).join(',');if(addrIdx&&addrIdx.key===key)return addrIdx;
   const t=addrRaw.charCodeAt(0)===0xFEFF?addrRaw.slice(1):addrRaw;let i=t.indexOf('\n');const H=t.slice(0,i).split(',').map(s=>s.replace(/^"|"$/g,'').trim());
@@ -1542,7 +1552,7 @@ function addrCheck(){if(!addrRaw)return[];const R=[];const txt=[];let x0=1e18,y0
     txt.push({x:e.p[0],y:e.p[1],nm});x0=Math.min(x0,e.p[0]);y0=Math.min(y0,e.p[1]);x1=Math.max(x1,e.p[0]);y1=Math.max(y1,e.p[1]);}
   if(!txt.length)return R;const I=addrBuild(x0,y0,x1,y1);
   const near=(x,y,r)=>{const o=[],n=Math.ceil(r/I.C);for(let i=-n;i<=n;i++)for(let j=-n;j<=n;j++)for(const p of I.G.get((Math.floor(x/I.C)+i)+','+(Math.floor(y/I.C)+j))||[])if(Math.hypot(p.x-x,p.y-y)<r)o.push(p);return o;};
-  for(const t of txt){const lt=addrTok(t.nm);const n1=near(t.x,t.y,60);if(n1.length<3)continue;// 附近沒門牌（快速道路、河濱、農路）不比
+  for(const t of txt){const lt=addrTok(t.nm);const n1=near(t.x,t.y,60);if(n1.length<2)continue;// 附近沒門牌（快速道路、河濱、農路）不比
     const n2=near(t.x,t.y,120);if(n2.some(p=>p.T.some(d=>addrFit(lt,d))))continue;
     const c={};for(const p of n1)c[p.full]=(c[p.full]||0)+1;const top=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,3).map(a=>a[0]).join('、');
     const none=lt.rd&&!I.all.has(lt.rd)?'；整份門牌資料找不到「'+lt.rd+'」':'';
