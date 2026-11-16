@@ -463,13 +463,21 @@ function cmdCoord(ll){return pointsCmd({name:ll?'ll':'xy',live:true,keypad:'xy',
 /* ---- 選取物件的共用步驟 ---- */
 function selectStage(o){const x=o.extra||{};boxArm=false;return{kind:'select',name:x.name||o.name,filter:x.filter||o.filter,group:!!x.group,
   extraBtns(){return[{t:boxArm?'框選：拖曳畫框':'框選',c:'mode'+(boxArm?' on':''),f:()=>{boxArm=!boxArm;refreshCmd();}}];},
-  hint:o.hint||function(){return[`${o.title}：點選要${o.verb}的物件${x.group?'（底圖也可以，圖塊會整個選起來）':''}（再點一次取消；按「框選」再拖曳可一次選一片：往右拉選框內的、往左拉碰到就選），選好按 ✓　已選 ${selSet.size}`,selSet.size>0];},
+  hint:o.hint||function(){return[`${o.title}：點選要${o.verb}的物件${x.group?'（底圖也可以，圖塊會整個選起來）':''}（再點一次取消；按「框選」再拖曳可一次選一片：往右拉選框內的、往左拉碰到就選），選好按 ✓　已選 ${selCount()}`,selSet.size>0];},
   ok:o.ok||function(){if(!selSet.size){toast('還沒選物件');return;}o.next();}};}
 const ownOnly=e=>!e.imp;
 let grpIdx=null;
 function groupOf(e){if(nativeOn&&e.g){const a=imp.filter(x=>x.g===e.g);return a.concat(nativeGroup(e.g));}if(!grpIdx){grpIdx=new Map();for(const x of imp)if(x.g){let a=grpIdx.get(x.g);if(!a)grpIdx.set(x.g,a=[]);a.push(x);}}return grpIdx.get(e.g)||[e];}
 // 底圖物件複製成自己的：放到目前圖層、顏色隨圖層，保留線型
-function ownCopy(e){const c=JSON.parse(JSON.stringify(e));delete c.bb;if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}return c;}
+/* 圖塊：底圖的用 g 綁在一起；複製成自己的以後用 og 綁（點一下整組選、整組移動刪除） */
+const newOg=()=>'o'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function ogOf(e,gm){const k=e.imp?(e.g?'i'+e.g:''):(e.og?'o'+e.og:'');if(!k||!gm)return null;if(!gm.has(k))gm.set(k,newOg());return gm.get(k);}
+function ownGroup(e){return st.ents.filter(x=>x.og===e.og);}
+function grpOf(e){return e.imp&&e.g?groupOf(e):(!e.imp&&e.og)?ownGroup(e):[e];}
+/** 選了幾個：一個圖塊算 1 個 */
+function selCount(){const k=new Set();for(const e of selSet)k.add(e.imp&&e.g?'i'+e.g:(!e.imp&&e.og)?'o'+e.og:e);return k.size;}
+function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const og=ogOf(e,gm);if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}
+  if(og)c.og=og;else delete c.og;return c;}
 
 /* ---------- 框選：往右拉＝框內的（window），往左拉＝碰到就選（crossing） ---------- */
 let boxArm=false,boxNow=null;
@@ -506,6 +514,7 @@ function boxSelect(s0,s1){
     const L=grid?queryImp(R[0],R[1],R[2],R[3]):imp;for(const e of L)if(shown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
     if(nativeOn)for(const e of nativeNear(R[0],R[1],R[2],R[3],200000))if(shown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
   }
+  for(const e of [...selSet])if(!e.imp&&e.og)for(const x of ownGroup(e))selSet.add(x);// 自己的圖塊碰到一部分就整組
   toast(`${cross?'碰到框':'框內'}選到 ${n} 個`,1200);
 }
 
@@ -515,12 +524,12 @@ function hexAci(h){if(h==null)return 7;h=String(h);if(_aciC.has(h))return _aciC.
   const v=parseInt(h.replace('#',''),16);if(!isFinite(v))return 7;const r=v>>16&255,g=v>>8&255,b=v&255;let bi=7,bd=1e9;
   for(let i=1;i<=255;i++){const w=parseInt(aciHex(i).slice(1),16),d=((w>>16&255)-r)**2+((w>>8&255)-g)**2+((w&255)-b)**2;if(d<bd){bd=d;bi=i;}if(!d)break;}
   _aciC.set(h,bi);return bi;}
-function clipCopy(e){const c=JSON.parse(JSON.stringify(e));
+function clipCopy(e,gm){const c=JSON.parse(JSON.stringify(e));const og=ogOf(e,gm);if(og)c.og=og;
   if(c.imp){for(const k of['imp','g','c','_sg','rc','nid','bb','nt','ti'])delete c[k];c.ci=hexAci(e.c);if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;if(!c.ly)c.ly='0';}
   else{delete c._sg;delete c.rc;}
   return c;}
 function cmdCopyClip(){return selectStage({title:'複製到剪貼簿',verb:'複製',next(){
-  const ents=[...selSet].map(clipCopy),lys=new Map();
+  const gm=new Map(),ents=[...selSet].map(e=>clipCopy(e,gm)),lys=new Map();
   for(const e of ents)if(!lys.has(e.ly)){const L=st.layers.find(l=>l.name===e.ly),I=impLayers.find(l=>l.name===e.ly);lys.set(e.ly,L?{name:L.name,ci:L.ci,lt:L.lt}:{name:e.ly,ci:I?hexAci(I.c):(e.ci||7),lt:'CONTINUOUS'});}
   clip={ents,layers:[...lys.values()]};try{localStorage.setItem('simplecad.clip',JSON.stringify(clip));}catch(_){}
   toast(`已複製 ${ents.length} 個到剪貼簿（換到別張圖用「原座標貼上」）`,3000);endCmd();
@@ -530,7 +539,7 @@ function cmdPasteOrig(){
   if(!clip||!clip.ents||!clip.ents.length){toast('剪貼簿是空的，先用「複製到剪貼簿」');return null;}
   if(cmd)endCmd();snapshot();const was=st.ents.length;
   for(const L of clip.layers||[])if(!st.layers.some(l=>l.name===L.name))st.layers.push({name:L.name,ci:L.ci||7,lt:L.lt||'CONTINUOUS',on:true});
-  const add=JSON.parse(JSON.stringify(clip.ents));st.ents.push(...add);saveSettings();saveDraw();
+  const add=JSON.parse(JSON.stringify(clip.ents)),gm=new Map();for(const e of add)if(e.og){if(!gm.has(e.og))gm.set(e.og,newOg());e.og=gm.get(e.og);}st.ents.push(...add);// 每次貼上都是新的一組saveSettings();saveDraw();
   if(!was&&!imp.length&&!nativeOn)zoomFit();
   toast(`已在原座標貼上 ${add.length} 個`,2000);schedule();return null;
 }
@@ -560,7 +569,7 @@ function cmdMove(copy){
     startCmdKeep(pointsCmd({name:copy?'copy':'move',init(){kp.setMode('xy');},
       hint(){return this.pts.length?[`${title}：點目的點，或輸入距離、角度`+(copy?'（可連續複製，✓ 結束）':''),true]:[`${title}：點基準點`,!!cur];},
       onPoint(p){if(!this.pts.length){this.pts.push(p);return;}const b=this.pts[0],dx=p[0]-b[0],dy=p[1]-b[1];
-        snapshot();if(copy){for(const e of sel){const c=ownCopy(e);xform(c,q=>[q[0]+dx,q[1]+dy],0);st.ents.push(c);}}
+        snapshot();if(copy){const gm=new Map();for(const e of sel){const c=ownCopy(e,gm);xform(c,q=>[q[0]+dx,q[1]+dy],0);st.ents.push(c);}}
         else for(const e of sel)xform(e,q=>[q[0]+dx,q[1]+dy],0);
         saveDraw();if(!copy){endCmd();toast('已移動');}},
       base(){return this.pts.length?this.pts[0]:null;},
@@ -1243,7 +1252,7 @@ function onTap(sp){
   if(!cmd&&addrTap(sp))return;
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
     if(bi>=0){if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
-  if(!cmd){const e=pickEnt(w);if(e){const grp=(e.imp&&e.g)?groupOf(e):[e];
+  if(!cmd){const e=pickEnt(w);if(e){const grp=grpOf(e);
       if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
       else{for(const x of grp)selSet.add(x);selE=e;}}
     setHint(baseHintText(),!!selE);updSelBar();schedule();return;}
@@ -1252,7 +1261,7 @@ function onTap(sp){
       if(cmd.live){setCursorRaw(w);return;}
       if(cur){commitPoint();if(!cmd||cmd.kind!=='points')return;}
       setCursorRaw(w);return;
-    case'select':{const e=pickEnt(w,cmd.filter);if(e){const grp=(cmd.group&&e.g)?groupOf(e):[e];const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);}refreshCmd();return;}
+    case'select':{const e=pickEnt(w,cmd.filter);if(e){const grp=(!e.imp&&e.og)?ownGroup(e):(cmd.group&&e.g)?groupOf(e):[e];const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);}refreshCmd();return;}
     case'pickObj':{const e=pickEnt(w,cmd.filter);if(e)cmd.onPick(e,w);else toast('那裡沒有物件');refreshCmd();return;}
     case'side':cmd.onSide(w);return;
     default:selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();
@@ -1370,7 +1379,7 @@ $('lyNone').onclick=()=>{impLayers.forEach(l=>offLy.add(l.name));syncHid();fillL
 /* ---------- 點到物件時：關閉這個圖層／到圖層列表找它 ---------- */
 function updSelBar(){const b=$('selBar');if(!b)return;const show=!cmd;b.style.display=show?'flex':'none';if(!show)return;
   $('selBox').textContent=boxArm?'框選：拖曳畫框':'框選';$('selBox').classList.toggle('on',boxArm);
-  $('selClr').style.display=selSet.size?'':'none';$('selClr').textContent=`清除（${selSet.size}）`;$('selOff').style.display=$('selList').style.display=selE?'':'none';}
+  $('selClr').style.display=selSet.size?'':'none';$('selClr').textContent=`清除（${selCount()}）`;$('selOff').style.display=$('selList').style.display=selE?'':'none';}
 $('selBox').onclick=()=>{boxArm=!boxArm;updSelBar();if(boxArm)toast('拖曳畫框：往右拉選框內的、往左拉碰到就選（累加）',2500);};
 $('selClr').onclick=()=>{selSet.clear();selE=null;boxArm=false;setHint(baseHintText(),false);updSelBar();schedule();};
 function closeSelLayer(){if(!selE)return;const n=selE.ly||'0';
