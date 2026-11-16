@@ -176,7 +176,7 @@ function addEnt(e){e.ly=e.ly||st.cur;st.ents.push(e);}
 let saveT=0,saveDT=0;
 function saveSettings(){clearTimeout(saveT);saveT=setTimeout(()=>{try{const o=Object.assign({},st);delete o.ents;localStorage.setItem('simplecad.v2',JSON.stringify(o));localStorage.setItem('simplecad.lts',JSON.stringify(lts.filter(l=>l.src)));}catch(_){}},250);}
 function saveDraw(){clearTimeout(saveDT);saveDT=setTimeout(saveDrawNow,200);}
-function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('simplecad.draw:'+key)||'[]');}catch(_){st.ents=[];}undoS=[];redoS=[];selE=null;selSet.clear();}
+function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('simplecad.draw:'+key)||'[]');}catch(_){st.ents=[];}for(const e of st.ents)delete e.bb;undoS=[];redoS=[];selE=null;selSet.clear();}
 
 /* ---------- 數字鍵盤 ---------- */
 const kp={
@@ -465,7 +465,7 @@ const ownOnly=e=>!e.imp;
 let grpIdx=null;
 function groupOf(e){if(nativeOn&&e.g){const a=imp.filter(x=>x.g===e.g);return a.concat(nativeGroup(e.g));}if(!grpIdx){grpIdx=new Map();for(const x of imp)if(x.g){let a=grpIdx.get(x.g);if(!a)grpIdx.set(x.g,a=[]);a.push(x);}}return grpIdx.get(e.g)||[e];}
 // 底圖物件複製成自己的：放到目前圖層、顏色隨圖層，保留線型
-function ownCopy(e){const c=JSON.parse(JSON.stringify(e));if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}return c;}
+function ownCopy(e){const c=JSON.parse(JSON.stringify(e));delete c.bb;if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}return c;}
 
 /* ---------- 框選：往右拉＝框內的（window），往左拉＝碰到就選（crossing） ---------- */
 let boxArm=false,boxNow=null;
@@ -579,6 +579,7 @@ function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
 },extra:{name:'rot',filter:ownOnly}});}
 function rotEnt(e,b,a){const c=Math.cos(a),s=Math.sin(a);xform(e,q=>[b[0]+(q[0]-b[0])*c-(q[1]-b[1])*s,b[1]+(q[0]-b[0])*s+(q[1]-b[1])*c],a);}
 function xform(e,f,da){
+  delete e.bb;// 外框要重算，不然放大時會被當成在畫面外（不畫、點不到）
   switch(e.t){
     case'line':e.a=f(e.a);e.b=f(e.b);break;
     case'pline':case'ink':e.pts=e.pts.map(f);if(e.spl)e.spl.fit=e.spl.fit.map(f);if(e.av)e.av=e.av.map(f);break;
@@ -1170,13 +1171,14 @@ function render(){
     ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,13,0,TAU);ctx.moveTo(x-26,y);ctx.lineTo(x-7,y);ctx.moveTo(x+7,y);ctx.lineTo(x+26,y);ctx.moveTo(x,y-26);ctx.lineTo(x,y-7);ctx.moveTo(x,y+7);ctx.lineTo(x,y+26);ctx.stroke();
     ctx.fillStyle=c;ctx.fillRect(x-1.5,y-1.5,3,3);
     if(cur.snap)drawSnapMark(cur.snap);
-    // x,y 小方塊
-    const bx=x+30,by=y-48,bw=64,bh=34;bubble=[bx,by,bw,bh];
-    ctx.fillStyle='rgba(30,36,44,.92)';ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.beginPath();ctx.roundRect?ctx.roundRect(bx,by,bw,bh,8):ctx.rect(bx,by,bw,bh);ctx.fill();ctx.stroke();
-    ctx.fillStyle='#fff';ctx.font='bold 17px system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('x, y',bx+bw/2,by+bh/2+1);
   }
   const p=cur?cur.p:null;$('hintC').textContent=p?`X ${fmt(p[0])}\nY ${fmt(p[1])}`:'';
+  placeSmallBar();
 }
+/** 區域檢查／小線段那條列：指令列、選取列開著時往下排，不要蓋住它們的按鈕 */
+function placeSmallBar(){const b=$('smallBar');if(b.style.display==='none')return;let t=58;
+  for(const id of['cmdbar','selBar']){const e=$(id);if(e&&getComputedStyle(e).display!=='none'){const r=e.getBoundingClientRect();if(r.height&&r.top<140)t=Math.max(t,r.bottom+6);}}
+  if(b.style.top!==t+'px')b.style.top=t+'px';}
 
 /* ---------- 指標事件 ---------- */
 let g=null,ink=null;
@@ -1231,8 +1233,6 @@ function eraseAt(w,G){
 }
 function onTap(sp){
   const w=toW(sp);
-  if(bubble&&cmd&&cmd.kind==='points'&&sp[0]>=bubble[0]&&sp[0]<=bubble[0]+bubble[2]&&sp[1]>=bubble[1]&&sp[1]<=bubble[1]+bubble[3]){
-    kp.hidden=false;kp.show('xy');kp.keepXY=true;updateCmdBar();return;}
   if(!cmd&&fillMode&&areaTopo&&smallMode==='area'&&smallMarks){const T=areaTopo,k=T.locate(w[0]-T.ox,w[1]-T.oy);
     if(k<0){toast('那裡不在任何封閉區裡');return;}if(areaFills.has(k))areaFills.delete(k);else{const P=['#ff5a5a','#4fb3ff','#5ad16a','#ffb13d','#c77dff','#3de0d0'];areaFills.set(k,P[fillCi++%P.length]);}
     const f=T.F[k];setHint(`區域面積 ${f.area<10?f.area.toFixed(2):f.area.toFixed(1)} m²　地物：${[...f.kinds.keys()].map(x=>x==='H'?'房屋':x).join('、')||'（無）'}`,true);schedule();return;}
@@ -1312,12 +1312,16 @@ window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.ta
 /* ---------- 圖層面板 ---------- */
 /** 線型選單顯示「編號　說明」：133　鐵欄（說明取 .lin 定義第一段文字，後面的圖樣示意不要） */
 function ltLabel(n){if(n==='CONTINUOUS')return'CONTINUOUS　連續線';const l=lts.find(x=>x.name===n);const d=l&&l.desc?l.desc.trim().split(/\s+/)[0]:'';return d&&d!==n?n+'　'+d:n;}
+/** 先點選物件再到圖層列表點別的圖層：自己畫的物件改到那層（底圖不改） */
+function lyMoveSel(L){if(!selE)return;if(selE.imp||!st.ents.includes(selE)){toast('底圖的物件不改圖層（先複製成自己的）');return;}
+  if(selE.ly===L.name)return;const old=layerOf(selE.ly);snapshot();if(selE.ci!=null&&old&&selE.ci===old.ci)delete selE.ci;// 原本跟著舊圖層顏色的，改跟新圖層
+  selE.ly=L.name;saveDraw();schedule();toast(`已改到圖層「${L.name}」`);}
 function fillLayerSheet(){
   try{updOldBtn();updSmallBar();}catch(_){}
   const box=$('myLayers');box.innerHTML='';
   for(const L of st.layers){
     const r=document.createElement('div');r.className='lyr';r.dataset.ly=L.name;
-    const rb=document.createElement('input');rb.type='radio';rb.name='curly';rb.checked=st.cur===L.name;rb.onchange=()=>{st.cur=L.name;saveSettings();};
+    const rb=document.createElement('input');rb.type='radio';rb.name='curly';rb.checked=st.cur===L.name;rb.onchange=()=>{st.cur=L.name;saveSettings();lyMoveSel(L);};
     const chip=document.createElement('div');chip.className='chip';chip.style.background=aciHex(L.ci);
     const nm=document.createElement('input');nm.type='text';nm.value=L.name;nm.onchange=()=>{const v=nm.value.trim();if(!v||st.layers.some(x=>x!==L&&x.name===v)){nm.value=L.name;toast('名稱空白或重複');return;}
       for(const e of st.ents)if(e.ly===L.name)e.ly=v;if(st.cur===L.name)st.cur=v;L.name=v;saveSettings();saveDraw();};
