@@ -1541,9 +1541,12 @@ const addrFw=s=>(s||'').replace(/^"|"$/g,'').replace(/[０-９]/g,c=>String.from
 // 拆成：路名（不含段）、段、巷、弄。圖上路名太長時常省略前段（只寫「33巷2弄」），比對時只比有寫出來的部分
 function addrTok(s){const t={};let m;
   if(m=s.match(/(\d+)弄$/)){t.al=m[1];s=s.slice(0,-m[0].length);}
-  if(m=s.match(/(\d+|[^\d路街道段]+)巷$/)){t.ln=m[1];s=s.slice(0,-m[0].length);}
+  if(m=s.match(/([^\d路街道段]*\d+|[^\d路街道段]+)巷$/)){t.ln=addrLn(m[1]);s=s.slice(0,-m[0].length);}
   if(m=s.match(/([一二三四五六七八九十]+)段$/)){t.sec=m[1];s=s.slice(0,-m[0].length);}
   if(s)t.rd=s;return t;}
+// 有名字的巷：「豐2巷」和門牌的「豐二巷」當成同一條（中文數字換成阿拉伯數字）
+function addrLn(s){return s.replace(/[一二三四五六七八九十]+/g,c=>{const d='一二三四五六七八九'.indexOf(c[0])+1,i=c.indexOf('十');
+  if(i<0)return String(c.length===1?d:c);const a=i===0?1:'一二三四五六七八九'.indexOf(c[i-1])+1,b=i<c.length-1?'一二三四五六七八九'.indexOf(c[i+1])+1:0;return String(a*10+b);});}
 const addrFit=(l,d)=>['rd','sec','ln','al'].every(k=>l[k]===undefined||l[k]===d[k]);
 function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`已載入：${addrName}`:'還沒載入';$('addrClear').disabled=!addrRaw;$('addrRun').disabled=!addrRaw;
   const rn=smallMarks&&smallMode==='rname';$('addrRun').textContent=rn?'取消路名標記':'檢查路名';
@@ -1579,7 +1582,7 @@ $('addrFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(tru
   toast(`門牌資料已載入（瘦身 ${(r.from/1e6).toFixed(1)}→${(r.to/1e6).toFixed(1)} M 字）`,3000);}finally{busy(false);}};
 function addrText(bytes){try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){return new TextDecoder('big5').decode(bytes);}}
 function addrCols(t){const H=t.slice(0,t.indexOf('\n')).split(',').map(s=>s.replace(/^"|"$/g,'').trim());const col=re=>H.findIndex(h=>re.test(h));
-  return{X:col(/x_3826|橫坐標|橫座標/i),Y:col(/y_3826|縱坐標|縱座標/i),S:col(/street|街路段|街_路段|路段/i),A:col(/^area$|地區/i),L:col(/^lane$|^巷$/i),B:col(/^alley$|^弄$/i),N:col(/^number$|門牌號|^號$/i)};}
+  return{X:col(/x_3826|橫坐標|橫座標/i),Y:col(/y_3826|縱坐標|縱座標/i),S:col(/street|^road$|街路段|街_路段|路段/i),A:col(/^area$|地區/i),L:col(/^lane$|^巷$/i),B:col(/^alley$|^弄$/i),N:col(/^number$|門牌號|^號$/i)};}
 /** 逐行走一份 CSV（跳過表頭） */
 function addrEach(raw,fn){const t=raw.charCodeAt(0)===0xFEFF?raw.slice(1):raw;const c=addrCols(t);let i=t.indexOf('\n');
   while(i>=0&&i<t.length){const j=t.indexOf('\n',i+1);const ln=t.slice(i+1,j<0?t.length:j);i=j;if(ln&&ln!=='\r')fn(ln.replace(/\r$/,'').split(','),c);}}
@@ -1595,7 +1598,7 @@ function addrBuild(x0,y0,x1,y1){const key=[x0,y0,x1,y1].map(v=>Math.round(v)).jo
   for(const raw of addrRaw)addrEach(raw,(a,c)=>{
     const st=addrFw(a[c.S]),ar=c.A>=0?addrFw(a[c.A]):'';for(const b of [st,ar])if(b)all.add(addrTok(b).rd);
     const x=+a[c.X],y=+a[c.Y];if(!(x>=P0&&x<=P1&&y>=Q0&&y<=Q1))return;
-    const la=c.L>=0?addrFw(a[c.L]).replace(/巷$/,''):'',al=c.B>=0?addrFw(a[c.B]).replace(/弄$/,''):'';const T=[];
+    const la=c.L>=0?addrLn(addrFw(a[c.L]).replace(/巷$/,'')):'',al=c.B>=0?addrFw(a[c.B]).replace(/弄$/,''):'';const T=[];
     for(const b of [st,ar])if(b){const k=addrTok(b);T.push({rd:k.rd,sec:k.sec,ln:la||undefined,al:al||undefined});}
     if(!T.length&&la)T.push({ln:la,al:al||undefined});if(!T.length)return;
     const full=(st||ar)+(la?la+(/\d$/.test(la)?'巷':''):'');const g=Math.floor(x/C)+','+Math.floor(y/C);let l=G.get(g);if(!l)G.set(g,l=[]);l.push({x,y,T,full});});
