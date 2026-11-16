@@ -241,11 +241,15 @@ function setHint(t,info,btn){$('hintT').textContent=t||'';$('hintT').className=i
 function refreshCmd(){if(cmd&&cmd.hint)setHint(...[].concat(cmd.hint()));kp.render();updateCmdBar();schedule();}
 function startCmd(c){
   if(cmd&&cmd.cleanup)cmd.cleanup();
-  cmd=c;cur=null;selE=null;kp.unlockAll();kp.hidden=false;kp.keepXY=false;eraser=false;
+  // 先選後按指令：選物件那一步直接用先選的（修剪、延伸要依序點邊界，不套用）
+  const pre=!cmd&&selSet.size&&c.kind==='select'&&!/^(trim|extend)$/.test(c.name)?[...selSet]:null;if(!cmd)selSet.clear();
+  let skip=0;if(pre){for(const e of pre){if(c.filter&&!c.filter(e)){skip++;continue;}selSet.add(e);}}
+  boxArm=false;cmd=c;cur=null;selE=null;kp.unlockAll();kp.hidden=false;kp.keepXY=false;eraser=false;
   if(c.keypad)kp.show(c.keypad);else kp.hide();
   closePanel();if(c.init)c.init();
   $('penbar').style.display=c.kind==='pen'?'flex':'none';if(c.kind==='pen')buildPenBar();
   refreshCmd();updateUI();
+  if(pre){if(skip)toast(`略過底圖或不適用的 ${skip} 個`,2000);if(selSet.size&&cmd===c)c.ok();}
 }
 function endCmd(){if(cmd&&cmd.cleanup)cmd.cleanup();cmd=null;cur=null;selSet.clear();kp.hide();$('penbar').style.display='none';$('penW').style.display='none';$('cmdbar').style.display='none';setHint(baseHintText());updateUI();schedule();}
 function cancelCmd(){if(cmd&&cmd.cancel&&cmd.cancel()===false){refreshCmd();return;}endCmd();}
@@ -737,7 +741,7 @@ function gripsOf(e){
   }
   return G;
 }
-function hitGrip(sp){if(!selE||selE.imp||!ownShown(selE))return null;let best=null,bd=22;for(const g of gripsOf(selE)){const q=toS(g.p),d=dist(q,sp);if(d<bd){bd=d;best=g;}}return best;}
+function hitGrip(sp){if(!selE||selE.imp||!ownShown(selE)||selSet.size>1)return null;let best=null,bd=22;for(const g of gripsOf(selE)){const q=toS(g.p),d=dist(q,sp);if(d<bd){bd=d;best=g;}}return best;}
 function applyGrip(e,g,p){
   const c=JSON.parse(JSON.stringify(e)),b=g.p;
   switch(g.k){
@@ -1154,7 +1158,7 @@ function render(){
   if(selE&&shown(selE)){const G=selBlock();if(G&&G.length>1){let n=0;for(const x of G){if(shown(x))drawEnt(x,hl,6,true);if(++n>5000)break;}}else drawEnt(selE,hl,6,true);
     if(G&&selIns){const q=toS(selIns),r=6;ctx.save();ctx.strokeStyle='#3d9bff';ctx.fillStyle='rgba(61,155,255,.35)';ctx.lineWidth=2;ctx.fillRect(q[0]-r,q[1]-r,2*r,2*r);ctx.strokeRect(q[0]-r,q[1]-r,2*r,2*r);// 插入點（藍色方塊，像 CAD 的夾點）
       ctx.beginPath();ctx.moveTo(q[0]-r-5,q[1]);ctx.lineTo(q[0]+r+5,q[1]);ctx.moveTo(q[0],q[1]-r-5);ctx.lineTo(q[0],q[1]+r+5);ctx.stroke();ctx.restore();}}
-  if(!cmd&&selE&&!selE.imp)drawGrips(selE);
+  if(!cmd&&selE&&!selE.imp&&selSet.size<=1)drawGrips(selE);
   {let n=0;for(const e of selSet){if(selSet.size>500&&!visible(e))continue;drawEnt(e,'rgba(255,170,40,.6)',6,true);if(++n>4000)break;}}
   if(boxNow){const[a,b]=boxNow,cr=b[0]<a[0];ctx.save();ctx.fillStyle=cr?'rgba(60,200,90,.12)':'rgba(70,130,255,.12)';ctx.strokeStyle=cr?'#3cc85a':'#4682ff';ctx.lineWidth=1.5;if(cr)ctx.setLineDash([6,4]);
     ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.restore();}
@@ -1196,7 +1200,7 @@ cv.addEventListener('pointerdown',e=>{
   }
   hideGripMenu();
   if(!cmd){const gr=hitGrip(sp);if(gr){const e0=selE;selE0=e0;gripHit0=gr;startCmd(gripCmd(e0,gr));cur={raw:gr.p.slice(),p:gr.p.slice(),snap:null};refreshCmd();g={type:'pending',start:sp,last:sp,moved:false,grip:true};return;}}
-  if(cmd&&cmd.kind==='select'&&boxArm){g={type:'box',start:sp};boxNow=[sp,sp];return;}
+  if((!cmd||cmd.kind==='select')&&boxArm){g={type:'box',start:sp};boxNow=[sp,sp];return;}
   g={type:'pending',start:sp,last:sp,moved:false};
 });
 cv.addEventListener('pointermove',e=>{
@@ -1215,7 +1219,7 @@ function endPtr(e,cancel){
   if(g.type==='pinch'){if(ptrs.size<2)g=ptrs.size?{type:'dead'}:null;saveSettings();return;}
   if(g.type==='dead'){if(!ptrs.size)g=null;return;}
   const G=g;g=null;if(cancel){ink=null;boxNow=null;schedule();return;}
-  if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}refreshCmd();schedule();return;}
+  if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
   if(G.type==='ink'){const P=ink.pts;ink=null;if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
   if(G.type==='erase'){if(G.did)saveDraw();return;}
   if(G.type==='pan'){saveSettings();return;}
@@ -1239,7 +1243,10 @@ function onTap(sp){
   if(!cmd&&addrTap(sp))return;
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
     if(bi>=0){if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
-  if(!cmd){selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();return;}
+  if(!cmd){const e=pickEnt(w);if(e){const grp=(e.imp&&e.g)?groupOf(e):[e];
+      if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
+      else{for(const x of grp)selSet.add(x);selE=e;}}
+    setHint(baseHintText(),!!selE);updSelBar();schedule();return;}
   switch(cmd.kind){
     case'points':
       if(cmd.live){setCursorRaw(w);return;}
@@ -1313,9 +1320,10 @@ window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.ta
 /** 線型選單顯示「編號　說明」：133　鐵欄（說明取 .lin 定義第一段文字，後面的圖樣示意不要） */
 function ltLabel(n){if(n==='CONTINUOUS')return'CONTINUOUS　連續線';const l=lts.find(x=>x.name===n);const d=l&&l.desc?l.desc.trim().split(/\s+/)[0]:'';return d&&d!==n?n+'　'+d:n;}
 /** 先點選物件再到圖層列表點別的圖層：自己畫的物件改到那層（底圖不改） */
-function lyMoveSel(L){if(!selE)return;if(selE.imp||!st.ents.includes(selE)){toast('底圖的物件不改圖層（先複製成自己的）');return;}
-  if(selE.ly===L.name)return;const old=layerOf(selE.ly);snapshot();if(selE.ci!=null&&old&&selE.ci===old.ci)delete selE.ci;// 原本跟著舊圖層顏色的，改跟新圖層
-  selE.ly=L.name;saveDraw();schedule();toast(`已改到圖層「${L.name}」`);}
+function lyMoveSel(L){const S=selSet.size?[...selSet]:selE?[selE]:[];if(!S.length)return;const own=S.filter(e=>!e.imp&&st.ents.includes(e)&&e.ly!==L.name);
+  if(!own.length){if(S.some(e=>e.imp))toast('底圖的物件不改圖層（先複製成自己的）');return;}snapshot();
+  for(const e of own){const old=layerOf(e.ly);if(e.ci!=null&&old&&e.ci===old.ci)delete e.ci;e.ly=L.name;}// 原本跟著舊圖層顏色的，改跟新圖層
+  saveDraw();schedule();const sk=S.length-own.length;toast(`已改 ${own.length} 個到圖層「${L.name}」`+(sk?`（略過 ${sk} 個）`:''));}
 function fillLayerSheet(){
   try{updOldBtn();updSmallBar();}catch(_){}
   const box=$('myLayers');box.innerHTML='';
@@ -1360,7 +1368,11 @@ $('lyAll').onclick=()=>{offLy.clear();syncHid();fillLayerSheet();schedule();};//
 $('lyNone').onclick=()=>{impLayers.forEach(l=>offLy.add(l.name));syncHid();fillLayerSheet();schedule();};
 
 /* ---------- 點到物件時：關閉這個圖層／到圖層列表找它 ---------- */
-function updSelBar(){const b=$('selBar');if(!b)return;const show=!cmd&&selE&&!smallMarks;b.style.display=show?'flex':'none';}
+function updSelBar(){const b=$('selBar');if(!b)return;const show=!cmd;b.style.display=show?'flex':'none';if(!show)return;
+  $('selBox').textContent=boxArm?'框選：拖曳畫框':'框選';$('selBox').classList.toggle('on',boxArm);
+  $('selClr').style.display=selSet.size?'':'none';$('selClr').textContent=`清除（${selSet.size}）`;$('selOff').style.display=$('selList').style.display=selE?'':'none';}
+$('selBox').onclick=()=>{boxArm=!boxArm;updSelBar();if(boxArm)toast('拖曳畫框：往右拉選框內的、往左拉碰到就選（累加）',2500);};
+$('selClr').onclick=()=>{selSet.clear();selE=null;boxArm=false;setHint(baseHintText(),false);updSelBar();schedule();};
 function closeSelLayer(){if(!selE)return;const n=selE.ly||'0';
   if(selE.imp){offLy.add(n);syncHid();}else{const L=st.layers.find(l=>l.name===n);if(L){L.on=false;saveSettings();}}
   selE=null;setHint(baseHintText(),false);toast('已關閉圖層「'+n+'」（到圖層裡可再打開）',2500);schedule();}
