@@ -1554,7 +1554,7 @@ function addrTok(s){const t={};let m;
 function addrLn(s){return s.replace(/[一二三四五六七八九十]+/g,c=>{const d='一二三四五六七八九'.indexOf(c[0])+1,i=c.indexOf('十');
   if(i<0)return String(c.length===1?d:c);const a=i===0?1:'一二三四五六七八九'.indexOf(c[i-1])+1,b=i<c.length-1?'一二三四五六七八九'.indexOf(c[i+1])+1:0;return String(a*10+b);});}
 const addrFit=(l,d)=>['rd','sec','ln','al'].every(k=>l[k]===undefined||l[k]===d[k]);
-function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`已載入：${addrName}（區域檢查時一起比對路名）`:'還沒載入';$('addrClear').disabled=!addrRaw;
+function updAddrInfo(){const el=$('addrInfo');if(el)el.textContent=addrRaw?`已載入：${addrName}（區域檢查時一起比對路名）`:'還沒載入';$('addrClear').disabled=!addrRaw;$('addrSave').disabled=$('addrShare').disabled=!addrRaw;
   const b=$('addrShow');b.disabled=!addrRaw;b.textContent=addrShow?'門牌點：開':'門牌點：關';b.classList.toggle('on',addrShow&&!!addrRaw);
   const t=$('addrBtn');if(t)t.classList.toggle('on',!!(addrRaw&&addrShow));}
 function addrJoin(save){addrIdx=null;addrDot=null;const b=[...addrFiles.values()].filter(Boolean);addrRaw=b.length?b:null;addrName=[...addrFiles.keys()].join('、');
@@ -1864,6 +1864,17 @@ async function exportDXF(share){
   }catch(err){if(!/cancel/i.test(err.message||''))toast('匯出失敗：'+(err.message||err),4000);}
 }
 $('expSave').onclick=()=>{closeSheet('fileSheet');exportDXF(false);};
+/** 匯出瘦身後的門牌（多份合成一份，表頭只留一行） */
+async function exportAddr(share){if(!addrRaw){toast('還沒載入門牌資料');return;}
+  const H=addrRaw[0].slice(0,addrRaw[0].indexOf('\n'));const body=addrRaw.map(t=>t.slice(t.indexOf('\n')+1)).filter(Boolean);
+  const names=[...addrFiles.keys()];const name=(names.length===1?names[0].replace(/\.[^.]+$/,'').replace(/_瘦身$/,''):'門牌')+'_瘦身.csv';
+  const bytes=new TextEncoder().encode('\ufeff'+H+'\n'+body.join('\n')+'\n'),data=b64(bytes);const P=NP();busy(true,'匯出門牌…');
+  try{if(!share&&P.SupportFolder&&P.SupportFolder.saveAs){await P.SupportFolder.saveAs({name,data,mime:'text/csv'});toast('已存檔：'+name);return;}
+    if(P.Filesystem&&P.Share){const r=await P.Filesystem.writeFile({path:name,data,directory:'CACHE'});await P.Share.share({title:name,files:[r.uri],dialogTitle:'分享門牌瘦身檔'});return;}
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:'text/csv'}));a.download=name;document.body.appendChild(a);a.click();a.remove();toast('已下載：'+name);}
+  catch(err){if(!/cancel/i.test(err.message||''))toast('匯出失敗：'+(err.message||err),4000);}finally{busy(false);}}
+$('addrSave').onclick=()=>exportAddr(false);
+$('addrShare').onclick=()=>exportAddr(true);
 $('expShare').onclick=()=>{closeSheet('fileSheet');exportDXF(true);};
 
 /* ---------- 啟動 ---------- */
