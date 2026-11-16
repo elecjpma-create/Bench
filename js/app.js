@@ -1377,7 +1377,7 @@ const oldLayers=()=>impLayers.filter(l=>OLD_RE.test(l.name)).map(l=>l.name);
 const newLayers=()=>impLayers.filter(l=>NEW_RE.test(l.name)&&l.name!=='0'&&!CONTOUR_RE.test(l.name)).map(l=>l.name);
 const qLayers=()=>impLayers.filter(l=>Q_RE.test(l.name)).map(l=>l.name);
 function oldOff(){const o=oldLayers();return o.length&&o.every(n=>offLy.has(n));}
-function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!==$('smallMax'))$('smallMax').value=smallMaxV();const o=oldLayers();b.disabled=!o.length;b.textContent=o.length?(oldOff()?'開啟舊圖（a 開頭）':'關閉舊圖（a 開頭）'):'沒有 a 開頭的舊圖層';
+function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!==$('smallMax'))$('smallMax').value=smallMaxV();const o=oldLayers();b.disabled=!o.length;b.textContent=o.length?(oldOff()?'開舊圖':'關舊圖'):'無舊圖';
   if(document.activeElement!==$('areaTol'))$('areaTol').value=areaTolV();
   $('lyArea').textContent=smallMarks&&smallMode==='area'?'取消區域檢查標記':'區域檢查';}
 $('lyOld').onclick=()=>{const o=oldLayers();if(!o.length)return;if(oldOff())o.forEach(n=>offLy.delete(n));else o.forEach(n=>offLy.add(n));syncHid();fillLayerSheet();schedule();};

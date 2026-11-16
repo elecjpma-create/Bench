@@ -84,6 +84,7 @@ button{font-family:inherit;color:var(--text)}
 .sh input[type=number],.sh input[type=text],.sh select,.sh textarea{width:100%}
 .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .row2>*{flex:1}
+.row2.eq{flex-wrap:nowrap}.row2.eq>*{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .small{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
 .danger{color:#ff9b9b!important;border-color:#6a3434!important}
 .big{width:100%;text-align:left;margin:4px 0;padding:12px!important}
@@ -205,10 +206,9 @@ button{font-family:inherit;color:var(--text)}
   </div>
   <div class="sec" id="baseSec">
     <div class="lab">底圖圖層</div>
-    <div class="row2" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button></div>
-    <div class="row2" style="margin-bottom:6px"><button id="lyOld">關閉舊圖（a 開頭）</button></div>
+    <div class="row2 eq" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button><button id="lyOld" title="a 開頭的舊圖層">關舊圖</button></div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
-    <div class="row2" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="addrBtn" style="flex:none">門牌</button></div>
+    <div class="row2 eq" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="addrBtn">門牌</button></div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">看起來接住（差距小於）</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就算接上</span></div>
     <div id="baseLayers"></div>
   </div>
