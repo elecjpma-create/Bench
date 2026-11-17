@@ -55,6 +55,7 @@ const IC={
   move:'<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
   copy:'<rect x="8" y="8" width="12" height="12" rx="1"/><path d="M4 16V4h12"/>',
   rot:'<path d="M20 12a8 8 0 1 1-2.5-5.8"/><path d="M20 4v5h-5"/>',
+  scale:'<rect x="3" y="11" width="10" height="10" rx="1"/><path d="M13 11l8-8M15 3h6v6"/>',
   ins:'<rect x="3" y="3" width="9" height="9" rx="1"/><path d="M16 12v8M12 16h8"/>',
   offset:'<path d="M4 19c3-7 8-10 16-10"/><path d="M4 13c3-5 7-8 14-8" stroke-dasharray="3 2"/>',
   trim:'<circle cx="6" cy="7" r="2.5"/><circle cx="6" cy="17" r="2.5"/><path d="M8 8.5l12 8M8 15.5l12-8"/><path d="M14 3v18" stroke-dasharray="2 2"/>',
@@ -182,7 +183,7 @@ function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('
 /* ---------- 數字鍵盤 ---------- */
 const kp={
   mode:'la',act:null,vals:{},lock:{},shown:false,hidden:false,
-  fields(){return this.mode==='la'?[['L','長度'],['A','角度']]:this.mode==='xy'?[['X','X 坐標'],['Y','Y 坐標']]:this.mode==='d'?[['D','距離']]:[['A','角度']];},
+  fields(){return this.mode==='la'?[['L','長度'],['A','角度']]:this.mode==='xy'?[['X','X 坐標'],['Y','Y 坐標']]:this.mode==='d'?[['D','距離']]:this.mode==='k'?[['K','比例']]:[['A','角度']];},
   unlockAll(){this.lock={};this.vals={};this.ref=null;},
   setMode(m){this.mode=m;this.unlockAll();this.act=this.fields()[0][0];this.render();},
   show(m){this.shown=true;if(m)this.setMode(m);$('keypad').style.display=this.hidden?'none':'block';this.render();},
@@ -581,28 +582,61 @@ function cmdMove(copy){
 }
 function startCmdKeep(c){const keep=new Set(selSet);startCmd(c);selSet=keep;schedule();}
 /* 旋轉 */
+/* 旋轉：點中心，再點方向或輸入角度；「參考」＝點兩點量出原方向，再點（或輸入）新方向，轉兩者的差（像 CAD 的 R） */
 function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
-  const sel=[...selSet],orig=sel.map(e=>JSON.stringify(e));
-  startCmdKeep(pointsCmd({name:'rot',init(){kp.setMode('xy');},
-    hint(){return this.pts.length?['旋轉：點一點決定角度，或在「角度」輸入旋轉度數（逆時針為正）',true]:['旋轉：點旋轉中心',!!cur];},
-    onPoint(p){if(!this.pts.length){this.pts.push(p);kp.setMode('la');return;}const b=this.pts[0];const a=kp.num('A')!=null?rad(kp.num('A')):Math.atan2(p[1]-b[1],p[0]-b[0]);
-      snapshot();for(const e of sel)rotEnt(e,b,a);saveDraw();endCmd();toast('已旋轉');},
-    base(){return this.pts.length?this.pts[0]:null;},ok(){},
-    preview(){if(this.pts.length&&cur){const b=this.pts[0];const a=kp.num('A')!=null?rad(kp.num('A')):Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]);ctx.globalAlpha=.6;sel.forEach(e=>{const c=JSON.parse(JSON.stringify(e));rotEnt(c,b,a);drawTemp(c);});ctx.globalAlpha=1;previewPath([b],cur.p,false,true);}}
+  const sel=[...selSet];let ref=null,refA=null;
+  const angAt=(b,p)=>{const A=kp.num('A');if(A!=null)return rad(A)-(refA??0);return Math.atan2(p[1]-b[1],p[0]-b[0])-(refA??0);};
+  const apply=a=>{snapshot();for(const e of sel)rotEnt(e,b0(),a);saveDraw();endCmd();toast('已旋轉');};let b0=()=>null;
+  startCmdKeep(pointsCmd({name:'rot',init(){kp.setMode('xy');b0=()=>this.pts[0];},
+    hint(){if(!this.pts.length)return['旋轉：點旋轉中心',!!cur];
+      if(ref&&ref.length===0)return['旋轉（參考）：點參考第一點',!!cur];if(ref&&ref.length===1)return['旋轉（參考）：點參考第二點',!!cur];
+      if(ref)return['旋轉（參考）：點新的方向點，或在「角度」輸入新方向的角度',true];
+      return['旋轉：點一點決定角度，或在「角度」輸入旋轉度數（逆時針為正）；要對齊就按「參考」',true];},
+    extraBtns(){return this.pts.length?[{t:ref?'參考中':'參考',c:'mode'+(ref?' on':''),f:()=>{if(ref){ref=null;refA=null;kp.setMode('la');}else{ref=[];kp.setMode('xy');}refreshCmd();}}]:[];},
+    onPoint(p){if(!this.pts.length){this.pts.push(p);kp.setMode('la');return;}
+      if(ref&&ref.length<2){ref.push(p);if(ref.length===2){refA=Math.atan2(ref[1][1]-ref[0][1],ref[1][0]-ref[0][0]);kp.setMode('a');}refreshCmd();return;}
+      apply(angAt(this.pts[0],p));},
+    base(){if(ref&&ref.length===1)return ref[0];return this.pts.length?this.pts[0]:null;},
+    ok(){if(this.pts.length&&kp.num('A')!=null&&(!ref||ref.length===2))apply(angAt(this.pts[0],this.pts[0]));},
+    preview(){if(!this.pts.length||!cur)return;const b=this.pts[0];
+      if(ref&&ref.length<2){if(ref.length===1)previewPath([ref[0]],cur.p,false,true);return;}
+      const a=angAt(b,cur.p);ctx.globalAlpha=.6;sel.forEach(e=>{const c=JSON.parse(JSON.stringify(e));rotEnt(c,b,a);drawTemp(c);});ctx.globalAlpha=1;previewPath([b],cur.p,false,true);}
   }));
 },extra:{name:'rot',filter:ownOnly}});}
+/* 縮放：點基準點（不動的點），輸入比例；「參考」＝點兩點量出原長度，再點（或輸入）新長度 */
+function scaleEnt(e,b,k){xform(e,q=>[b[0]+(q[0]-b[0])*k,b[1]+(q[1]-b[1])*k],0);if(e.r)e.r*=k;if(e.h)e.h*=k;if(e.ls)e.ls*=k;}
+function cmdScale(){return selectStage({title:'縮放',verb:'縮放',next(){
+  const sel=[...selSet];let ref=null,refL=null,B=null;
+  const facAt=p=>{if(refL){const D=kp.num('D');return D!=null?D/refL:dist(B,p)/refL;}const K=kp.num('K');return K!=null?K:null;};
+  const apply=k=>{if(!(k>0)){toast('比例要大於 0');return;}snapshot();for(const e of sel)scaleEnt(e,B,k);saveDraw();endCmd();toast(`已縮放 ×${+k.toFixed(4)}`);};
+  startCmdKeep(pointsCmd({name:'scale',init(){kp.setMode('xy');},
+    hint(){if(!B)return['縮放：點基準點（縮放時這一點不動，圖塊通常點插入點）',!!cur];
+      if(ref&&ref.length===0)return['縮放（參考）：點參考第一點',!!cur];if(ref&&ref.length===1)return['縮放（參考）：點參考第二點（量出原長度）',!!cur];
+      if(ref)return[`縮放（參考）：原長 ${fmt(refL)}，點新長度的點，或在「距離」輸入新長度`,true];
+      return['縮放：在「比例」輸入倍數（2＝放大兩倍、0.5＝一半）按 ✓；要用長度對就按「參考」',true];},
+    extraBtns(){return B?[{t:ref?'參考中':'參考',c:'mode'+(ref?' on':''),f:()=>{if(ref){ref=null;refL=null;kp.setMode('k');}else{ref=[];kp.setMode('xy');}refreshCmd();}}]:[];},
+    onPoint(p){if(!B){B=p;this.pts.push(p);kp.setMode('k');refreshCmd();return;}
+      if(ref&&ref.length<2){ref.push(p);if(ref.length===2){refL=dist(ref[0],ref[1]);if(!(refL>1e-9)){toast('兩點太近');ref=[];refL=null;}else kp.setMode('d');}refreshCmd();return;}
+      if(refL)apply(facAt(p));else toast('輸入比例按 ✓，或按「參考」用長度對');},
+    base(){if(ref&&ref.length===1)return ref[0];return B;},
+    ok(){if(!B)return;if(refL&&kp.num('D')!=null){apply(kp.num('D')/refL);return;}if(!refL&&kp.num('K')!=null)apply(kp.num('K'));},
+    preview(){if(!B||!cur)return;if(ref&&ref.length<2){if(ref.length===1)previewPath([ref[0]],cur.p,false,true);return;}
+      const k=facAt(cur.p);if(!(k>0))return;ctx.globalAlpha=.6;sel.forEach(e=>{const c=JSON.parse(JSON.stringify(e));scaleEnt(c,B,k);drawTemp(c);});ctx.globalAlpha=1;if(refL)previewPath([B],cur.p,false,true);}
+  }));
+},extra:{name:'scale',filter:ownOnly}});}
 /* 插入圖塊：點一個圖塊當樣本（底圖或自己複製的都行，也可以先選好），再連續點插入點；角度可改 */
 function blockIns(sel){for(const e of sel)if(e.gi)return e.gi;const e=sel[0];
   if(e&&e.imp&&e.g&&nativeOn){try{const p=JSON.parse(CadNative.groupIns(e.g));if(p)return p;}catch(_){}}
   let b=[1e18,1e18,-1e18,-1e18];for(const x of sel){const r=entBox(x);if(r){b=[Math.min(b[0],r[0]),Math.min(b[1],r[1]),Math.max(b[2],r[2]),Math.max(b[3],r[3])];}}return[(b[0]+b[2])/2,(b[1]+b[3])/2];}
 function cmdInsert(){return selectStage({title:'插入圖塊',verb:'當樣本',next(){
-  const sel=[...selSet],ins=blockIns(sel);let ang=0;
+  const sel=[...selSet],ins=blockIns(sel);let ang=0,sc=1;
   const place=(p,draw)=>{const a=rad(ang),c=Math.cos(a),s=Math.sin(a),gm=new Map(),out=[];
     for(const e of sel){const k=draw?JSON.parse(JSON.stringify(e)):ownCopy(e,gm);
-      xform(k,q=>{const x=q[0]-ins[0],y=q[1]-ins[1];return[p[0]+x*c-y*s,p[1]+x*s+y*c];},a);if(!draw&&!k.og&&sel.length>1)k.og=gm.get('one')||(gm.set('one',newOg()),gm.get('one'));out.push(k);}return out;};
+      xform(k,q=>{const x=(q[0]-ins[0])*sc,y=(q[1]-ins[1])*sc;return[p[0]+x*c-y*s,p[1]+x*s+y*c];},a);if(sc!==1){if(k.r)k.r*=sc;if(k.h)k.h*=sc;if(k.ls)k.ls*=sc;}if(!draw&&!k.og&&sel.length>1)k.og=gm.get('one')||(gm.set('one',newOg()),gm.get('one'));out.push(k);}return out;};
   let n=0;
   startCmdKeep(pointsCmd({name:'ins',init(){kp.setMode('xy');},
-    extraBtns(){return[{t:`角度 ${ang}°`,c:'mode',f:()=>{const v=prompt('插入角度（度，逆時針為正）',String(ang));if(v!=null&&isFinite(+v)){ang=+v;refreshCmd();}}}];},
+    extraBtns(){return[{t:`角度 ${ang}°`,c:'mode',f:()=>{const v=prompt('插入角度（度，逆時針為正）',String(ang));if(v!=null&&isFinite(+v)){ang=+v;refreshCmd();}}},
+      {t:`比例 ${sc}`,c:'mode',f:()=>{const v=prompt('插入比例（1＝原大小，0.5＝一半）',String(sc));if(v!=null&&isFinite(+v)&&+v>0){sc=+v;refreshCmd();}}}];},
     hint(){return[`插入圖塊（${sel.length} 個物件${n?`，已插入 ${n} 個`:''}）：點插入點，可連續點；✓ 結束`,!!cur];},
     onPoint(p){this.pts.push(p);snapshot();st.ents.push(...place(p,false));n++;saveDraw();refreshCmd();schedule();},
     ok(){endCmd();if(n)toast(`已插入 ${n} 個圖塊`);},
@@ -1292,7 +1326,7 @@ function onTap(sp){
 const TABS=[
   ['sel','選取',()=>{endCmd();closePanel();}],
   ['draw','繪製',[['pline','多段線',cmdPline],['line','直線',cmdLine],['circle','圓',cmdCircle],['arc','弧',cmdArc],['spline','雲形線',cmdSpline],['polygon','多邊形',cmdPolygon],['text','文字',cmdText],['dim','標註',cmdDim],['ins','插入圖塊',cmdInsert]]],
-  ['edit','編輯',[['move','移動',()=>cmdMove(false)],['copy','複製',()=>cmdMove(true)],['rot','旋轉',cmdRotate],['offset','偏移',cmdOffset],['trim','修剪',()=>cmdTrimExt(false)],['extend','延伸',()=>cmdTrimExt(true)],['join','接合',cmdJoin],['brk','打斷',cmdBreak],['del','刪除',cmdDelete],['chly','改圖層',cmdChLayer],['cclip','複製到剪貼簿',cmdCopyClip],['pclip','原座標貼上',cmdPasteOrig]]],
+  ['edit','編輯',[['move','移動',()=>cmdMove(false)],['copy','複製',()=>cmdMove(true)],['rot','旋轉',cmdRotate],['scale','縮放',cmdScale],['offset','偏移',cmdOffset],['trim','修剪',()=>cmdTrimExt(false)],['extend','延伸',()=>cmdTrimExt(true)],['join','接合',cmdJoin],['brk','打斷',cmdBreak],['del','刪除',cmdDelete],['chly','改圖層',cmdChLayer],['cclip','複製到剪貼簿',cmdCopyClip],['pclip','原座標貼上',cmdPasteOrig]]],
   ['meas','測量',[['len','量長度',cmdMeasure],['xy','點坐標',()=>cmdCoord(false)],['ll','經緯度',()=>cmdCoord(true)]]],
   ['layers','圖層',()=>{closePanel();fillLayerSheet();openSheet('layerSheet');}],
   ['pen','手寫',()=>{closePanel();startCmd(cmdPen());}]
