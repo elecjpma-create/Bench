@@ -1916,10 +1916,24 @@ function buildDXF(){
   w(0,'TABLE');w(2,'LAYER');w(70,lys.length);for(const L of lys){w(0,'LAYER');w(2,encDxf(L.name));w(70,0);w(62,L.on===false?-L.ci:L.ci);w(6,encDxf((L.lt||'CONTINUOUS').toUpperCase()));}w(0,'ENDTAB');
   w(0,'TABLE');w(2,'STYLE');w(70,1);w(0,'STYLE');w(2,'STANDARD');w(70,0);w(40,0);w(41,1);w(50,0);w(71,0);w(42,2.5);w(3,'txt');w(4,'chineset.shx');w(0,'ENDTAB');
   w(0,'ENDSEC');
-  w(0,'SECTION');w(2,'ENTITIES');
   const head=(t,e)=>{w(0,t);w(8,encDxf(e.ly||st.cur));if(e.ci!=null)w(62,e.ci);if(e.lt)w(6,encDxf(e.lt.toUpperCase()));};
-  const pt=(c,p)=>{w(c,nf(p[0]));w(c+10,nf(p[1]));w(c+20,0);};
-  for(const e of ents){
+  let OX=0,OY=0;const pt=(c,p)=>{w(c,nf(p[0]-OX));w(c+10,nf(p[1]-OY));w(c+20,0);};
+  // 圖塊（og 一組）輸出成 BLOCK＋INSERT，CAD 打開還是一個圖塊；圖塊名稱用原本的名稱＋流水號，避免和底圖同名但內容不同
+  const G=new Map();for(const e of ents)if(e.og){let l=G.get(e.og);if(!l)G.set(e.og,l=[]);l.push(e);}
+  const blk=[];let bn=0;const usedN=new Set();
+  for(const[og,L]of G){let ins=null;for(const e of L)if(e.gi){ins=e.gi;break;}
+    if(!ins){let b=[1e18,1e18];for(const e of L){const r=entBox(e);if(r){b=[Math.min(b[0],r[0]),Math.min(b[1],r[1])];}}const e0=L[0];ins=b[0]<1e17?b:(e0.a||e0.o||e0.p||(e0.pts&&e0.pts[0])||[0,0]);}
+    let base=String(L.find(e=>e.gn)?.gn||'CPY').replace(/[<>\/":;?*|=,`\s]/g,'_').slice(0,24);let nm;do{nm=`${base}_${++bn}`;}while(usedN.has(nm));usedN.add(nm);
+    blk.push({nm,ins,L,ly:L[0].ly||st.cur});}
+  w(0,'SECTION');w(2,'BLOCKS');
+  for(const B of blk){w(0,'BLOCK');w(8,'0');w(2,encDxf(B.nm));w(70,0);w(10,0);w(20,0);w(30,0);w(3,encDxf(B.nm));OX=B.ins[0];OY=B.ins[1];for(const e of B.L)wEnt(e);OX=OY=0;w(0,'ENDBLK');w(8,'0');}
+  w(0,'ENDSEC');
+  w(0,'SECTION');w(2,'ENTITIES');
+  for(const B of blk){w(0,'INSERT');w(8,encDxf(B.ly));w(2,encDxf(B.nm));pt(10,B.ins);}
+  for(const e of ents)if(!e.og)wEnt(e);
+  w(0,'ENDSEC');w(0,'EOF');
+  return o.join('\r\n')+'\r\n';
+  function wEnt(e){
     switch(e.t){
       case'line':head('LINE',e);pt(10,e.a);pt(11,e.b);break;
       case'dim':{const L=dist(e.a,e.b);if(!L)break;const h=e.h||st.textH||2,ux=(e.b[0]-e.a[0])/L,uy=(e.b[1]-e.a[1])/L,nx=-uy,ny=ux,off=e.off||0,sg=Math.sign(off)||1;
@@ -1928,7 +1942,7 @@ function buildDXF(){
         ln(A2,B2);const tx=(ux+nx)/Math.SQRT2*h*0.5,ty=(uy+ny)/Math.SQRT2*h*0.5;for(const P of[A2,B2])ln([P[0]-tx,P[1]-ty],[P[0]+tx,P[1]+ty]);
         let ang=Math.atan2(uy,ux);if(Math.cos(ang)<-1e-6)ang+=Math.PI;const m=midp(A2,B2),tp=[m[0]-Math.sin(ang)*h*0.4,m[1]+Math.cos(ang)*h*0.4];
         head('TEXT',e);pt(10,tp);w(40,nf(h));w(1,fmt(L));w(50,nf(normA(deg(ang))));w(7,'STANDARD');w(72,1);pt(11,tp);break;}
-      case'pline':case'ink':head('POLYLINE',e);w(66,1);pt(10,[0,0]);w(70,e.closed?1:0);
+      case'pline':case'ink':head('POLYLINE',e);w(66,1);pt(10,[OX,OY]);w(70,e.closed?1:0);
         if(e.av)e.av.forEach((p,i)=>{w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);if(e.bu&&e.bu[i])w(42,nf(e.bu[i]));w(70,0);});
         else for(const p of e.pts){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));break;
       case'circle':head('CIRCLE',e);pt(10,e.o);w(40,nf(e.r));break;
@@ -1936,11 +1950,9 @@ function buildDXF(){
       case'text':e.lines.forEach((ln,i)=>{head('TEXT',e);const off=(e.y0||0)+i*(e.ls||e.h*1.667),r=e.rot||0,p=[e.p[0]+Math.sin(r)*off,e.p[1]-Math.cos(r)*off];pt(10,p);w(40,nf(e.h));w(1,encDxf(ln));w(50,nf(normA(deg(r))));if(e.wf&&e.wf!==1)w(41,nf(e.wf));w(7,'STANDARD');if(e.ha){w(72,e.ha);pt(11,p);}});break;
       case'point':head('POINT',e);pt(10,e.p);break;
       case'fill':for(const r of e.rings){if(r.length===3||r.length===4){head('SOLID',e);pt(10,r[0]);pt(11,r[1]);pt(12,r[r.length-1]);pt(13,r.length===4?r[2]:r[2]);}
-        else{head('POLYLINE',e);w(66,1);pt(10,[0,0]);w(70,1);for(const p of r){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));}}break;
+        else{head('POLYLINE',e);w(66,1);pt(10,[OX,OY]);w(70,1);for(const p of r){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));}}break;
     }
   }
-  w(0,'ENDSEC');w(0,'EOF');
-  return o.join('\r\n')+'\r\n';
 }
 function exportName(){if(blankName){const d=new Date(),z=n=>String(n).padStart(2,'0');return`${blankName}_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.dxf`;}const base=impName?impName.replace(/\.[^.]+$/,''):'補繪';const d=new Date(),z=n=>String(n).padStart(2,'0');return`${base}_補繪_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.dxf`;}
 async function exportDXF(share){
