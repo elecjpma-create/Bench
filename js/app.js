@@ -1716,7 +1716,7 @@ function addrDotsIn(x0,y0,x1,y1,max){const D=addrDots(),o=[];for(let i=Math.floo
     for(const k of D.G.get(i*1e6+j)||[]){const x=D.X[k],y=D.Y[k];if(x>=x0&&x<=x1&&y>=y0&&y<=y1){o.push(k);if(o.length>max)return null;}}}return o;}
 function drawAddr(){if(!addrShow||!addrRaw)return;const a=toW([0,H]),b=toW([W,0]);if((b[0]-a[0])*(b[1]-a[1])>4e6)return;// 拉太遠（超過約 2km×2km）不畫
   const K=addrDotsIn(a[0],a[1],b[0],b[1],30000);if(!K)return;const D=addrDots();ctx.save();ctx.fillStyle='#ff9f1c';ctx.strokeStyle=st.bg==='white'?'#7a4300':'#1a1206';ctx.lineWidth=1;
-  for(const k of K){const q=toS([D.X[k],D.Y[k]]);ctx.beginPath();ctx.arc(q[0],q[1],3,0,TAU);ctx.fill();ctx.stroke();}ctx.restore();}
+  ctx.beginPath();for(const k of K){const q=toS([D.X[k],D.Y[k]]);ctx.moveTo(q[0]+3,q[1]);ctx.arc(q[0],q[1],3,0,TAU);}ctx.fill();ctx.stroke();ctx.restore();}// 全部的點合成一條路徑，一次填色、一次描邊
 /** 點門牌點：顯示這個位置（1m 內）所有門牌 */
 function addrTap(sp){if(!addrShow||!addrRaw)return false;const w=toW(sp),r=16/st.view.s;const K=addrDotsIn(w[0]-r,w[1]-r,w[0]+r,w[1]+r,500);if(!K||!K.length)return false;
   const D=addrDots();let bk=-1,bd=1e18;for(const k of K){const d=Math.hypot(D.X[k]-w[0],D.Y[k]-w[1]);if(d<bd){bd=d;bk=k;}}if(bd>r)return false;
