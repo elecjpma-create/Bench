@@ -449,6 +449,7 @@ function findSnap(w,tol,base){
       case'dim':if(O.end){cand(e.a,'end');cand(e.b,'end');}break;
     }
   }
+  if(O.ins&&typeof insSnapCands==='function')for(const p of insSnapCands(w,tol))cand(p,'ins');// 圖塊插入點
   if(O.int&&prims.length>1)for(let i=0;i<prims.length;i++)for(let j=i+1;j<prims.length;j++)for(const p of inters(prims[i],prims[j])){
     if(prims[i].arc&&!inRange(Math.atan2(p[1]-prims[i].o[1],p[0]-prims[i].o[0]),...prims[i].arc))continue;
     if(prims[j].arc&&!inRange(Math.atan2(p[1]-prims[j].o[1],p[0]-prims[j].o[0]),...prims[j].arc))continue;

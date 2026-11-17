@@ -490,6 +490,10 @@ const insCache=new Map();
 function impIns(e){if(e.gi)return e.gi;if(!e.imp||!e.g)return null;if(insCache.has(e.g))return insCache.get(e.g);let p=null;
   for(const x of groupOf(e))if(x.gi){p=x.gi;break;}
   if(!p&&nativeOn){try{p=JSON.parse(CadNative.groupIns(e.g));}catch(_){p=null;}}insCache.set(e.g,p);return p;}
+/** 鎖點用：游標附近圖塊的插入點（底圖圖塊、自己複製或插入的圖塊）。圖塊的線可能離插入點有段距離，所以往外多找 3m */
+function insSnapCands(w,tol){const R=Math.max(tol,3),seen=new Set(),out=[];
+  for(const e of snapEnts(w,R)){let k,p;if(e.imp&&e.g){k='i'+e.g;if(seen.has(k))continue;seen.add(k);p=impIns(e);}else if(!e.imp&&e.og&&e.gi){k='o'+e.og;if(seen.has(k))continue;seen.add(k);p=e.gi;}else continue;
+    if(p&&Math.abs(p[0]-w[0])<=tol&&Math.abs(p[1]-w[1])<=tol)out.push(p);}return out;}
 function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const og=ogOf(e,gm);if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}// 複製的圖塊帶著插入點if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}
   if(og)c.og=og;else delete c.og;return c;}
 
