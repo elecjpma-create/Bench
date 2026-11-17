@@ -415,10 +415,17 @@ function cmdText(){return pointsCmd({name:'text',keypad:'xy',
 });}
 function openTextDlg(p,keep){
   if(!keep){textCtx={p:p.slice()};$('txtVal').value='';$('txtH').value=st.textH;$('txtA').value=textCtx.ang!=null?textCtx.ang:0;}
-  openSheet('textSheet');setTimeout(()=>{try{$('txtVal').focus();}catch(_){}},150);
+  $('txtOk').textContent=textCtx&&textCtx.edit?'更新':'放上去';openSheet('textSheet');setTimeout(()=>{try{$('txtVal').focus();}catch(_){}},150);
 }
+/** 編輯現有文字（自己寫的；底圖的不改）：內容、字高、角度 */
+function openTextEdit(e){if(!e||e.t!=='text'||e.imp)return;textCtx={p:e.p.slice(),edit:e};
+  $('txtVal').value=(e.lines||[]).join('\n');$('txtH').value=+(+e.h).toFixed(4);$('txtA').value=+normA(deg(e.rot||0)).toFixed(2);openTextDlg(null,true);}
 $('txtOk').onclick=()=>{
   const v=$('txtVal').value.trim();if(!v||!textCtx){closeSheet('textSheet');return;}
+  if(textCtx.edit){const e=textCtx.edit;if(!st.ents.includes(e)){closeSheet('textSheet');textCtx=null;return;}
+    const h=parseFloat($('txtH').value)||e.h,a=parseFloat($('txtA').value)||0;snapshot();
+    e.ls=e.ls?e.ls*h/(e.h||h):h*1.667;e.h=h;e.rot=rad(a);e.lines=v.split('\n');delete e._sg;delete e.rc;delete e.bb;
+    saveDraw();closeSheet('textSheet');textCtx=null;setHint(baseHintText(),true,{t:'編輯文字',f:()=>openTextEdit(e)});schedule();toast('已更新文字');return;}
   const h=parseFloat($('txtH').value)||st.textH,a=parseFloat($('txtA').value)||0;st.textH=h;saveSettings();
   snapshot();addEnt({t:'text',p:textCtx.p,h,rot:rad(a),lines:v.split('\n'),ha:0,y0:0,ls:h*1.667,wf:1,font:'txt',big:'chineset'});saveDraw();
   closeSheet('textSheet');textCtx=null;startCmd(cmdText());
@@ -427,7 +434,7 @@ $('txtAlign').onclick=()=>{
   closeSheet('textSheet');const saved=textCtx;
   startCmd({kind:'pickObj',name:'textalign',hint:()=>['點一條線，文字會順著它的方向',false],
     onPick(e,w){const a=lineAngleAt(e,w);if(a==null){toast('這個物件取不到方向');return;}
-      let d=normA(deg(a));if(d>90&&d<=270)d=normA(d-180);textCtx=saved;cmd=null;$('txtA').value=d.toFixed(2);openTextDlg(null,true);startCmdQuiet(cmdText());}});
+      let d=normA(deg(a));if(d>90&&d<=270)d=normA(d-180);textCtx=saved;cmd=null;$('txtA').value=d.toFixed(2);openTextDlg(null,true);if(saved&&saved.edit)endCmd();else startCmdQuiet(cmdText());}});
 };
 function startCmdQuiet(c){cmd=c;cur=null;kp.unlockAll();if(c.keypad)kp.show(c.keypad);refreshCmd();updateUI();}
 function lineAngleAt(e,w){
@@ -1309,7 +1316,7 @@ function onTap(sp){
   if(!cmd){const e=pickEnt(w);if(e){const grp=grpOf(e);
       if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
       else{for(const x of grp)selSet.add(x);selE=e;}}
-    setHint(baseHintText(),!!selE);updSelBar();schedule();return;}
+    setHint(baseHintText(),!!selE,selSet.size===1&&selE&&!selE.imp&&selE.t==='text'?{t:'編輯文字',f:()=>openTextEdit(selE)}:null);updSelBar();schedule();return;}
   switch(cmd.kind){
     case'points':
       if(cmd.live){setCursorRaw(w);return;}
