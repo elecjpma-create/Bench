@@ -1321,7 +1321,8 @@ function onTap(sp){
     const f=T.F[k];setHint(`區域面積 ${f.area<10?f.area.toFixed(2):f.area.toFixed(1)} m²　地物：${[...f.kinds.keys()].map(x=>x==='H'?'房屋':x).join('、')||'（無）'}`,true);schedule();return;}
   if(!cmd&&addrTap(sp))return;
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
-    if(bi>=0){if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
+    if(bi>=0){if(bi===smallIdx&&!smallHl){smallHl=true;schedule();return;}if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;smallHl=true;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
+  if(!cmd&&smallMarks&&smallHl&&smallIdx>=0){smallHl=false;schedule();setHint(baseHintText(),false);return;}// 點旁邊空白處：收起目前這筆的範圍標示
   if(!cmd){const e=pickEnt(w,st.lockBase?ownOnly:null);if(e){const grp=grpOf(e);
       if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
       else{for(const x of grp)selSet.add(x);selE=e;}}
@@ -1475,7 +1476,7 @@ function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!=
   if(document.activeElement!==$('areaTol'))$('areaTol').value=areaTolV();
   $('lyArea').textContent=smallMarks&&smallMode==='area'?'取消區域檢查標記':'區域檢查';}
 $('lyOld').onclick=()=>{const o=oldLayers();if(!o.length)return;if(oldOff())o.forEach(n=>offLy.delete(n));else o.forEach(n=>offLy.add(n));syncHid();fillLayerSheet();schedule();};
-let smallMarks=null,smallIdx=-1,smallKey='',smallMode='small';
+let smallMarks=null,smallIdx=-1,smallKey='',smallMode='small',smallHl=true;// smallHl：目前這筆的範圍、缺口、指示線要不要畫（點旁邊空白處就收起來）
 // 網頁版（DXF）找孤立小線段：規則同原生端
 function findSmallJS(S,max,NW,QS){
   const link=(a,b)=>a===b;// 只看同一個圖層（Q 也一樣）
@@ -1514,9 +1515,9 @@ function okSave(){if(!smallMarks)return;const S=okLoad();for(const m of smallMar
 function okApply(){const S=okLoad();if(smallMarks)for(const m of smallMarks)m.ok=S.has(okKey(m));}
 function okToggle(){const m=smallMarks&&smallMarks[smallIdx];if(!m)return;m.ok=!m.ok;okSave();updSmallBar();schedule();}
 function smallGo(d){const V=smallVis();if(!V.length){toast(smallMode==='area'?'開著的分類裡沒有問題':smallMode==='rname'?'沒有路名問題':'目前開著的圖層沒有小線段');return;}
-  let k=V.indexOf(smallMarks[smallIdx]);k=k<0?(d>=0?0:V.length-1):(k+d+V.length)%V.length;const m=V[k];smallIdx=smallMarks.indexOf(m);
+  let k=V.indexOf(smallMarks[smallIdx]);k=k<0?(d>=0?0:V.length-1):(k+d+V.length)%V.length;const m=V[k];smallIdx=smallMarks.indexOf(m);smallHl=true;
   const v=st.view;v.s=Math.max(v.s,40);v.ox=W/2-m.p[0]*v.s;v.oy=H/2+m.p[1]*v.s;updSmallBar();schedule();}
-function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=null;updSmallBar();}if(!smallMarks)return;const cm=smallMarks[smallIdx];ctx.save();
+function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=null;updSmallBar();}if(!smallMarks)return;const cm=smallHl?smallMarks[smallIdx]:null;ctx.save();
   for(const m of smallMarks){if(!markVis(m))continue;const q=toS(m.p);if(q[0]<-30||q[1]<-30||q[0]>W+30||q[1]>H+30)continue;const on=m===cm;
     ctx.strokeStyle=on?'#ffea00':m.ok?'#6b6f76':(AREA_COL[m.type]||'#ff2bd6');ctx.lineWidth=on?3.5:m.ok?1.5:2.2;ctx.beginPath();ctx.arc(q[0],q[1],on?24:17,0,TAU);ctx.stroke();}
   if(cm&&cm.path){const o=cm.o,P=cm.path;ctx.strokeStyle='#2f6bff';ctx.lineWidth=5;ctx.lineCap='round';ctx.lineJoin='round';ctx.beginPath();
