@@ -471,7 +471,7 @@ function cmdCoord(ll){return pointsCmd({name:ll?'ll':'xy',live:true,keypad:'xy',
 
 /* ---- 選取物件的共用步驟 ---- */
 function selectStage(o){const x=o.extra||{};boxArm=false;return{kind:'select',name:x.name||o.name,filter:x.filter||o.filter,group:!!x.group,
-  extraBtns(){return[{t:boxArm?'框選：拖曳畫框':'框選',c:'mode'+(boxArm?' on':''),f:()=>{boxArm=!boxArm;refreshCmd();}}];},
+  extraBtns(){return[{t:boxArm?'框選：拖曳畫框':'框選',c:'mode'+(boxArm?' on':''),f:()=>{boxArm=!boxArm;refreshCmd();}},{t:st.lockBase?'底圖已鎖':'鎖定底圖',c:'mode'+(st.lockBase?' on':''),f:()=>{lockBaseToggle();refreshCmd();}}];},
   hint:o.hint||function(){return[`${o.title}：點選要${o.verb}的物件${x.group?'（底圖也可以，圖塊會整個選起來）':''}（再點一次取消；按「框選」再拖曳可一次選一片：往右拉選框內的、往左拉碰到就選），選好按 ✓　已選 ${selCount()}`,selSet.size>0];},
   ok:o.ok||function(){if(!selSet.size){toast('還沒選物件');return;}o.next();}};}
 const ownOnly=e=>!e.imp;
@@ -517,9 +517,9 @@ function boxHit(e,R,cross){
 }
 function boxSelect(s0,s1){
   const a=toW(s0),b=toW(s1),R=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])],cross=s1[0]<s0[0];
-  const f=cmd&&cmd.filter;let n=0;const ok=e=>(!f||f(e))&&boxHit(e,R,cross);
+  const f=cmd&&cmd.filter;let n=0;const ok=e=>(!f||f(e))&&!(st.lockBase&&e.imp)&&boxHit(e,R,cross);
   for(const e of st.ents)if(ownShown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
-  if(!f||f({imp:1,t:'line',a:[0,0],b:[0,0]})){
+  if(!st.lockBase&&(!f||f({imp:1,t:'line',a:[0,0],b:[0,0]}))){
     const L=grid?queryImp(R[0],R[1],R[2],R[3]):imp;for(const e of L)if(shown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
     if(nativeOn)for(const e of nativeNear(R[0],R[1],R[2],R[3],200000))if(shown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
   }
@@ -1313,7 +1313,7 @@ function onTap(sp){
   if(!cmd&&addrTap(sp))return;
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
     if(bi>=0){if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
-  if(!cmd){const e=pickEnt(w);if(e){const grp=grpOf(e);
+  if(!cmd){const e=pickEnt(w,st.lockBase?ownOnly:null);if(e){const grp=grpOf(e);
       if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
       else{for(const x of grp)selSet.add(x);selE=e;}}
     setHint(baseHintText(),!!selE,selSet.size===1&&selE&&!selE.imp&&selE.t==='text'?{t:'編輯文字',f:()=>openTextEdit(selE)}:null);updSelBar();schedule();return;}
@@ -1322,7 +1322,7 @@ function onTap(sp){
       if(cmd.live){setCursorRaw(w);return;}
       if(cur){commitPoint();if(!cmd||cmd.kind!=='points')return;}
       setCursorRaw(w);return;
-    case'select':{const e=pickEnt(w,cmd.filter);if(e){const grp=(!e.imp&&e.og)?ownGroup(e):(cmd.group&&e.g)?groupOf(e):[e];const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);}refreshCmd();return;}
+    case'select':{const f0=cmd.filter,e=pickEnt(w,st.lockBase?(x=>!x.imp&&(!f0||f0(x))):f0);if(e){const grp=(!e.imp&&e.og)?ownGroup(e):(cmd.group&&e.g)?groupOf(e):[e];const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);}refreshCmd();return;}
     case'pickObj':{const e=pickEnt(w,cmd.filter);if(e)cmd.onPick(e,w);else toast('那裡沒有物件');refreshCmd();return;}
     case'side':cmd.onSide(w);return;
     default:selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();
@@ -1439,8 +1439,11 @@ $('lyNone').onclick=()=>{impLayers.forEach(l=>offLy.add(l.name));syncHid();fillL
 
 /* ---------- 點到物件時：關閉這個圖層／到圖層列表找它 ---------- */
 function updSelBar(){const b=$('selBar');if(!b)return;const show=!cmd;b.style.display=show?'flex':'none';if(!show)return;
-  $('selBox').textContent=boxArm?'框選：拖曳畫框':'框選';$('selBox').classList.toggle('on',boxArm);
+  $('selBox').textContent=boxArm?'框選：拖曳畫框':'框選';$('selBox').classList.toggle('on',boxArm);$('selLock').textContent=st.lockBase?'底圖已鎖':'鎖定底圖';$('selLock').classList.toggle('on',!!st.lockBase);
   $('selClr').style.display=selSet.size?'':'none';$('selClr').textContent=`清除（${selCount()}）`;$('selOff').style.display=$('selList').style.display=selE?'':'none';}
+function lockBaseToggle(){st.lockBase=!st.lockBase;saveSettings();if(st.lockBase){let n=0;for(const e of [...selSet])if(e.imp){selSet.delete(e);n++;}if(selE&&selE.imp)selE=[...selSet].pop()||null;}
+  toast(st.lockBase?'底圖已鎖定：選取、框選只會選到自己畫的':'底圖解鎖：可以選到底圖',2200);updSelBar();schedule();}
+$('selLock').onclick=lockBaseToggle;
 $('selBox').onclick=()=>{boxArm=!boxArm;updSelBar();if(boxArm)toast('拖曳畫框：往右拉選框內的、往左拉碰到就選（累加）',2500);};
 $('selClr').onclick=()=>{selSet.clear();selE=null;boxArm=false;setHint(baseHintText(),false);updSelBar();schedule();};
 function closeSelLayer(){if(!selE)return;const n=selE.ly||'0';
