@@ -1530,11 +1530,11 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
 $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){st.areaTol=v;saveSettings();}else $('areaTol').value=areaTolV();};
 $('smallMax').onchange=()=>{const v=parseFloat($('smallMax').value);if(v>0){st.smallMax=v;saveSettings();updOldBtn();}else $('smallMax').value=smallMaxV();};
 /* ---------- 區域檢查：一區兩種屬性、房屋未封閉、增建註記位置、空白區（規則在 js/area.js） ---------- */
-const AREA_COL={edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',lbfree:'#ff7ad9',stray:'#ff4fa0',small:'#ffe14d',onroad:'#ff8a3d',elevcross:'#9f7bff',veg:'#7ddc4a',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0',rname:'#4da3ff',rmiss:'#8ab4ff'};
+const AREA_COL={oddly:'#ff9ecf',edge:'#3dff7a',road:'#b46bff',mix:'#ff2bd6',open:'#ff5a1f',addout:'#ffa31a',empty:'#2bd9ff',roadfree:'#c08bff',lbfree:'#ff7ad9',stray:'#ff4fa0',small:'#ffe14d',onroad:'#ff8a3d',elevcross:'#9f7bff',veg:'#7ddc4a',floor:'#ff3b3b',floorout:'#ff8f8f',openadd:'#ff9a5a',flooradd:'#ff6f91',addside:'#ffd21a',addline:'#e0b000',facility:'#00d0a0',rname:'#4da3ff',rmiss:'#8ab4ff'};
 // 區域檢查結果分類（副圖層列表）：順序＝列表順序＝◀▶ 順序
 const AREA_CAT=[['edge','接邊不合／中斷'],
   ['open','房屋未封閉'],['floor','永久樓層衝突'],['floorout','樓層註記在房屋外'],['openadd','關掉增建後房屋缺口（5 碼）'],['flooradd','關掉增建後樓層衝突（5 碼）'],['addside','增建線找不到增建註記'],['addline','增建線越界／自由端點'],['addout','增建註記位置'],
-  ['mix','一區兩種屬性'],['road','和道路／人行道相通'],['onroad','圖例在土路上'],['stray','圖例插入點跑到範圍外'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['elevcross','平面道路跨越高架'],['facility','大型設施沒有範圍線'],['veg','範圍線用錯圖層（植被圖層）'],['small',`新圖小線段`],['rname','路名和附近門牌對不上'],['rmiss','門牌有、圖上沒寫路名'],['empty','區域內無地物']];
+  ['mix','一區兩種屬性'],['road','和道路／人行道相通'],['onroad','圖例在土路上'],['stray','圖例插入點跑到範圍外'],['roadfree','道路線懸空'],['lbfree','地類界懸空'],['elevcross','平面道路跨越高架'],['facility','大型設施沒有範圍線'],['veg','範圍線用錯圖層（植被圖層）'],['oddly','範圍線用錯圖層（註記、圖例圖層）'],['small',`新圖小線段`],['rname','路名和附近門牌對不上'],['rmiss','門牌有、圖上沒寫路名'],['empty','區域內無地物']];
 let areaOff=new Set();try{areaOff=new Set(JSON.parse(localStorage.getItem('areaOff')||'[]'));}catch(_){}
 const markVis=m=>!hidLy.has(m.l)&&!(m.type&&smallMode==='area'&&areaOff.has(m.type));
 function fillAreaSheet(){const box=$('areaCats');box.innerHTML='';if(!smallMarks||smallMode!=='area'){$('areaInfo').textContent='還沒有區域檢查結果';return;}
@@ -1563,13 +1563,16 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
   // 只寫編號的圖層（97321）借同編號、有名稱的那層（97321_旱作地）來判斷
   const full=new Map();for(const l of impLayers){const m=/^(a?\d+[A-Za-z]*)[_\s]*(\S.*)$/.exec(l.name);if(m&&/[^\x00-\x7f]/.test(m[2]))full.set(m[1].toUpperCase(),l.name);}
   const fullName=n=>/^a?\d+[A-Za-z]*$/.test(n)?(full.get(n.toUpperCase())||n):n;
-  const roles=new Map(),kindOf=new Map(),par=new Map(),withHouse=new Set(),bigKinds=new Set(),veg=[],ditch=[];
+  const roles=new Map(),kindOf=new Map(),par=new Map(),withHouse=new Set(),bigKinds=new Set(),veg=[],ditch=[],odd=[];
   const fd=x=>{while(par.has(x)&&par.get(x)!==x)x=par.get(x);return x;},un=(a,b)=>{if(!par.has(a))par.set(a,a);if(!par.has(b))par.set(b,b);const A=fd(a),B=fd(b);if(A!==B)par.set(B,A);};
   for(const l of impLayers){const fn=fullName(l.name),r=areaRole(fn);if(!r)continue;roles.set(l.name,r);
     if(r.a){const nm=areaKindName(fn);un('n:'+nm,'c:'+r.a);}}// 新舊圖：同編號或同名稱都算同一種地物
   un('n:圃','n:花圃');un('n:球場','n:體育場');un('n:運動場','n:體育場');// 同義名稱
   const disp=new Map();for(const l of impLayers){const r=roles.get(l.name);if(!r||!r.a)continue;const nm=areaKindName(fullName(l.name)),root=fd('n:'+nm);if(!disp.has(root))disp.set(root,nm);kindOf.set(l.name,disp.get(root));if(r.withH||r.big)withHouse.add(disp.get(root));if(r.big)bigKinds.add(disp.get(root));}
   if(!roles.size)return null;
+  // 註記、圖例、文字的圖層（不是範圍類）：上面畫的一般線段（不含圖塊、文字）另外收，給區域檢查判斷有沒有拿來圍範圍
+  const oddLy=new Set();for(const[n,r]of roles)if(!r.b&&!r.land&&!r.ditch&&!r.gate&&(r.t||r.a||r.fac))oddLy.add(n);
+  const oddPush=(a,ly)=>{const r=roles.get(ly);odd.push({p:a,ly,nm:lnm(ly),h:r&&(r.t==='house'||r.t==='temp')});};
   // 作業範圍線候選：沒有編碼的圖層上的封閉線（例如 bon）
   const rangeLy=new Set(impLayers.map(l=>l.name).filter(n=>!roles.has(n)&&!/^a?\d/.test(n)&&!/^Q/i.test(n)&&!/圖框|圖號/.test(n)));
   const frameLy=new Set(impLayers.map(l=>l.name).filter(n=>/圖框/.test(n)));// 每一幅的圖框：當邊界，也拿來做接邊檢查
@@ -1581,15 +1584,16 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
   const lnmC=new Map(),lnm=ly=>{let v=lnmC.get(ly);if(v==null)lnmC.set(ly,v=areaSyn(areaKindName(fullName(ly))));return v;};
   const textPt=(e,r)=>{const s=e.lines.join('').replace(/\s/g,'');if(!s)return;const x=e.p[0]-ox,y=e.p[1]-oy,b=e.bb||entBox(e),n0=points.length;// 以插入點為準
     if(r.t==='temp')points.push({x,y,k:'H'});// 位置用插入點
-    else if(r.t==='house'){if(/^\d/.test(s))points.push({x,y,k:'H',fl:s.toUpperCase()});else if(/^[A-Za-z]/.test(s))points.push({x,y,add:true,tx:s.toUpperCase()});}
+    else if(r.t==='house'){if(/^\d/.test(s))points.push({x,y,k:'H',fl:s.toUpperCase()});else if(/^[A-Za-z]/.test(s))points.push({x,y,add:true,tx:s.toUpperCase()});else if(/^[(（]?[中危廢]/.test(s))points.push({x,y,k:'H'});}// 中（建築中）、危、廢這類房屋註記
     else if(r.t==='add')points.push({x,y,add:true,tx:s.toUpperCase()});
     else if(r.a)points.push({x,y,k:kind(e.ly)});
+    else if(r.fac)points.push({x,y,fac:true});// 候車亭這類附屬設施寫成文字的
     for(let i=n0;i<points.length;i++)if(b&&isFinite(b[0])){points[i].cx=(b[0]+b[2])/2-ox;points[i].cy=(b[1]+b[3])/2-oy;}};// 插入點剛好壓在線上時，往文字中心偏一點判斷
   if(nativeOn){
-    const req={b:[...rangeLy,...frameLy],p:[],l:[],g:[]};for(const[n,r]of roles){if(r.b||r.ditch)req.b.push(n);if(r.gb&&!r.gate)req.g.push(n);if(r.a||r.gate||r.fac||(r.t&&r.b))req.p.push(n);if(r.land)req.l.push(n);}
+    const req={b:[...rangeLy,...frameLy],p:[],l:[],g:[]};for(const[n,r]of roles){if(r.b||r.ditch)req.b.push(n);if(r.gb&&!r.gate)req.g.push(n);if(oddLy.has(n))req.l.push(n);if(r.a||r.gate||r.fac||(r.t&&r.b))req.p.push(n);if(r.land)req.l.push(n);}
     const D=JSON.parse(CadNative.areaData(JSON.stringify(req))||'null');if(!D)return null;if(D.err)throw new Error(D.err);
     ox=D.ox;oy=D.oy;
-    for(const a of D.s){const ly=D.L[a[0]],r=roles.get(ly);if(r&&r.ditch){ditch.push(a.slice(1));if(!r.b)continue;}if(r&&r.b)pushLine(a.slice(1),r,ly);else if(r&&r.land)areaVeg(a.slice(1),ly,ox,oy,points,veg,kind,lnm);else if(frameLy.has(ly))lines.push({p:a.slice(1),r:AR_FRAME,ly});else if(rangeLy.has(ly))ranges.push(a.slice(1));}
+    for(const a of D.s){const ly=D.L[a[0]],r=roles.get(ly);if(r&&r.ditch){ditch.push(a.slice(1));if(!r.b)continue;}if(r&&r.b)pushLine(a.slice(1),r,ly);else if(r&&oddLy.has(ly))oddPush(a.slice(1),ly);else if(r&&r.land)areaVeg(a.slice(1),ly,ox,oy,points,veg,kind,lnm);else if(frameLy.has(ly))lines.push({p:a.slice(1),r:AR_FRAME,ly});else if(rangeLy.has(ly))ranges.push(a.slice(1));}
     for(const a of D.p){const n=D.L[a[0]],r=roles.get(n);if(r)grpPt(a[1],a[2],r,n);}
   }else{
     const f=imp.find(e=>e.bb&&isFinite(e.bb[0]));if(f){ox=Math.floor(f.bb[0]);oy=Math.floor(f.bb[1]);}
@@ -1602,12 +1606,13 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
       if(e.g){if(!r.a&&!r.t&&!r.gate&&!r.fac)continue;const k=e.g+'|'+e.ly;const g=grp.get(k);if(!g)grp.set(k,{b:b.slice(),ly:e.ly,gi:e.gi});else{g.b[0]=Math.min(g.b[0],b[0]);g.b[1]=Math.min(g.b[1],b[1]);g.b[2]=Math.max(g.b[2],b[2]);g.b[3]=Math.max(g.b[3],b[3]);}continue;}
       if(r.ditch){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);ditch.push(a);}if(!r.b)continue;}
       if(r.land){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);if(e.closed&&a.length>=4&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)a.push(a[0],a[1]);areaVeg(a,e.ly,ox,oy,points,veg,kind,lnm);}continue;}// 植被圖層的散線
+      if(!r.b&&oddLy.has(e.ly)&&e.t!=='point'&&e.t!=='fill'){for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);if(e.closed&&a.length>=4&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)a.push(a[0],a[1]);oddPush(a,e.ly);}continue;}
       if(!r.b||e.t==='point'||e.t==='fill')continue;
       for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);pushLine(a,r,e.ly);}}
     for(const g of grp.values())grpPt((g.gi?g.gi[0]:(g.b[0]+g.b[2])/2)-ox,(g.gi?g.gi[1]:(g.b[1]+g.b[3])/2)-oy,roles.get(g.ly),g.ly);
   }
-  for(const e of imp){if(e.t!=='text')continue;const r=roles.get(e.ly);if(r)textPt(e,r);}
-  return{lines,points,gates,withHouse,bigKinds,veg,ditch,ox,oy,range:areaPickRange(ranges,lines)};
+  const notes=[];for(const e of imp){if(e.t!=='text')continue;const r=roles.get(e.ly);if(r)textPt(e,r);else if(/註記/.test(e.ly)&&e.p)notes.push([e.p[0]-ox,e.p[1]-oy]);}// 中文註記（候車亭、警衛室…）：有寫名稱的房子不算沒有註記
+  return{lines,points,gates,withHouse,bigKinds,veg,ditch,odd,notes,ox,oy,range:areaPickRange(ranges,lines)};
 }
 /** 作業範圍：沒有編碼的圖層上最能框住新畫線的封閉線；回傳 {ring, inside:新畫的在裡面還是外面} */
 function areaPickRange(ranges,lines){
@@ -1634,7 +1639,7 @@ function areaHoles(k){if(areaHoleC.has(k))return areaHoleC.get(k);const T=areaTo
   areaHoleC.set(k,H);return H;}
 function areaRun(D){
   const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;
-  const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,keep});
+  const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,odd:D.odd,notes:D.notes,keep});
   areaTopo=kt.T?{F:kt.T.F,locate:kt.T.locate,ox:D.ox,oy:D.oy}:null;areaFills=new Map();areaHoleC.clear();
   if(keep){const n0=R.marks.length;R.marks=R.marks.filter(m=>keep(m.x,m.y));R.st.outRange=n0-R.marks.length;}
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;

@@ -194,15 +194,17 @@ function arPlace(T,points,G){
 /** 只要分區（找缺口時試補線用） */
 function arSplit(lines,points,tol){const G=arGraph(lines,tol);if(!G.ns)return[];const P=arPrune(G),T=arFaces(G,P.alive);arPlace(T,points.map(p=>Object.assign({},p)));return T.F;}
 
-/** 相連的一串被剪掉的邊只標一次，標在懸空的那一端 */
-function arChains(G,edges,ok){
+/** 相連的一串被剪掉的邊只標一次，標在懸空的那一端。
+ *  整串加起來短於 minLen（預設 AR_STUB）的不算：線頭多出幾公分、或封閉線在轉角衝出去又折回的小尖刺，紙圖上看不出來 */
+const AR_STUB=0.05;
+function arChains(G,edges,ok,minLen=AR_STUB){
   const{eU,eV,nX,nY,deg0}=G,par=new Map(),f=x=>{while(par.get(x)!==x){par.set(x,par.get(par.get(x)));x=par.get(x);}return x;};
   const E=edges.filter(e=>!ok||ok(e));
   for(const e of E)for(const v of[eU[e],eV[e]])if(!par.has(v))par.set(v,v);
   for(const e of E){const a=f(eU[e]),b=f(eV[e]);if(a!==b)par.set(a,b);}
   const grp=new Map();
   for(const e of E){const r=f(eU[e]);let g=grp.get(r);if(!g)grp.set(r,g={ends:[],e,es:[]});g.es.push(e);for(const v of[eU[e],eV[e]])if(deg0[v]===1)g.ends.push(v);}
-  return[...grp.values()].map(g=>{const v=g.ends[0];return{x:v!=null?nX[v]:(nX[eU[g.e]]+nX[eV[g.e]])/2,y:v!=null?nY[v]:(nY[eU[g.e]]+nY[eV[g.e]])/2,ends:g.ends,es:g.es};});
+  return[...grp.values()].filter(g=>{if(!(minLen>0))return true;let L=0;for(const e of g.es){L+=Math.hypot(nX[eU[e]]-nX[eV[e]],nY[eU[e]]-nY[eV[e]]);if(L>=minLen)return true;}return false;}).map(g=>{const v=g.ends[0];return{x:v!=null?nX[v]:(nX[eU[g.e]]+nX[eV[g.e]])/2,y:v!=null?nY[v]:(nY[eU[g.e]]+nY[eV[g.e]])/2,ends:g.ends,es:g.es};});
 }
 const arInner=f=>{// 區域裡的一點：重心不在裡面就取過重心那條水平線最寬的一段中點
   const r=f.ring;let cx=0,cy=0,a=0;for(let i=0,j=r.length-2;i<r.length;j=i,i+=2){const c=r[j]*r[i+1]-r[i]*r[j+1];a+=c;cx+=(r[j]+r[i])*c;cy+=(r[j+1]+r[i+1])*c;}
@@ -245,7 +247,7 @@ function areaCheck(lines,points,opt){
   const cellNew=(x,y)=>{const i=Math.floor(x/NC),j=Math.floor(y/NC);let s=0;for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)s+=newLen.get((i+a)+','+(j+b))||0;return s>=15;};
   const boxAt=(x,y)=>{for(let i=0;i<FB.length;i++){const b=FB[i];if(x>b[0]&&x<b[2]&&y>b[1]&&y<b[3])return i;}return-1;};
   const nearFrame=(x,y,d)=>FB.some(b=>(Math.abs(x-b[0])<d||Math.abs(x-b[2])<d)&&y>b[1]-d&&y<b[3]+d||(Math.abs(y-b[1])<d||Math.abs(y-b[3])<d)&&x>b[0]-d&&x<b[2]+d);
-  const cnt={};const put=(m)=>{cnt[m.type]=(cnt[m.type]||0)+1;mark(m);};
+  const cnt={};const put=(m)=>{cnt[m.type]=(cnt[m.type]||0)+1;mark(m);};const noFl=[];
 
   /* ---- 0. 土路路口封口：土路（鬆路面）的線頭接在道路、人行道等線上、路口沒封起來的，和對面土路線的線頭配對（12m 內、互為最近），補一條看不見的封口線（懸空的線頭不補，照樣報懸空） ---- */
   const roadTy=L=>{const n=L.nm||'';return/鬆路面|土路/.test(n)?'鬆路面':/人行道/.test(n)?'人行道':'道路';};
@@ -272,11 +274,15 @@ function areaCheck(lines,points,opt){
       if(closed||v.L>3||(touch(a[0],a[1])&&touch(a[a.length-2],a[a.length-1]))){add.push({p:a,r:AR_OTHER,nm:v.nm});vegBad.push(v);}
       else{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<a.length;i+=2){x0=Math.min(x0,a[i]);x1=Math.max(x1,a[i]);y0=Math.min(y0,a[i+1]);y1=Math.max(y1,a[i+1]);}points.push({x:(x0+x1)/2,y:(y0+y1)/2,k:v.k});}}
     lines=lines.concat(add);}
+  /* ---- 0c. 註記、圖例、文字圖層上畫的一般線段（不是圖塊、不是文字）：有圍成封閉就當範圍線，另報圖層用錯；懸空的會被剪掉，不影響 ---- */
+  if((opt.odd||[]).length)lines=lines.concat(opt.odd.map(o=>({p:o.p,r:AR_OTHER|AR_FREE,nm:o.nm,ly:o.ly,odd:true,oh:!!o.h})));
   /* ---- 1. 一般拓樸（不含圖框） ---- */
   const G=arGraph(lines,tol);
   if(!G.ns)return{marks:[],st:{seg:0,ms:Date.now()-t0}};
   const{nX,nY,eU,eV,eR,deg0,aS,aE,NN,NE,X0,Y0,X1,Y1,R,cells,bx0,by0,NX,NY,cs}=G;
   const P=arPrune(G),alive=P.alive;
+  {const seen=new Set();for(let e=0;e<NE;e++){if(!alive[e])continue;const li=G.eL[e],L=lines[li];if(!L||!L.odd||seen.has(li))continue;seen.add(li);
+    put({x:(nX[eU[e]]+nX[eV[e]])/2,y:(nY[eU[e]]+nY[eV[e]])/2,type:'oddly',msg:`範圍線用錯圖層：這條線畫在 ${L.nm||L.ly}（${L.oh?'樓層、房屋註記':'圖例、文字'}圖層），有圍成封閉，已當成範圍線；應改成範圍類圖層`});}}
   // 高架道路的線段（格網），用來判斷「碰到高架」
   const EV=[],EG=new Map(),EC=10;
   for(const L of lines){if(!(L.r&AR_ELEV))continue;const p=L.p;for(let i=2;i<p.length;i+=2){const k=EV.length;EV.push([p[i-2],p[i-1],p[i],p[i+1]]);
@@ -314,7 +320,7 @@ function areaCheck(lines,points,opt){
 
   /* ---- 2. 房屋拓樸：只用房屋線（不借其他線、不借增建線；七碼屋頂增建算永久） ---- */
   const hR=L=>L.r&(AR_HOUSE|AR_TEMP)?L.r&(AR_HOUSE|AR_TEMP):L.k7?AR_HOUSE:AR_ADD;
-  const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L)})).concat(lines.filter(L=>(L.r&AR_Q)&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER})));// Q 線也算：看不清楚用 Q 線封閉的房屋不算未封閉
+  const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L)})).concat(lines.filter(L=>((L.r&AR_Q)||(L.odd&&L.oh))&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER})));// Q 線也算：看不清楚用 Q 線封閉的房屋不算未封閉
   const GA=arGraph(hAll,tol);let TA=null;
   if(GA.ns){const PA=arPrune(GA);// 房屋未封閉：只算房屋線和增建線，不借圍牆、道路、地類界、圖框
     for(const c of arChains(GA,PA.cut,e=>GA.eR[e]&AR_HOUSE))put({x:c.x,y:c.y,type:'open',msg:'永久性房屋線沒有封閉（只能用房屋線，不借圍牆、道路、地類界或圖框）'});
@@ -342,7 +348,13 @@ function areaCheck(lines,points,opt){
       const ty=sep?'flooradd':'floor',msg=sep?`關掉增建線後樓層衝突：${[...s.keys()].join('＋')}（不同樓層要用永久房屋線分開，增建線不能代替）`:`永久樓層衝突：${[...s.keys()].join('＋')} 在同一個房屋封閉區（分棟線不算分界）`;
       const d=Math.hypot(o.x-p.x,o.y-p.y);put({x:p.x,y:p.y,type:ty,msg,ring:TH.F[k].ring,path:d<=60?[p.x,p.y,o.x,o.y]:null});}
     // 增建線越出永久房屋（B02，五碼）：房屋區＝房屋線圍出、裡面有房屋註記的區（被一圈房屋圍起來的空地不算）
+    const HP=lines.filter(L=>(L.r&(AR_HOUSE|AR_TEMP))&&L.p.length>=8&&Math.hypot(L.p[0]-L.p[L.p.length-2],L.p[1]-L.p[L.p.length-1])<=Math.max(tol,0.001)).map(L=>{const p=L.p;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<p.length;i+=2){x0=Math.min(x0,p[i]);x1=Math.max(x1,p[i]);y0=Math.min(y0,p[i+1]);y1=Math.max(y1,p[i+1]);}return{p,bb:[x0,y0,x1,y1]};});
+    const inHousePoly=(x,y)=>HP.some(h=>x>=h.bb[0]&&x<=h.bb[2]&&y>=h.bb[1]&&y<=h.bb[3]&&arInRing(h.p,x,y));
     const hasH=new Set();for(const p of points)if(p.k==='H'||p.add){const k=TH.locate(p.x,p.y);if(k>=0)hasH.add(k);}
+    // 房屋線圍出的範圍，裡面沒有房屋（樓層）註記、也沒有其他地物圖例（不是中庭空地）：最後再看有沒有已經報成「沒有屬性」
+    for(let k=0;k<TH.F.length;k++){if(hasH.has(k))continue;const f=TH.F[k];if(f.area<2||f.area>opt.maxArea||2*f.area/f.per<0.5)continue;
+      const c=arInner(f);if(!inHousePoly(c[0],c[1]))continue;if((opt.notes||[]).some(q=>q[0]>=f.bb[0]&&q[0]<=f.bb[2]&&q[1]>=f.bb[1]&&q[1]<=f.bb[3]&&arInRing(f.ring,q[0],q[1])))continue;// 只看在某一棟房屋的封閉線裡面的（房子之間圍出的空地、中庭不算）
+      const tk=T.locate(c[0],c[1]);if(tk>=0){const g=T.F[tk];if(g.kinds.size||g.fac.length)continue;}noFl.push({c,f});}
     {const out=[];for(const L of lines){if(!(L.r&AR_ADD)||L.k7||(L.r&(AR_HOUSE|AR_TEMP)))continue;const p=L.p;
       for(let i=2;i<p.length;i+=2){const dx=p[i]-p[i-2],dy=p[i+1]-p[i-1],l=Math.hypot(dx,dy);if(l<0.3)continue;const mx=(p[i]+p[i-2])/2,my=(p[i+1]+p[i-1])/2,nx=-dy/l*0.05,ny=dx/l*0.05;
         if(!hasH.has(TH.locate(mx+nx,my+ny))&&!hasH.has(TH.locate(mx-nx,my-ny)))out.push([mx,my]);}}
@@ -353,7 +365,7 @@ function areaCheck(lines,points,opt){
   /* ---- 3. 增建線找不到增建註記（B01）：相連的一組增建線，圍到的各區裡至少一區要有增建註記
      （增建線旁邊沒加蓋、維持原樓層的區塊本來就沒有增建註記，所以不逐段要求兩側） ---- */
   {const ae=[];for(let e=0;e<NE;e++)if(alive[e]&&eR[e]===AR_ADD&&!lines[G.eL[e]].k7)ae.push(e);
-    for(const c of arChains(G,ae)){let ok=false;
+    for(const c of arChains(G,ae,null,0)){let ok=false;
       for(const e of c.es){const x0=nX[eU[e]],y0=nY[eU[e]],x1=nX[eV[e]],y1=nY[eV[e]],l=Math.hypot(x1-x0,y1-y0);if(l<1e-6)continue;
         const mx=(x0+x1)/2,my=(y0+y1)/2,nx=-(y1-y0)/l*0.02,ny=(x1-x0)/l*0.02;// 往兩邊各偏 2cm 找區（島狀的增建框外側也找得到）
         for(const k of[locate(mx+nx,my+ny),locate(mx-nx,my-ny)])if(k>=0&&F[k].add.length){ok=true;break;}if(ok)break;}
@@ -370,10 +382,11 @@ function areaCheck(lines,points,opt){
     for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const a=cells.get(j*NX+i);if(!a)continue;for(const s of a){if(seen.has(s))continue;seen.add(s);const ax=X0[s],ay=Y0[s],dx=X1[s]-ax,dy=Y1[s]-ay,l2=dx*dx+dy*dy;let t=((x-ax)*dx+(y-ay)*dy)/l2;t=t<0?0:t>1?1:t;
       const qx=ax+dx*t,qy=ay+dy*t,d=Math.hypot(qx-x,qy-y);if(d<=tol||d>gapR)continue;L.push({d,x2:qx,y2:qy});}}
     L.sort((a,b)=>a.d-b.d);const out=[];for(const c of L){if(out.some(o=>Math.hypot(o.x2-c.x2,o.y2-c.y2)<0.05))continue;out.push(c);if(out.length>=4)break;}return out;};
-  const findGap=(f,mode,tk)=>findGap1(f,mode,tk,false)||((f.fends||[]).length?findGap1(f,mode,tk,true):null);// 先不用柵欄、籬、牆等可懸空線的端點；找不到才用
-  const findGap1=(f,mode,tk,useFree)=>{
+  // 先找真正的線頭（懸空端點）：一般線頭 → 加上柵欄、籬、牆等可懸空線的線頭；都找不到才用區域轉角離別條線近的地方（兩條線平行很近時容易挑錯，所以放最後）
+  const findGap=(f,mode,tk)=>findGap1(f,mode,tk,false,false)||((f.fends||[]).length?findGap1(f,mode,tk,true,false):null)||findGap1(f,mode,tk,false,true)||((f.fends||[]).length?findGap1(f,mode,tk,true,true):null);
+  const findGap1=(f,mode,tk,useFree,vtx)=>{
     const C=[];for(const v of useFree?(f.ends||[]).concat(f.fends):f.ends||[])for(const n of nearK(nX[v],nY[v]))C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});
-    {const seenV=new Set();for(const h of f.hs){const v=hFrom(h);if(seenV.has(v))continue;seenV.add(v);const n=nearK(nX[v],nY[v])[0];if(n&&n.d<=2)C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});}}
+    if(vtx){const seenV=new Set();for(const h of f.hs){const v=hFrom(h);if(seenV.has(v))continue;seenV.add(v);const n=nearK(nX[v],nY[v])[0];if(n&&n.d<=2)C.push({x:nX[v],y:nY[v],x2:n.x2,y2:n.y2,d:n.d});}}
     if(!C.length)return null;C.sort((a,b)=>a.d-b.d);if(C.length>120)C.length=120;
     const seg=e=>({p:[nX[eU[e]],nY[eU[e]],nX[eV[e]],nY[eV[e]]],r:eR[e]});
     const base=[];for(const h of f.hs)base.push(seg(h>>1));
@@ -570,6 +583,8 @@ function areaCheck(lines,points,opt){
     const onF=(x,y)=>nearFrame(x,y,0.3);
     for(const m of marks){if(!m.gap||m.type==='edge')continue;let all=true;for(let i=0;i<m.gap.length;i+=4)if(!(onF(m.gap[i],m.gap[i+1])&&onF(m.gap[i+2],m.gap[i+3])))all=false;
       if(all){cnt[m.type]--;m.type='edge';m.msg='接邊：圖框處'+(m.msg.startsWith('房屋')?'屋線':'範圍線')+'不接（'+m.msg+'）';cnt.edge=(cnt.edge||0)+1;}}}
+  for(const{c,f}of noFl){if(marks.some(m=>m.type==='empty'&&m.x>=f.bb[0]&&m.x<=f.bb[2]&&m.y>=f.bb[1]&&m.y<=f.bb[3]&&arInRing(f.ring,m.x,m.y)))continue;
+    put({x:c[0],y:c[1],type:'nofloor',msg:`房屋線圍出的範圍沒有房屋（樓層）註記（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
   for(const v of vegBad){const a=v.p,m=Math.floor(a.length/4)*2;put({x:a[m],y:a[m+1],type:'veg',msg:`範圍線用錯圖層：畫在${v.nm}（植被圖層），應改成地類界等範圍類圖層`});}
   {// 同一處（1m 內）有好幾種問題：接邊最優先，房屋優先於植被／道路類
     const rank=t=>t==='edge'?0:['open','floor','floorout','openadd','flooradd','addside','addline','addout'].includes(t)?1:2;
