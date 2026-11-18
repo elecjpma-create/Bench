@@ -458,6 +458,9 @@ function cmdMeasure(){return pointsCmd({name:'mlen',
 // 把經緯度丟給 Google 地圖導航（不用金鑰）；App 裡交給手機開 Google 地圖，網頁版開新分頁
 function openNav(la,lo){const u=`https://www.google.com/maps/dir/?api=1&destination=${la.toFixed(7)},${lo.toFixed(7)}&travelmode=driving`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
+// 街景：Google 地圖的街景畫面（不用金鑰）；附近沒有街景時由 Google 地圖自己處理
+function openPano(la,lo){const u=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${la.toFixed(7)},${lo.toFixed(7)}`;
+  if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 function cmdCoord(ll){return pointsCmd({name:ll?'ll':'xy',live:true,keypad:'xy',
   base(){return null;},
   hint(){if(!cur)return[ll?'經緯度：點圖上任一點（可拖曳、可鎖點，或輸入坐標）':'點坐標：點圖上任一點（可拖曳、可鎖點）',false];
@@ -465,7 +468,7 @@ function cmdCoord(ll){return pointsCmd({name:ll?'ll':'xy',live:true,keypad:'xy',
     const[la,lo]=tm2ll(p[0],p[1],st.lon0);return[`${dmsLL(la,'N','S')}\n${dmsLL(lo,'E','W')}`,'big'];},
   extraBtns(){return cur?[{t:'複製',f:()=>{const p=cur.p;let t;if(ll){const[la,lo]=tm2ll(p[0],p[1],st.lon0);t=`${dmsLL(la,'N','S')} ${dmsLL(lo,'E','W')}`;}else t=`${fmt(p[0])},${fmt(p[1])}`;
       (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已複製：'+t)).catch(()=>toast(t,4000));}},
-    ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}}]:[])]:[];},
+    ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}},{t:'街景',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openPano(la,lo);}}]:[])]:[];},
   onPoint(){},ok(){endCmd();}
 });}
 
