@@ -1714,11 +1714,28 @@ function addrDots(){if(addrDot)return addrDot;const G=new Map(),C=50,X=[],Y=[],L
   return addrDot={G,C,X,Y,L};}
 function addrDotsIn(x0,y0,x1,y1,max){const D=addrDots(),o=[];for(let i=Math.floor(x0/D.C);i<=Math.floor(x1/D.C);i++)for(let j=Math.floor(y0/D.C);j<=Math.floor(y1/D.C);j++){
     for(const k of D.G.get(i*1e6+j)||[]){const x=D.X[k],y=D.Y[k];if(x>=x0&&x<=x1&&y>=y0&&y<=y1){o.push(k);if(o.length>max)return null;}}}return o;}
-function drawAddr(){if(!addrShow||!addrRaw)return;const a=toW([0,H]),b=toW([W,0]);if((b[0]-a[0])*(b[1]-a[1])>4e6)return;// 拉太遠（超過約 2km×2km）不畫
-  const K=addrDotsIn(a[0],a[1],b[0],b[1],30000);if(!K)return;const D=addrDots();ctx.save();ctx.fillStyle='#ff9f1c';ctx.strokeStyle=st.bg==='white'?'#7a4300':'#1a1206';ctx.lineWidth=1;
+/** 門牌只顯示在底圖的圖框（圖幅）範圍內：圖框圖層每條線的外框（>50m）聯集；圖上沒有圖框就回傳 null（全部顯示） */
+let addrFr=null;
+function addrFrames(){const D=addrDots(),key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length;if(addrFr&&addrFr.key===key&&addrFr.D===D)return addrFr.list;
+  const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
+  const box=(P,ox,oy,st2)=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<P.length;i+=st2){const x=st2===2?P[i]:P[i][0],y=st2===2?P[i+1]:P[i][1];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+    if(x1-x0>50&&y1-y0>50)FB.push([x0+ox,y0+oy,x1+ox,y1+oy]);};
+  if(fly.length){
+    if(nativeOn){let R=null;try{R=JSON.parse(CadNative.areaData(JSON.stringify({b:fly,p:[],l:[],g:[]}))||'null');}catch(_){}
+      if(!R||R.err)return null;// 原生端還沒好：先全部顯示，下次再試
+      for(const a of R.s)box(a.slice(1),R.ox,R.oy,2);}
+    else for(const e of imp)if(fly.includes(e.ly)&&e.t!=='text')for(const P of entPolys(e))box(P,0,0,1);}
+  let list=null;
+  if(FB.length){const m=new Uint8Array(D.X.length);for(const[x0,y0,x1,y1]of FB){const K=addrDotsIn(x0,y0,x1,y1,Infinity);for(const k of K)m[k]=1;}
+    list=[];for(let k=0;k<m.length;k++)if(m[k])list.push(k);}
+  addrFr={key,D,list};return list;}
+function drawAddr(){if(!addrShow||!addrRaw)return;const a=toW([0,H]),b=toW([W,0]),F=addrFrames(),D=addrDots();let K;
+  if(F){K=[];for(const k of F){const x=D.X[k],y=D.Y[k];if(x>=a[0]&&x<=b[0]&&y>=a[1]&&y<=b[1]){K.push(k);if(K.length>30000)return;}}}// 有圖框：只畫圖框裡的，拉遠也畫
+  else{if((b[0]-a[0])*(b[1]-a[1])>4e6)return;K=addrDotsIn(a[0],a[1],b[0],b[1],30000);if(!K)return;}// 沒有圖框：拉太遠（超過約 2km×2km）不畫
+  ctx.save();ctx.fillStyle='#ff9f1c';ctx.strokeStyle=st.bg==='white'?'#7a4300':'#1a1206';ctx.lineWidth=1;
   ctx.beginPath();for(const k of K){const q=toS([D.X[k],D.Y[k]]);ctx.moveTo(q[0]+3,q[1]);ctx.arc(q[0],q[1],3,0,TAU);}ctx.fill();ctx.stroke();ctx.restore();}// 全部的點合成一條路徑，一次填色、一次描邊
 /** 點門牌點：顯示這個位置（1m 內）所有門牌 */
-function addrTap(sp){if(!addrShow||!addrRaw)return false;const w=toW(sp),r=16/st.view.s;const K=addrDotsIn(w[0]-r,w[1]-r,w[0]+r,w[1]+r,500);if(!K||!K.length)return false;
+function addrTap(sp){if(!addrShow||!addrRaw)return false;const w=toW(sp),r=16/st.view.s;let K=addrDotsIn(w[0]-r,w[1]-r,w[0]+r,w[1]+r,500);if(!K||!K.length)return false;const F=addrFrames();if(F){const f=new Set(F);K=K.filter(k=>f.has(k));if(!K.length)return false;}
   const D=addrDots();let bk=-1,bd=1e18;for(const k of K){const d=Math.hypot(D.X[k]-w[0],D.Y[k]-w[1]);if(d<bd){bd=d;bk=k;}}if(bd>r)return false;
   const same=K.filter(k=>Math.hypot(D.X[k]-D.X[bk],D.Y[k]-D.Y[bk])<1).map(k=>D.L[k]);setHint([...new Set(same)].join('、'),true);return true;}
 /** 圖上道路路名（942／944 道路、橋圖層的文字）和附近門牌比對 */
