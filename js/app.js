@@ -1670,7 +1670,13 @@ function areaRun(D){
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;
 }
 /* ---------- 檢查圖幅：圖框圖層（每幅一個外框）＋圖號圖層（框中央的圖號文字）；選了就只檢查這些圖幅 ---------- */
-let sheetSel=new Set(),sheetPick=false,sheetFr=null,sheetFor='';
+/* 兩組各自的圖幅選擇：area＝區域檢查只查這些圖幅（⚙ 檢查設定）、addr＝門牌點只畫這些圖幅往外 20m（門牌面板）；每張圖各自記住 */
+const SG={
+  area:{key:'sheets',set:new Set(),for:'',info:'sheetInfo',clear:'sheetClear',inp:'sheetIn',sheet:'chkSheet',none:'沒選：檢查整張圖',has:n=>`只檢查 ${n} 幅`,
+    end:n=>n?`只檢查 ${n} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查整張圖',cleared:'已清除：檢查整張圖'},
+  addr:{key:'addrSheets',set:new Set(),for:'',info:'addrSheetInfo',clear:'addrSheetClear',inp:'addrSheetIn',sheet:'addrSheet',none:'沒選：畫底圖所有圖框（圖幅）裡的門牌',has:n=>`只畫 ${n} 幅（往外 20m）的門牌`,
+    end:n=>n?`門牌點只畫選的 ${n} 幅`:'沒選圖幅：畫所有圖框裡的門牌',cleared:'已清除：畫所有圖框裡的門牌'}};
+const sheetSel=SG.area.set;let sheetPick=null,sheetFr=null;
 const SHEET_PAD=150;// 選定圖幅外多拿 150m 的線一起算，接邊另一側的區域才算得出來
 function sheetFrames(){const key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length;if(sheetFr&&sheetFr.key===key)return sheetFr.list;
   const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
@@ -1686,13 +1692,6 @@ function sheetFrames(){const key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLaye
     for(const t of T){if(t.p[0]<b[0]||t.p[0]>b[2]||t.p[1]<b[1]||t.p[1]>b[3])continue;const d=Math.hypot(t.p[0]-cx,t.p[1]-cy);if(d<bd){bd=d;best=t;}}
     const num=best?best.lines.join('').replace(/\s/g,''):'';return{id:num||`${Math.round(b[0])},${Math.round(b[1])}`,num,b};});
   if(fly.length&&(!nativeOn||FB.length))sheetFr={key,list};return list;}
-function sheetLoad(){if(sheetFor===impName)return;sheetFor=impName;try{sheetSel=new Set(JSON.parse(localStorage.getItem('sheets:'+impName)||'[]'));}catch(_){sheetSel=new Set();}}
-function sheetSave(){try{localStorage.setItem('sheets:'+impName,JSON.stringify([...sheetSel]));}catch(_){}updSheetInfo();}
-function sheetBoxes(){sheetLoad();return sheetFrames().filter(f=>sheetSel.has(f.id));}
-function updSheetInfo(){const el=$('sheetInfo');if(!el)return;sheetLoad();const S=sheetBoxes();
-  el.textContent=!imp.length?'還沒開底圖':!sheetFrames().length?'這張圖沒有圖框圖層，會檢查整張圖':S.length?`只檢查 ${S.length} 幅：${S.map(f=>f.num||f.id).join('、')}`:'沒選：檢查整張圖';
-  const b=$('sheetClear');if(b)b.disabled=!sheetSel.size;}
-/** 選了圖幅：只留選定圖幅（外加 SHEET_PAD）裡的線和註記，結果只留選定圖幅內（接邊的標記在框線上，框外 0.5m 內也算） */
 function sheetApply(D){const S=sheetBoxes();if(!S.length){if(sheetSel.size)toast('選的圖幅在這張圖找不到，改檢查整張圖',3000);return true;}
   const ox=D.ox,oy=D.oy,BX=S.map(f=>[f.b[0]-ox,f.b[1]-oy,f.b[2]-ox,f.b[3]-oy]);
   const PB=BX.map(b=>[b[0]-SHEET_PAD,b[1]-SHEET_PAD,b[2]+SHEET_PAD,b[3]+SHEET_PAD]);
@@ -1707,21 +1706,32 @@ function sheetApply(D){const S=sheetBoxes();if(!S.length){if(sheetSel.size)toast
   if(!D.lines.length){toast('選的圖幅裡沒有可以檢查的線',3000);return false;}return true;}
 function areaKeep(D){return D.keep||(D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null);}
 function sheetAt(w){return sheetFrames().filter(f=>w[0]>=f.b[0]&&w[0]<=f.b[2]&&w[1]>=f.b[1]&&w[1]<=f.b[3]).sort((a,b)=>(a.b[2]-a.b[0])*(a.b[3]-a.b[1])-(b.b[2]-b.b[0])*(b.b[3]-b.b[1]))[0]||null;}
-function sheetPickHint(){setHint(`點圖框裡面選／取消圖幅（已選 ${sheetSel.size} 幅）`,true,{t:'完成',f:sheetPickEnd});}
-function sheetPickStart(){if(!sheetFrames().length){toast('這張圖沒有圖框圖層');return;}sheetLoad();closeSheet('chkSheet');closeSheet('layerSheet');sheetPick=true;sheetPickHint();schedule();}
-function sheetPickEnd(){sheetPick=false;setHint(baseHintText(),false);schedule();updSheetInfo();toast(sheetSel.size?`只檢查 ${sheetSel.size} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查整張圖',2500);}
-function sheetTap(w){const f=sheetAt(w);if(!f){toast('那裡不在任何圖框裡');return;}if(sheetSel.has(f.id))sheetSel.delete(f.id);else sheetSel.add(f.id);sheetSave();sheetPickHint();schedule();}
-function drawSheets(){if(!sheetPick)return;sheetLoad();const S=sheetBoxes();// 只在「在圖上點選」時把選的圖幅畫成橘框，跑區域檢查時圖框維持原樣
-  ctx.save();ctx.lineWidth=sheetPick?3:2;ctx.strokeStyle='#ffb13d';ctx.fillStyle='rgba(255,177,61,0.13)';
-  for(const f of S){const a=toS([f.b[0],f.b[3]]),c=toS([f.b[2],f.b[1]]);if(sheetPick)ctx.fillRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
-    if(sheetPick){ctx.fillStyle='#ffb13d';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText(f.num||f.id,(a[0]+c[0])/2,(a[1]+c[1])/2);ctx.fillStyle='rgba(255,177,61,0.13)';}}
+function sgLoad(g){if(g.for===impName)return;g.for=impName;g.set.clear();try{for(const x of JSON.parse(localStorage.getItem(g.key+':'+impName)||'[]'))g.set.add(x);}catch(_){}}
+function sgSave(g){try{localStorage.setItem(g.key+':'+impName,JSON.stringify([...g.set]));}catch(_){}sgInfo(g);}
+function sgBoxes(g){sgLoad(g);return sheetFrames().filter(f=>g.set.has(f.id));}
+function sgInfo(g){const el=$(g.info);if(!el)return;sgLoad(g);const S=sgBoxes(g);
+  el.textContent=!imp.length?'還沒開底圖':!sheetFrames().length?'這張圖沒有圖框圖層':S.length?`${g.has(S.length)}：${S.map(f=>f.num||f.id).join('、')}`:g.none;
+  const b=$(g.clear);if(b)b.disabled=!g.set.size;}
+function sheetLoad(){sgLoad(SG.area);}
+function sheetBoxes(){return sgBoxes(SG.area);}
+function updSheetInfo(){sgInfo(SG.area);sgInfo(SG.addr);}
+function sheetPickHint(){setHint(`點圖框裡面選／取消圖幅（已選 ${sheetPick.set.size} 幅）`,true,{t:'完成',f:sheetPickEnd});}
+function sheetPickStart(g){if(!sheetFrames().length){toast('這張圖沒有圖框圖層');return;}sgLoad(g);closeSheet(g.sheet);closeSheet('layerSheet');sheetPick=g;sheetPickHint();schedule();}
+function sheetPickEnd(){const g=sheetPick;sheetPick=null;setHint(baseHintText(),false);schedule();if(g){sgInfo(g);toast(g.end(g.set.size),2500);}}
+function sheetTap(w){const g=sheetPick,f=sheetAt(w);if(!f){toast('那裡不在任何圖框裡');return;}if(g.set.has(f.id))g.set.delete(f.id);else g.set.add(f.id);sgSave(g);sheetPickHint();schedule();}
+function drawSheets(){if(!sheetPick)return;const S=sgBoxes(sheetPick);// 只在「在圖上點選」時把選的圖幅畫成橘框
+  ctx.save();ctx.lineWidth=3;ctx.strokeStyle='#ffb13d';ctx.fillStyle='rgba(255,177,61,0.13)';
+  for(const f of S){const a=toS([f.b[0],f.b[3]]),c=toS([f.b[2],f.b[1]]);ctx.fillRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
+    ctx.fillStyle='#ffb13d';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText(f.num||f.id,(a[0]+c[0])/2,(a[1]+c[1])/2);ctx.fillStyle='rgba(255,177,61,0.13)';}
   ctx.restore();}
-$('sheetPickBtn').onclick=sheetPickStart;
-$('sheetClear').onclick=()=>{sheetLoad();sheetSel.clear();sheetSave();schedule();toast('已清除：檢查整張圖',2000);};
-$('sheetGo').onclick=()=>{sheetLoad();const F=sheetFrames();if(!F.length){toast('這張圖沒有圖框圖層');return;}
-  const want=$('sheetIn').value.split(/[\s,，、;；]+/).map(x=>x.trim()).filter(Boolean);if(!want.length)return;const miss=[];
-  let add=0;for(const w of want){const ex=F.filter(f=>f.num===w),M=ex.length?ex:F.filter(f=>f.num&&f.num.endsWith(w));if(!M.length){miss.push(w);continue;}for(const f of M)if(!sheetSel.has(f.id)){sheetSel.add(f.id);add++;}}// 只打尾數：同尾數的都加（例：41＝那一排）
-  sheetSave();$('sheetIn').value='';schedule();toast((miss.length?`找不到圖號：${miss.join('、')}。`:'')+`加入 ${add} 幅，共 ${sheetSel.size} 幅`,2500);};
+function sgGo(g){sgLoad(g);const F=sheetFrames();if(!F.length){toast('這張圖沒有圖框圖層');return;}
+  const want=$(g.inp).value.split(/[\s,，、;；]+/).map(x=>x.trim()).filter(Boolean);if(!want.length)return;const miss=[];
+  let add=0;for(const w of want){const ex=F.filter(f=>f.num===w),M=ex.length?ex:F.filter(f=>f.num&&f.num.endsWith(w));if(!M.length){miss.push(w);continue;}for(const f of M)if(!g.set.has(f.id)){g.set.add(f.id);add++;}}// 只打尾數：同尾數的都加（例：41＝那一排）
+  sgSave(g);$(g.inp).value='';schedule();toast((miss.length?`找不到圖號：${miss.join('、')}。`:'')+`加入 ${add} 幅，共 ${g.set.size} 幅`,2500);}
+for(const g of Object.values(SG)){const pre=g===SG.area?'sheet':'addrSheet';
+  $(pre+'PickBtn').onclick=()=>sheetPickStart(g);
+  $(pre+'Clear').onclick=()=>{sgLoad(g);g.set.clear();sgSave(g);schedule();toast(g.cleared,2000);};
+  $(pre+'Go').onclick=()=>sgGo(g);}
 /* ---------- 路名對門牌：門牌位置數值資料（CSV，TWD97），比對圖上路名附近的門牌；也可以把門牌點顯示在圖上 ---------- */
 let addrRaw=null,addrName='',addrIdx=null,addrDot=null;const addrFiles=new Map();// 檔名→瘦身後的 CSV（含表頭）；多個縣市可以同時放
 let addrShow=localStorage.getItem('addrShow')==='1';
@@ -1747,7 +1757,7 @@ function addrAdd(name,txt){const h=txt.slice(0,600);if(!/x_3826|橫坐標|橫座
 (async()=>{const v=await idbFileGet('addr');
   if(v&&v.files)for(const k in v.files)addrFiles.set(k,v.ver===2?v.files[k]:'street,area,lane,alley,x_3826,y_3826\n'+v.files[k]);// 舊版存的沒有表頭、沒有門牌號
   else if(v&&v.text)addrFiles.set(v.name||'門牌資料',v.text);addrJoin(false);})();
-$('addrBtn').onclick=()=>{closeSheet('layerSheet');updAddrInfo();openSheet('addrSheet');};
+$('addrBtn').onclick=()=>{closeSheet('layerSheet');updAddrInfo();sgInfo(SG.addr);openSheet('addrSheet');};
 /** 已瘦身的門牌文字（原生那邊瘦好的）直接放進來 */
 function addrPut(name,sl){if(!sl)return null;addrFiles.set(name,sl);addrJoin(true);return{n:sl.split('\n').length-1};}
 $('addrLoad').onclick=async()=>{
@@ -1793,8 +1803,8 @@ function addrDotsIn(x0,y0,x1,y1,max){const D=addrDots(),o=[];for(let i=Math.floo
     for(const k of D.G.get(i*1e6+j)||[]){const x=D.X[k],y=D.Y[k];if(x>=x0&&x<=x1&&y>=y0&&y<=y1){o.push(k);if(o.length>max)return null;}}}return o;}
 /** 門牌只顯示在底圖的圖框（圖幅）範圍內：圖框圖層每條線的外框（>50m）聯集；圖上沒有圖框就回傳 null（全部顯示） */
 let addrFr=null;
-function addrFrames(){const D=addrDots(),SB=sheetBoxes(),key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length+'|'+SB.map(f=>f.id).join(',');if(addrFr&&addrFr.key===key&&addrFr.D===D)return addrFr.list;
-  if(SB.length){// 有選檢查圖幅：只畫選的圖幅往外 20m 內的門牌
+function addrFrames(){const D=addrDots(),SB=sgBoxes(SG.addr),key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length+'|'+SB.map(f=>f.id).join(',');if(addrFr&&addrFr.key===key&&addrFr.D===D)return addrFr.list;
+  if(SB.length){// 門牌面板選了圖幅：只畫選的圖幅往外 20m 內的門牌
     const m=new Uint8Array(D.X.length);for(const f of SB){const K=addrDotsIn(f.b[0]-20,f.b[1]-20,f.b[2]+20,f.b[3]+20,Infinity);for(const k of K)m[k]=1;}
     const list=[];for(let k=0;k<m.length;k++)if(m[k])list.push(k);addrFr={key,D,list};return list;}
   const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
@@ -1850,7 +1860,7 @@ function addrCheck(){if(!addrRaw)return[];const R=[];const txt=[];let x0=1e18,y0
 async function findArea(onlyNoAdd){
   const D=areaCollect();
   if(!D||!D.lines.length){toast('這張圖沒有認得的房屋、圍牆、道路、地類界圖層（5 碼或 7 碼編碼）',4000);return;}
-  if(sheetSel.size&&!sheetApply(D))return;
+  sheetLoad();if(sheetSel.size&&!sheetApply(D))return;
   const R=areaRun(D);
   {// 新圖（數字開頭）和 Q 圖層的小線段，一起列在區域檢查結果裡
     const nw=newLayers(),q=qLayers(),only=nw.concat(q);let L=[];
