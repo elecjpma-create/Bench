@@ -1711,7 +1711,7 @@ function sheetPickHint(){setHint(`點圖框裡面選／取消圖幅（已選 ${s
 function sheetPickStart(){if(!sheetFrames().length){toast('這張圖沒有圖框圖層');return;}sheetLoad();closeSheet('chkSheet');closeSheet('layerSheet');sheetPick=true;sheetPickHint();schedule();}
 function sheetPickEnd(){sheetPick=false;setHint(baseHintText(),false);schedule();updSheetInfo();toast(sheetSel.size?`只檢查 ${sheetSel.size} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查整張圖',2500);}
 function sheetTap(w){const f=sheetAt(w);if(!f){toast('那裡不在任何圖框裡');return;}if(sheetSel.has(f.id))sheetSel.delete(f.id);else sheetSel.add(f.id);sheetSave();sheetPickHint();schedule();}
-function drawSheets(){if(!sheetPick&&!(smallMarks&&smallMode==='area'))return;sheetLoad();const S=sheetBoxes();if(!S.length&&!sheetPick)return;
+function drawSheets(){if(!sheetPick)return;sheetLoad();const S=sheetBoxes();// 只在「在圖上點選」時把選的圖幅畫成橘框，跑區域檢查時圖框維持原樣
   ctx.save();ctx.lineWidth=sheetPick?3:2;ctx.strokeStyle='#ffb13d';ctx.fillStyle='rgba(255,177,61,0.13)';
   for(const f of S){const a=toS([f.b[0],f.b[3]]),c=toS([f.b[2],f.b[1]]);if(sheetPick)ctx.fillRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
     if(sheetPick){ctx.fillStyle='#ffb13d';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText(f.num||f.id,(a[0]+c[0])/2,(a[1]+c[1])/2);ctx.fillStyle='rgba(255,177,61,0.13)';}}

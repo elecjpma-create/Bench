@@ -559,31 +559,61 @@ function areaCheck(lines,points,opt){
       if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>=per*0.5||ri(AR_GATE)>0||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||ri(AR_HOUSE)<per*0.5))continue;}
     const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
 
-  /* ---- 5. 接邊：圖框切開的區域，兩側都要有屬性且一致（E09，不看距離，以拓樸為準） ---- */
+  /* ---- 5. 接邊：圖框切開的區域，兩側都要有屬性且一致（E09，不看距離，以拓樸為準）
+     永久和增建分開比（2026-11-19）：五碼交圖時增建線會關掉，
+     (a) 房屋：用關掉增建線的房屋區（TH）比兩側樓層註記，整棟同樓層就對，註記在不在增建線內都沒關係；
+     (b) 增建：用房屋＋增建線的區（TA），只比邊界有增建線的區兩側的增建註記；
+     (c) 其他：一般區（F）裡在房屋裡面的跳過，房屋只當「房屋」一種地物和對面比。
+     標記放在這區外框貼在共用框邊上的頂點（優先選拿掉假邊後的斷點），找不到才用框線上的點。 ---- */
   if(FB.length){
-    const sig=(f,b)=>{const k=new Set(),fl=new Set(),ad=new Set();let n=0;
-      for(const p of f.all){if(!(p.x>b[0]&&p.x<b[2]&&p.y>b[1]&&p.y<b[3]))continue;n++;if(p.fl)fl.add(p.fl);else if(p.k!=='H')k.add(p.k);else k.add('房屋');}
-      for(const p of f.add){if(!(p.x>b[0]&&p.x<b[2]&&p.y>b[1]&&p.y<b[3]))continue;n++;ad.add(p.tx||'增建');}
-      return{n,k,fl,ad,txt:[...k,...fl,...[...ad].map(x=>'增建'+x)].join('＋')};};
+    const nr=(u,v)=>Math.abs(u-v)<1;
+    const adjOf=(A,B)=>(nr(A[2],B[0])||nr(A[0],B[2]))&&A[1]<B[3]&&B[1]<A[3]?{ax:0,v:nr(A[2],B[0])?A[2]:A[0],a0:Math.max(A[1],B[1]),a1:Math.min(A[3],B[3])}
+      :(nr(A[3],B[1])||nr(A[1],B[3]))&&A[0]<B[2]&&B[0]<A[2]?{ax:1,v:nr(A[3],B[1])?A[3]:A[1],a0:Math.max(A[0],B[0]),a1:Math.min(A[2],B[2])}:null;
+    const CA=opt.frameCutAt||[];
+    const edgePt=(f,e,q)=>{// 這區外框在共用框邊上的頂點：優先斷點，其次離 q 最近
+      const r=f.ring,C=[];for(let k=0;k<r.length;k+=2){const x=r[k],y=r[k+1],d=e.ax?y-e.v:x-e.v,s=e.ax?x:y;if(Math.abs(d)<=0.06&&s>=e.a0-0.05&&s<=e.a1+0.05)C.push([x,y]);}
+      if(!C.length)return q;const isCut=c=>{for(let k=0;k<CA.length;k+=2)if(Math.hypot(CA[k]-c[0],CA[k+1]-c[1])<0.1)return true;return false;};
+      const cut=C.filter(isCut),L=cut.length?cut:C;let b=L[0],bd=Infinity;if(q)for(const c of L){const d=Math.hypot(c[0]-q[0],c[1]-q[1]);if(d<bd){bd=d;b=c;}}return b;};
+    const edgeMid=(f,e,loc)=>{// 區域在共用框邊上的一點（區外框貼框邊的頂點的中間）
+      const r=f.ring,S=[];for(let k=0;k<r.length;k+=2){const d=e.ax?r[k+1]-e.v:r[k]-e.v,s=e.ax?r[k]:r[k+1];if(Math.abs(d)<=0.06&&s>=e.a0-0.05&&s<=e.a1+0.05)S.push(s);}
+      if(S.length){S.sort((a,b)=>a-b);const s=(S[0]+S[S.length-1])/2;return e.ax?[s,e.v]:[e.v,s];}
+      // 線直接穿過框邊（沒有頂點在框上，七碼常見）：沿框邊取樣，取在區內那段的中間
+      const a0=Math.max(e.a0,e.ax?f.bb[0]:f.bb[1]),a1=Math.min(e.a1,e.ax?f.bb[2]:f.bb[3]);if(!(a1>a0))return null;
+      const n=Math.min(400,Math.max(2,Math.ceil((a1-a0)/0.25))),ins=[];
+      for(let i=0;i<=n;i++){const t=a0+(a1-a0)*i/n,x=e.ax?t:e.v,y=e.ax?e.v:t;if(arInRing(f.ring,x,y)&&(!loc||loc(x,y)===f.id))ins.push([x,y]);}
+      return ins.length?ins[Math.floor(ins.length/2)]:null;};
+    const partsOf=f=>{const P=[];for(let i=0;i<FB.length;i++){const b=FB[i];if(b[2]<f.bb[0]||b[0]>f.bb[2]||b[3]<f.bb[1]||b[1]>f.bb[3])continue;
+      const c=arClipBox(f.ring,b);if(!c.bb||c.area<=0)continue;if(c.bb[2]-c.bb[0]<opt.over||c.bb[3]-c.bb[1]<opt.over)continue;P.push({i,b});}return P;};
+    const inB=(p,b)=>p.x>b[0]&&p.x<b[2]&&p.y>b[1]&&p.y<b[3];
     const eq=(a,b)=>a.size===b.size&&[...a].every(x=>b.has(x));
-
+    // 點放進房屋區（TH／TA）：插入點壓在線上時改用文字中心
+    const placeIn=T=>{const M=new Map();if(!T)return M;for(const p of points){let k=T.locate(p.x,p.y);if(k<0&&p.cx!=null)k=T.locate(p.cx,p.cy);if(k<0)continue;let a=M.get(k);if(!a)M.set(k,a=[]);a.push(p);}return M;};
+    const cmp=(f,P,sig,skip,msgOne,msgDiff,q0,isF,loc)=>{const S=P.map(p=>Object.assign({},p,{s:sig(p.b)}));if(!S.some(p=>p.s.n))return;
+      for(let a=0;a<S.length;a++)for(let b=a+1;b<S.length;b++){const A=S[a],B=S[b],e=adjOf(A.b,B.b);if(!e)continue;if(!pub[A.i]||!pub[B.i])continue;
+        if(skip&&skip(A.s,B.s))continue;const q=q0?q0(f,A.b,B.b):edgeMid(f,e,loc);if(!q||!keep(q[0],q[1]))continue;if(!(isF&&edgeF.has(f.id))&&!cellNew(q[0],q[1]))continue;
+        const m=edgePt(f,e,q);
+        if(!A.s.n||!B.s.n){const has=A.s.n?A:B;put({x:m[0],y:m[1],type:'edge',msg:msgOne(has.s.txt),ring:f.ring});continue;}
+        if(A.s.same(B.s))continue;put({x:m[0],y:m[1],type:'edge',msg:msgDiff(A.s.txt,B.s.txt),ring:f.ring});}};
+    // (c) 一般區
+    // 房屋裡面的區（只有房屋、樓層、增建註記或沒有註記）交給 (a)(b)；被房屋圍起來的中庭、空地照樣比
+    const inHouse=f=>{if(!TH)return false;if(f.all.some(p=>p.k&&p.k!=='H'))return false;const c=arInner(f);return c&&TH.locate(c[0],c[1])>=0;};
     for(const f of F){if(mixF.has(f.id)&&!edgeF.has(f.id))continue;// 已判為相通的先不比，避免連帶誤報
-      const rl=b=>f.rl[b]||0;
-      const parts=[];for(let i=0;i<FB.length;i++){const b=FB[i];if(b[2]<f.bb[0]||b[0]>f.bb[2]||b[3]<f.bb[1]||b[1]>f.bb[3])continue;
-        const c=arClipBox(f.ring,b);if(!c.bb||c.area<=0)continue;if(c.bb[2]-c.bb[0]<opt.over||c.bb[3]-c.bb[1]<opt.over)continue;// 合理越界的細條不算
-        parts.push({i,b,c});}
-      if(parts.length<2)continue;
-      const S=parts.map(p=>Object.assign(p,{s:sig(f,p.b)}));
-      if(!S.some(p=>p.s.n))continue;// 兩側都沒有屬性：不是接邊的問題（空白區另外檢查）
+      const rl=b=>f.rl[b]||0;const P=partsOf(f);if(P.length<2)continue;if(inHouse(f))continue;
       if(rl(AR_ROAD)+rl(AR_WALK)>=f.per*0.3&&!f.kinds.size&&!f.add.length)continue;// 道路、人行道本來就免註記
-      for(let a=0;a<S.length;a++)for(let b=a+1;b<S.length;b++){const A=S[a],B=S[b];
-        const nr=(u,v)=>Math.abs(u-v)<1,adj=(nr(A.b[2],B.b[0])||nr(A.b[0],B.b[2]))&&A.b[1]<B.b[3]&&B.b[1]<A.b[3]||(nr(A.b[3],B.b[1])||nr(A.b[1],B.b[3]))&&A.b[0]<B.b[2]&&B.b[0]<A.b[2];/* 圖框坐標可能有小數誤差 */if(!adj)continue;
-        if(!pub[A.i]||!pub[B.i])continue;// 兩側都已出圖才比（E01）
-        const q=crossPt(f,A.b,B.b);if(!q||!keep(q[0],q[1]))continue;
-        if(!edgeF.has(f.id)&&!cellNew(q[0],q[1]))continue;// 被圖框切開、各幅地物不同的區：已出圖就比（不然問題會消失）
-        if(!A.s.n||!B.s.n){const has=A.s.n?A:B;put({x:q[0],y:q[1],type:'edge',msg:`接邊：圖框切開的區域只有一側有屬性（${has.s.txt}｜無）`,ring:f.ring});continue;}
-        if(eq(A.s.k,B.s.k)&&eq(A.s.fl,B.s.fl)&&eq(A.s.ad,B.s.ad))continue;
-        put({x:q[0],y:q[1],type:'edge',msg:`接邊：圖框兩側屬性不同（${A.s.txt}｜${B.s.txt}）`,ring:f.ring});}}
+      const sig=b=>{const k=new Set();let n=0;for(const p of f.all){if(!inB(p,b))continue;n++;k.add(p.k==='H'?'房屋':p.k);}return{n,k,txt:[...k].join('＋'),same(o){return eq(k,o.k);}};};
+      cmp(f,P,sig,null,t=>`接邊：圖框切開的區域只有一側有屬性（${t}｜無）`,(a,b)=>`接邊：圖框兩側屬性不同（${a}｜${b}）`,crossPt,true);}
+    // (a) 房屋（關掉增建線）：樓層註記
+    if(TH){const PM=placeIn(TH);
+      for(const f of TH.F){const P=partsOf(f);if(P.length<2)continue;const L=(PM.get(f.id)||[]).filter(p=>!p.add);
+        const sig=b=>{const k=new Set();let n=0;for(const p of L){if(!inB(p,b))continue;n++;k.add(p.fl||(p.k==='H'?'房屋':p.k));}
+          // 有樓層註記時，另一側只有「房屋」（中、危、廢之類）不算不同
+          return{n,k,txt:[...k].join('＋'),same(o){return eq(k,o.k);}};};
+        cmp(f,P,sig,null,t=>`接邊：房屋跨圖框只有一側有樓層註記（${t}｜無）`,(a,b)=>`接邊：房屋跨圖框兩側樓層不同（${a}｜${b}）`,null,false,TH.locate);}}
+    // (b) 增建：邊界有增建線的區，兩側增建註記
+    if(TA){const PA2=placeIn(TA);
+      for(const f of TA.F){if(!(f.rl[AR_ADD]>0))continue;const P=partsOf(f);if(P.length<2)continue;const L=(PA2.get(f.id)||[]).filter(p=>p.add);if(!L.length)continue;
+        const sig=b=>{const k=new Set();let n=0;for(const p of L){if(!inB(p,b))continue;n++;k.add(p.tx||'增建');}return{n,k,txt:[...k].join('＋'),same(o){return eq(k,o.k);}};};
+        cmp(f,P,sig,null,t=>`接邊：增建跨圖框只有一側有增建註記（${t}｜無）`,(a,b)=>`接邊：增建跨圖框兩側增建不同（${a}｜${b}）`,null,false,TA.locate);}}
   }
 
   /* ---- 5b. 屋線沿著圖框封口（G03）：房屋線有一段貼著圖框線走，對面那幅已出圖、但對面同一段沒有房屋（沒有對應的封口、也沒有屋線碰到這段框線）→ 屋線在圖框處不接 ---- */
