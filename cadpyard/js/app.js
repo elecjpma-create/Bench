@@ -1670,11 +1670,12 @@ function areaRun(D){
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;
 }
 /* ---------- 檢查圖幅：圖框圖層（每幅一個外框）＋圖號圖層（框中央的圖號文字）；選了就只檢查這些圖幅 ---------- */
-/* 兩組各自的圖幅選擇：area＝區域檢查只查這些圖幅（⚙ 檢查設定）、addr＝門牌點只畫這些圖幅往外 20m（門牌面板）；每張圖各自記住 */
+const ADDR_PAD=50;// 門牌點：選的圖幅往外多畫 50m
+/* 兩組各自的圖幅選擇：area＝區域檢查只查這些圖幅（⚙ 檢查設定）、addr＝門牌點只畫這些圖幅往外 50m（門牌面板）；每張圖各自記住 */
 const SG={
   area:{key:'sheets',set:new Set(),for:'',info:'sheetInfo',clear:'sheetClear',inp:'sheetIn',sheet:'chkSheet',none:'沒選：檢查整張圖',has:n=>`只檢查 ${n} 幅`,
     end:n=>n?`只檢查 ${n} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查整張圖',cleared:'已清除：檢查整張圖'},
-  addr:{key:'addrSheets',set:new Set(),for:'',info:'addrSheetInfo',clear:'addrSheetClear',inp:'addrSheetIn',sheet:'addrSheet',none:'沒選：畫底圖所有圖框（圖幅）裡的門牌',has:n=>`只畫 ${n} 幅（往外 20m）的門牌`,
+  addr:{key:'addrSheets',set:new Set(),for:'',info:'addrSheetInfo',clear:'addrSheetClear',inp:'addrSheetIn',sheet:'addrSheet',none:'沒選：畫底圖所有圖框（圖幅）裡的門牌',has:n=>`只畫 ${n} 幅（往外 50m）的門牌`,
     end:n=>n?`門牌點只畫選的 ${n} 幅`:'沒選圖幅：畫所有圖框裡的門牌',cleared:'已清除：畫所有圖框裡的門牌'}};
 const sheetSel=SG.area.set;let sheetPick=null,sheetFr=null;
 const SHEET_PAD=150;// 選定圖幅外多拿 150m 的線一起算，接邊另一側的區域才算得出來
@@ -1804,8 +1805,8 @@ function addrDotsIn(x0,y0,x1,y1,max){const D=addrDots(),o=[];for(let i=Math.floo
 /** 門牌只顯示在底圖的圖框（圖幅）範圍內：圖框圖層每條線的外框（>50m）聯集；圖上沒有圖框就回傳 null（全部顯示） */
 let addrFr=null;
 function addrFrames(){const D=addrDots(),SB=sgBoxes(SG.addr),key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length+'|'+SB.map(f=>f.id).join(',');if(addrFr&&addrFr.key===key&&addrFr.D===D)return addrFr.list;
-  if(SB.length){// 門牌面板選了圖幅：只畫選的圖幅往外 20m 內的門牌
-    const m=new Uint8Array(D.X.length);for(const f of SB){const K=addrDotsIn(f.b[0]-20,f.b[1]-20,f.b[2]+20,f.b[3]+20,Infinity);for(const k of K)m[k]=1;}
+  if(SB.length){// 門牌面板選了圖幅：只畫選的圖幅往外 50m 內的門牌
+    const m=new Uint8Array(D.X.length);for(const f of SB){const K=addrDotsIn(f.b[0]-ADDR_PAD,f.b[1]-ADDR_PAD,f.b[2]+ADDR_PAD,f.b[3]+ADDR_PAD,Infinity);for(const k of K)m[k]=1;}
     const list=[];for(let k=0;k<m.length;k++)if(m[k])list.push(k);addrFr={key,D,list};return list;}
   const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
   const box=(P,ox,oy,st2)=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<P.length;i+=st2){const x=st2===2?P[i]:P[i][0],y=st2===2?P[i+1]:P[i][1];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
