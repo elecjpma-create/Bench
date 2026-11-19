@@ -80,14 +80,25 @@ function areaPrep(lines,opt){
 }
 
 /* ---------- 拓樸：線段→交點打斷→節點→邊 ---------- */
+/* 容差只用在懸空線頭（2026-11-19）：交點、併點都用嚴格容差 AR_EXACT；
+   使用者設定的容差 tol 只拿來把「嚴格容差下沒碰到任何東西的開放線端點」接到附近的點或線（加一小段接線）。
+   這樣已經封閉的範圍不會因為旁邊的線差幾 mm 就被切出細條。 */
+const AR_EXACT=0.001;
 function arGraph(lines,tol){
-  let n=0;for(const L of lines)n+=Math.max(0,L.p.length/2-1);
+  const loose=tol;tol=Math.min(tol,AR_EXACT);
+  let n=0;for(const L of lines)n+=Math.max(0,L.p.length/2-1);n+=lines.length*2;
   const X0=new Float64Array(n),Y0=new Float64Array(n),X1=new Float64Array(n),Y1=new Float64Array(n),R=new Uint16Array(n),SL=new Int32Array(n);
-  let ns=0;
-  lines.forEach((L,li)=>{const p=L.p;for(let i=2;i<p.length;i+=2){const a=p[i-2],b=p[i-1],c=p[i],d=p[i+1];
+  let ns=0;const ENDS=[];
+  lines.forEach((L,li)=>{const p=L.p;const s0=ns;for(let i=2;i<p.length;i+=2){const a=p[i-2],b=p[i-1],c=p[i],d=p[i+1];
     if(!(isFinite(a)&&isFinite(b)&&isFinite(c)&&isFinite(d)))continue;if(Math.abs(a-c)+Math.abs(b-d)<1e-9)continue;
-    X0[ns]=a;Y0[ns]=b;X1[ns]=c;Y1[ns]=d;R[ns]=L.r;SL[ns]=li;ns++;}});
-  const G={ns,X0,Y0,X1,Y1,R,SL,tol};
+    X0[ns]=a;Y0[ns]=b;X1[ns]=c;Y1[ns]=d;R[ns]=L.r;SL[ns]=li;ns++;}
+    if(loose>tol&&ns>s0&&!L.noSnap){const s1=ns-1,len=k=>Math.hypot(X1[k]-X0[k],Y1[k]-Y0[k]);
+      if(Math.hypot(X0[s0]-X1[s1],Y0[s0]-Y1[s1])>tol){
+        // 線頭附近（容差長度內）自己的小碎段和下一段都算自己的線頭，不當成「碰到東西」
+        let c=0;const a=[s0];for(let k=s0;k<s1&&(c+=len(k))<=loose;)a.push(++k);
+        c=0;const b=[s1];for(let k=s1;k>s0&&(c+=len(k))<=loose;)b.push(--k);
+        ENDS.push([X0[s0],Y0[s0],a,li]);ENDS.push([X1[s1],Y1[s1],b,li]);}}});
+  const G={ns,X0,Y0,X1,Y1,R,SL,tol,loose};
   if(!ns)return G;
   let bx0=Infinity,by0=Infinity,bx1=-Infinity,by1=-Infinity;
   for(let i=0;i<ns;i++){bx0=Math.min(bx0,X0[i],X1[i]);by0=Math.min(by0,Y0[i],Y1[i]);bx1=Math.max(bx1,X0[i],X1[i]);by1=Math.max(by1,Y0[i],Y1[i]);}
@@ -95,14 +106,40 @@ function arGraph(lines,tol){
   const cs=Math.max(2,Math.sqrt((bx1-bx0+1)*(by1-by0+1)/ns)*2),NX=Math.ceil((bx1-bx0)/cs)+1,NY=Math.ceil((by1-by0)/cs)+1;
   const cellOf=(x,y)=>{let i=Math.floor((x-bx0)/cs),j=Math.floor((y-by0)/cs);i=i<0?0:i>=NX?NX-1:i;j=j<0?0:j>=NY?NY-1:j;return j*NX+i;};
   const cells=new Map(),add=(c,s)=>{let a=cells.get(c);if(!a)cells.set(c,a=[]);if(a[a.length-1]!==s)a.push(s);};
-  for(let s=0;s<ns;s++){
-    const ax=X0[s],ay=Y0[s],bx=X1[s],by=Y1[s],xl=Math.min(ax,bx)-tol,xr=Math.max(ax,bx)+tol;
+  const M=loose;
+  const reg=s=>{
+    const ax=X0[s],ay=Y0[s],bx=X1[s],by=Y1[s],xl=Math.min(ax,bx)-M,xr=Math.max(ax,bx)+M;
     const yAt=x=>{if(Math.abs(bx-ax)<1e-12)return null;let t=(x-ax)/(bx-ax);t=t<0?0:t>1?1:t;return ay+(by-ay)*t;};
     const i0=Math.max(0,Math.floor((xl-bx0)/cs)),i1=Math.min(NX-1,Math.floor((xr-bx0)/cs));
-    for(let i=i0;i<=i1;i++){const cx0=Math.max(xl,bx0+i*cs),cx1=Math.min(xr,bx0+(i+1)*cs);let ya=yAt(cx0-tol),yb=yAt(cx1+tol);
-      if(ya===null){ya=ay;yb=by;}const lo=Math.min(ya,yb)-tol,hi=Math.max(ya,yb)+tol;
+    for(let i=i0;i<=i1;i++){const cx0=Math.max(xl,bx0+i*cs),cx1=Math.min(xr,bx0+(i+1)*cs);let ya=yAt(cx0-M),yb=yAt(cx1+M);
+      if(ya===null){ya=ay;yb=by;}const lo=Math.min(ya,yb)-M,hi=Math.max(ya,yb)+M;
       const j0=Math.max(0,Math.floor((lo-by0)/cs)),j1=Math.min(NY-1,Math.floor((hi-by0)/cs));for(let j=j0;j<=j1;j++)add(j*NX+i,s);}
-  }
+  };
+  for(let s=0;s<ns;s++)reg(s);
+  // 懸空線頭：嚴格容差下沒碰到別的東西，才在使用者容差內接到最近的端點（優先）或線上
+  if(ENDS.length){const ns0=ns,conn=[];
+    const segD=(x,y,s)=>{const ax=X0[s],ay=Y0[s],dx=X1[s]-ax,dy=Y1[s]-ay,l2=dx*dx+dy*dy;let t=l2?((x-ax)*dx+(y-ay)*dy)/l2:0;t=t<0?0:t>1?1:t;const qx=ax+dx*t,qy=ay+dy*t;return[Math.hypot(qx-x,qy-y),qx,qy];};
+    for(const[x,y,own,li]of ENDS){const a=cells.get(cellOf(x,y));if(!a)continue;let hit=false;
+      // 「碰到」要和嚴格拓樸一致：離端點夠近（會併成同一點），或落在線段中間（會切開接上）
+      for(const s of a){if(s>=ns0||own.includes(s))continue;
+        if(Math.hypot(X0[s]-x,Y0[s]-y)<=tol*0.9||Math.hypot(X1[s]-x,Y1[s]-y)<=tol*0.9){hit=true;break;}
+        const dx=X1[s]-X0[s],dy=Y1[s]-Y0[s],L=Math.hypot(dx,dy);if(!L)continue;const t=((x-X0[s])*dx+(y-Y0[s])*dy)/(L*L);
+        if(t*L>tol*1.1&&(1-t)*L>tol*1.1&&segD(x,y,s)[0]<=tol*0.9){hit=true;break;}}
+      // 線頭衝過別條線不到容差長度（出頭）：已經接上了，出頭的小尖刺修掉
+      if(!hit){const e=own[0],ex=x,ey=y,ox_=(X0[e]===x&&Y0[e]===y)?X1[e]:X0[e],oy_=(X0[e]===x&&Y0[e]===y)?Y1[e]:Y0[e],rx=ox_-ex,ry=oy_-ey,Ls=Math.hypot(rx,ry);let bt=Infinity;
+        if(Ls>0)for(const s of a){if(s>=ns0||own.includes(s))continue;const qx=X1[s]-X0[s],qy=Y1[s]-Y0[s],d=rx*qy-ry*qx;if(Math.abs(d)<1e-12)continue;
+          const wx=X0[s]-ex,wy=Y0[s]-ey,t=(wx*qy-wy*qx)/d,v=(wx*ry-wy*rx)/d;if(t<0||t>1||v<0||v>1)continue;if(t*Ls<=loose&&t<bt)bt=t;}
+        if(bt<Infinity){const ix=ex+rx*bt,iy=ey+ry*bt;if(X0[e]===x&&Y0[e]===y){X0[e]=ix;Y0[e]=iy;}else{X1[e]=ix;Y1[e]=iy;}continue;}}
+      if(hit)continue;
+      // 線頭附近容差長度內的頂點（含線頭）都可以當出發點，取離別條線最近的；優先接端點
+      const from=[[x,y]];for(const k of own.slice(0,-1)){for(const v of[[X0[k],Y0[k]],[X1[k],Y1[k]]])if(Math.hypot(v[0]-x,v[1]-y)<=loose)from.push(v);}
+      let bv=null,bvd=Infinity,bs=null,bsd=Infinity;
+      for(const s of a){if(s>=ns0||own.includes(s))continue;
+        for(const[fx,fy]of from){const[d,qx,qy]=segD(fx,fy,s);if(d>loose)continue;if(d<bsd){bsd=d;bs=[fx,fy,qx,qy];}
+          for(const[vx,vy]of[[X0[s],Y0[s]],[X1[s],Y1[s]]]){const dv=Math.hypot(vx-fx,vy-fy);if(dv<=loose&&dv<bvd){bvd=dv;bv=[fx,fy,vx,vy];}}}}
+      const q=bv||bs;if(!q)continue;conn.push([q[0],q[1],q[2],q[3],own,li]);}
+    for(const[x,y,qx,qy,own,li]of conn){X0[ns]=x;Y0[ns]=y;X1[ns]=qx;Y1[ns]=qy;R[ns]=R[own[0]];SL[ns]=li;reg(ns);ns++;}
+    G.ns=ns;G.snapped=conn.length;}
   // 交點、T 字接點：在事件點所在的那一格處理，同一對線不會重複
   const splits=new Array(ns),tolSq=tol*tol;
   const putSplit=(s,t)=>{(splits[s]||(splits[s]=[])).push(t);};
@@ -489,6 +526,12 @@ function areaCheck(lines,points,opt){
     if(f.kinds.size||f.add.length||f.fac.length)continue;
     if(f.area<opt.minArea||f.area>opt.maxArea||2*f.area/f.per<opt.thin)continue;
     if(rl(AR_ADD)>0||rl(AR_TEMP)>0||rl(AR_GATE)>0||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
+    {// 區裡面浮著的島（沒接到外圈的封閉線，例如增建圈）也是這區的邊界，一起算
+      let per=f.per;const rr={};const ri=b=>(f.rl[b]||0)+(rr[b]||0);
+      for(const g of F){if(g===f||g.area>=f.area||g.bb[0]<f.bb[0]||g.bb[2]>f.bb[2]||g.bb[1]<f.bb[1]||g.bb[3]>f.bb[3])continue;
+        if(!arInRing(f.ring,g.ring[0],g.ring[1]))continue;
+        per+=g.per;for(const k in g.rl)rr[k]=(rr[k]||0)+g.rl[k];}
+      if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>0||ri(AR_GATE)>0||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||ri(AR_HOUSE)<per*0.5))continue;}
     const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
 
   /* ---- 5. 接邊：圖框切開的區域，兩側都要有屬性且一致（E09，不看距離，以拓樸為準） ---- */
