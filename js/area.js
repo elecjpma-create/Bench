@@ -284,6 +284,31 @@ function areaCheck(lines,points,opt){
   const cellNew=(x,y)=>{const i=Math.floor(x/NC),j=Math.floor(y/NC);let s=0;for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++)s+=newLen.get((i+a)+','+(j+b))||0;return s>=15;};
   const boxAt=(x,y)=>{for(let i=0;i<FB.length;i++){const b=FB[i];if(x>b[0]&&x<b[2]&&y>b[1]&&y<b[3])return i;}return-1;};
   const nearFrame=(x,y,d)=>FB.some(b=>(Math.abs(x-b[0])<d||Math.abs(x-b[2])<d)&&y>b[1]-d&&y<b[3]+d||(Math.abs(y-b[1])<d||Math.abs(y-b[3])<d)&&x>b[0]-d&&x<b[2]+d);
+  /* 舊圖沿著圖框封口的假邊（2026-11-19）：舊圖的房屋、植被等範圍線跨圖幅時，會沿著圖框邊畫一段封起來，那段不是真的界線。
+     兩端都貼在同一條圖框邊上（5cm 內）、而且這條框邊兩側的圖幅都已出圖的線段拿掉（外圍沒有對面圖幅的框邊，封口是真的，不拿）：跨幅的同一棟房子、同一塊地在兩幅裡會合成一區，接邊才比得到兩側屬性；
+     原本封閉的屋線在框邊斷開，變成碰到圖框的線頭，接邊也才會逐線比對位置。 */
+  if(FB.length){const FT=0.05,XS=[...new Set(FB.flatMap(b=>[b[0],b[2]]))],YS=[...new Set(FB.flatMap(b=>[b[1],b[3]]))];
+    const on=(v,A)=>{for(const a of A)if(Math.abs(v-a)<=FT)return a;return null;};
+    const both=(a,b)=>a>=0&&b>=0&&a!==b&&pub[a]&&pub[b];
+    const along=(x0,y0,x1,y1)=>{const vx=on(x0,XS);if(vx!=null&&Math.abs(x1-vx)<=FT&&Math.abs(y1-y0)>1e-6){const m=(y0+y1)/2;return both(boxAt(vx-1,m),boxAt(vx+1,m));}
+      const vy=on(y0,YS);if(vy!=null&&Math.abs(y1-vy)<=FT&&Math.abs(x1-x0)>1e-6){const m=(x0+x1)/2;return both(boxAt(m,vy-1),boxAt(m,vy+1));}return false;};
+    // 對面有沒有東西：框邊上各側的觸點（線的頂點貼在框邊上，從哪一側來）和貼框段
+    const key=(ax,v)=>ax+':'+Math.round(v*100);const TP=new Map(),AS=[];
+    const sideAt=(p,k,ax,v,dir)=>{for(let j=k;j>=0&&j<p.length/2;j+=dir){const d=ax?p[2*j+1]-v:p[2*j]-v;if(Math.abs(d)>FT)return d>0?1:-1;}return 0;};
+    for(const L of lines){if(L.r&AR_GATE)continue;const p=L.p,n=p.length/2;
+      for(let k=0;k<n;k++){const x=p[2*k],y=p[2*k+1];for(const[ax,A,c,o]of[[0,XS,x,y],[1,YS,y,x]]){const v=on(c,A);if(v==null)continue;
+        const sd=sideAt(p,k,ax,v,-1)||sideAt(p,k,ax,v,1);if(!sd)continue;let l=TP.get(key(ax,v));if(!l)TP.set(key(ax,v),l=[]);l.push({s:o,side:sd});
+        const sd2=sideAt(p,k,ax,v,1);if(sd2&&sd2!==sd)l.push({s:o,side:sd2});}}}
+    const opp=(ax,v,s0,s1,side)=>{const l=TP.get(key(ax,v));if(!l)return false;const a=Math.min(s0,s1),b=Math.max(s0,s1),O=l.filter(t=>t.side!==side);// 對面要碰到這段的兩端，或碰到中間
+      return O.some(t=>t.s>a+FT&&t.s<b-FT)||O.some(t=>Math.abs(t.s-a)<=FT)&&O.some(t=>Math.abs(t.s-b)<=FT);};
+    const cutAt=[];const out=[];let cut=0;
+    for(const L of lines){if(L.r&AR_GATE){out.push(L);continue;}const p=L.p;let cur=[p[0],p[1]],any=false;
+      for(let i=2;i<p.length;i+=2){let ok=along(p[i-2],p[i-1],p[i],p[i+1]);
+        if(ok){const vx=on(p[i-2],XS),ax=vx!=null&&Math.abs(p[i]-vx)<=FT?0:1,v=ax?on(p[i-1],YS):vx,k=i/2-1;
+          const side=sideAt(p,k,ax,v,-1)||sideAt(p,k+1,ax,v,1);ok=!!side&&opp(ax,v,ax?p[i-2]:p[i-1],ax?p[i]:p[i+1],side);}// 對面那幅沒有東西碰到這段框邊：封口是真的（交給「屋線沿著圖框封口」）
+        if(ok){any=true;cut++;cutAt.push(p[i-2],p[i-1],p[i],p[i+1]);if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true}));cur=[p[i],p[i+1]];}else cur.push(p[i],p[i+1]);}
+      if(!any){out.push(L);continue;}if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true}));}
+    lines=out;opt.frameCut=cut;opt.frameCutAt=cutAt;}
   const cnt={};const put=(m)=>{cnt[m.type]=(cnt[m.type]||0)+1;mark(m);};const noFl=[];
 
   /* ---- 0. 土路路口封口：土路（鬆路面）的線頭接在道路、人行道等線上、路口沒封起來的，和對面土路線的線頭配對（12m 內、互為最近），補一條看不見的封口線（懸空的線頭不補，照樣報懸空） ---- */
@@ -622,6 +647,9 @@ function areaCheck(lines,points,opt){
         mk(q[0],q[1],`接邊：${nmOf(a.L)||'範圍線'}碰到圖框，對面沒有接著畫（中斷）`,[a.x,a.y,q[0],q[1]]);}
     }
   }
+  if(opt.frameCutAt&&opt.frameCutAt.length){const C=opt.frameCutAt,near=(x,y)=>{for(let i=0;i<C.length;i+=2)if(Math.hypot(C[i]-x,C[i+1]-y)<0.3)return true;return false;};
+    for(const m of marks){if(!['open','openadd'].includes(m.type)||!near(m.x,m.y))continue;cnt[m.type]--;
+      m.msg='接邊：屋線在圖框處對不起來（舊圖沿框封口拿掉後，兩側屋線沒有在同一位置相接）';m.type='edge';cnt.edge=(cnt.edge||0)+1;}}
   {// 缺口兩端都貼著圖框線（0.3m 內）：其實是圖框處線不接 → 歸接邊
     const onF=(x,y)=>nearFrame(x,y,0.3);
     for(const m of marks){if(!m.gap||m.type==='edge')continue;let all=true;for(let i=0;i<m.gap.length;i+=4)if(!(onF(m.gap[i],m.gap[i+1])&&onF(m.gap[i+2],m.gap[i+3])))all=false;
