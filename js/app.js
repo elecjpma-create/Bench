@@ -2109,3 +2109,24 @@ resize();setHint(baseHintText());updateUI();
 })();
 window.__cad={get cmd(){return cmd;},get cur(){return cur;},get st(){return st;},get imp(){return imp;},get lts(){return lts;},schedule,zoomFit,shxFiles:()=>shxFiles,buildDXF,tm2ll,set view(v){st.view=v;},get view(){return st.view;}};
 document.querySelectorAll('#penW [data-w]').forEach(b=>b.onclick=()=>{st.inkW=+b.dataset.w;fillPenW();saveSettings();buildPenBar();});
+
+/* ---------- 程式版本、網頁程式自動更新（只有 APK；Bench 網頁版本來就是讀網路上最新的） ---------- */
+{let webInfo=null,webPend=null;
+  const updVer=()=>{const el=$('verInfo');if(!el||!webInfo)return;
+    let t=`網頁程式 ${webInfo.web}（${webInfo.src==='update'?'自動更新':'APK 內建'}）／APK ${webInfo.apk}`;
+    const pend=webPend&&webPend.st==='ready'?webPend.ver:webInfo.pending;if(pend)t+=`。新版 ${pend} 已下載，下次開 App 生效`;
+    const need=webPend&&webPend.st==='needApk'?webPend.ver:webInfo.needApk;if(need)t+=`。新版 ${need} 要重新安裝 APK`;
+    el.textContent=t;$('verApply').style.display=pend?'':'none';};
+  if(window.CadNative&&CadNative.webInfo){
+    try{webInfo=JSON.parse(CadNative.webInfo());}catch(_){}
+    $('verSec').style.display='';updVer();
+    if(webInfo&&webInfo.justUpdated)setTimeout(()=>toast(`已自動更新到 ${webInfo.web}`,3000),1500);
+    if(webInfo&&webInfo.rolledBack)setTimeout(()=>toast('新版網頁程式開不起來，已退回原本的版本',4000),1500);
+    window.__webUpd=r=>{webPend=r;updVer();toast(r.st==='ready'?`新版 ${r.ver} 已下載，下次開 App 生效（設定裡可以馬上套用）`:`新版 ${r.ver} 要重新安裝 APK`,4000);};
+    $('verCheck').onclick=async()=>{$('verInfo').textContent='檢查中…';let r=null;try{r=await CadCall('Web','check',{});}catch(e){r={st:'err',msg:String(e.message||e)};}
+      if(r.st==='ready'||r.st==='needApk')webPend=r;updVer();toast(r.st==='err'?'檢查失敗：'+r.msg:r.msg,3000);};
+    $('verApply').onclick=()=>{if(confirm('重新載入，換成新版網頁程式？'))CadCall('Web','apply',{});};
+    $('verReset').onclick=()=>{if(confirm('還原成 APK 內建的網頁程式？（圖和設定不受影響）'))CadCall('Web','reset',{});};
+    // 跑到這裡代表程式載入正常；3 秒後回報，沒回報的新版下次開 App 會退回
+    setTimeout(()=>{try{CadNative.webOk&&CadNative.webOk();}catch(_){}},3000);}
+}

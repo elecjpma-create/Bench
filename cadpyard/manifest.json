@@ -1,0 +1,407 @@
+{
+"ver": "0.9.54",
+"code": 75,
+"minApk": 75,
+"files": {
+"dwg.js": {
+"s": 18229,
+"h": "d735a66a5899143a6ac50e074aabbacb4c5d23c67efb578f64926880752cf8b8"
+},
+"dxf.js": {
+"s": 11359,
+"h": "0e28ed62c06a6d5b4ec910e1838f236f6ead3c5cc2d2b7a1eb68a6d0daecd827"
+},
+"index.html": {
+"s": 23715,
+"h": "031f911338a22b03def102569e01bdc1862c71fce0a9da97cd8b49c6dbc9d337"
+},
+"js/app.js": {
+"s": 198331,
+"h": "78de54b4d9a29bddc2d7aaffb638576b20470c9f36b9347b210e53c14c010330"
+},
+"js/area.js": {
+"s": 82284,
+"h": "3a463111e050abcfd4806d9cd744c98f70dd753477968b644c9c5107ec1e505b"
+},
+"js/core.js": {
+"s": 35400,
+"h": "ea32f4a8ce449b2297d094ea5afd97c996ca5fe2054ef8c0ee96189ceb30b951"
+},
+"lib/converter/converter.js": {
+"s": 54828,
+"h": "d8cefb208f125b1acf8d5b47aada00cfce08e75168e2922dd98fedd8fa552b00"
+},
+"lib/converter/dwgColorToBackgroundFillColor.js": {
+"s": 1628,
+"h": "4ef2f1319c25ba5aacf380949ebc5473b13e79cca86e545d70ce1ce4f75895db"
+},
+"lib/converter/dwgColorToMLeaderRawColor.js": {
+"s": 2134,
+"h": "0acbd20b15cb29d1d2ab7b86e2d463e09589e7563062f862e4f9b3e9eb2ad402"
+},
+"lib/converter/entityConverter.js": {
+"s": 105843,
+"h": "8a765e51f2200863d121bb7399535c1ab1408619c5dd3299589f0f3604b38eac"
+},
+"lib/converter/index.js": {
+"s": 132,
+"h": "30c98598e207c49feef26bb484a41f19f1e6b6141e10b09bfe46e0fccc6a8cd4"
+},
+"lib/converter/utils.js": {
+"s": 1775,
+"h": "d327023b14715843bfcbf3e683aef268391694a0495f4522b205e4030a96ae1f"
+},
+"lib/database/classes/class.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/classes/index.js": {
+"s": 28,
+"h": "8dc1bc9755d988f9496a5d34364f07a53ec81de2c10e85f1fbeb2d0196616e12"
+},
+"lib/database/codepage.js": {
+"s": 4556,
+"h": "f062fb280d216b19e20696c17b85dbe78fd94a3e080cd3ebe4cae7c65823c155"
+},
+"lib/database/common.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/database.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/3dface.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/arc.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/arcAlignedText.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/attdef.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/attrib.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/circle.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/dimension.js": {
+"s": 5008,
+"h": "b306317fdbb3fb98cf65a5e8530a3c121ac68e99e6fc2c749e579d7fa8a3a6f0"
+},
+"lib/database/entities/ellipse.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/entity.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/hatch.js": {
+"s": 3210,
+"h": "37f0165d3a1a2723d227dbdafc1b6f1f50fcd7bfd3db354c21ef6afc995a304b"
+},
+"lib/database/entities/image.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/index.js": {
+"s": 1088,
+"h": "2673fe9e96497749256098871ad37a203a1e2dd1687e1e0c63e3a57976be4587"
+},
+"lib/database/entities/insert.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/leader.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/line.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/lwpolyline.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/mline.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/mtext.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/multileader.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/ole2frame.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/oleframe.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/point.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/polyline.js": {
+"s": 1025,
+"h": "e8f300c44fbc9ee41574f892da573006dad1c4bde89afe37573f52f52c97678d"
+},
+"lib/database/entities/proxy.js": {
+"s": 470,
+"h": "a3be07abbdfde58528fc10855f91dd314a191cdc7f9653068ff6bb291a042ced"
+},
+"lib/database/entities/ray.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/section.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/shape.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/solid.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/solid3d.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/spline.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/table.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/text.js": {
+"s": 1366,
+"h": "ea4793eed4aaeed8f08cf19bf8ee5daba549261a2caaa9013fd0df8a4dcee6dc"
+},
+"lib/database/entities/tolerance.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/trace.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/vertex.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/viewport.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/wipeout.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/entities/xline.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/header/header.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/header/index.js": {
+"s": 61,
+"h": "349953419c74fe4d847863d1bff7e309815252c9fb757795272113ec47e34fb5"
+},
+"lib/database/header/variables.js": {
+"s": 3467,
+"h": "96b66953cba68d27483b50a696b528d9574120bcd5125b0be8d8911210aa8533"
+},
+"lib/database/index.js": {
+"s": 369,
+"h": "e7586f0fdc8f463ddd0ea95d1a770d9528235bb530445a261cf790e2e23281ed"
+},
+"lib/database/objects/common.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/dictionary.js": {
+"s": 897,
+"h": "bbeb980a9086f604254236a35f2a72a144881ca89f8baa5f034a99269ba1e4c1"
+},
+"lib/database/objects/group.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/imageDef.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/index.js": {
+"s": 352,
+"h": "fba96d006c0ea9bd66c0901e92e43bf6a3b8bb3641bf180c168cb49ed7ff864a"
+},
+"lib/database/objects/layerFilter.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/layerIndex.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/layout.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/mleaderStyle.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/plotSetting.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/spatialFilter.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/objects/xrecord.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/shared/index.js": {
+"s": 28,
+"h": "5abd182cb535f4ce7b14d8456dae8a4a53efd53d72c02efd5348cc6900094563"
+},
+"lib/database/shared/xdata.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/appId.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/blockRecord.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/dimStyle.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/index.js": {
+"s": 233,
+"h": "6b4042fa355dd0ce0eb72f179c7c2c94008f707d0567555f3f952e164dd555d2"
+},
+"lib/database/tables/layer.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/ltype.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/style.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/table.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/tables/vport.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/database/textEscapes.js": {
+"s": 735,
+"h": "1508683343307b5e7184b11aff826ea8015850898e889468dd9337acb59fd3d9"
+},
+"lib/database/version.js": {
+"s": 6549,
+"h": "c091557bacb2984c35fe028a108dc83707006b1edecedee6598ec03a47a769c7"
+},
+"lib/index.js": {
+"s": 102,
+"h": "10510319d9989f417b72107b7b1fdb17ce9ae062e4df7f72c3093adffe453895"
+},
+"lib/libredwg.js": {
+"s": 53318,
+"h": "abd4dec7245e2f311955d25ccca10e824311416eadb09133ea06b86820ec918c"
+},
+"lib/svg/box2d.js": {
+"s": 3148,
+"h": "aa0a3230d7ad4c851bc5a8a3140f462eb6488da3ae21ec24ff8409e9f325a9c3"
+},
+"lib/svg/bspline.js": {
+"s": 3234,
+"h": "baaa44669cdc4eb23abedaae37c0cad2cef443239f71bbdb1928a8e7da3b73d8"
+},
+"lib/svg/color.js": {
+"s": 11938,
+"h": "ed6c03d834b4c18d24e9493ca61a91583ea0b4dcd4864815b6c3c802dea243a6"
+},
+"lib/svg/index.js": {
+"s": 35,
+"h": "1a4bcaffc16febed0973f2d83ae55d3e7da595ff4a1a996b938fea9b67c4abc4"
+},
+"lib/svg/polyline.js": {
+"s": 2396,
+"h": "f1b457cf05275bee22c8f6b8df5a87137f6778e6979709837ab108abbdf7524b"
+},
+"lib/svg/svgConverter.js": {
+"s": 22024,
+"h": "289c4884c30ce17c9dabdad680255a224de65ce97a9c5f9465ce925d831e86bf"
+},
+"lib/svg/transformBoundingBoxAndElement.js": {
+"s": 879,
+"h": "19cdca08d44fdb2cc710ab45062d0e65f3cc53d73c92a956fb9755999da1d8ca"
+},
+"lib/svg/vector.js": {
+"s": 601,
+"h": "3b019ade221cd97b3198bbb4d0da78175e5a1844cde74776c2d26f4bf73074f1"
+},
+"lib/types/common.js": {
+"s": 11,
+"h": "8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"
+},
+"lib/types/enums.js": {
+"s": 36482,
+"h": "5c237ce1bcbd1e015b159967b0ed8d5854f0810ba318eb54c08dea97d287b749"
+},
+"lib/types/index.js": {
+"s": 57,
+"h": "f215cee461ab6616c81a518db5c8756c0a4c6b83abc0c15ef963e71175c323d5"
+},
+"native-shim.js": {
+"s": 897,
+"h": "48b8eed0d7b9d535a2c41336d9420d7a0565d8a30becac8ecc0f167d0471803b"
+},
+"wasm/libredwg-web.js": {
+"s": 114465,
+"h": "e263ab8c8a00de0cc38fd259db5b0cdc4d7ef0f4b123dbe9a41de2da6f3311a4"
+},
+"wasm/libredwg-web.wasm": {
+"s": 11373231,
+"h": "8f8dbfe1ba3a0ae9ceb8856ed2090c0f44decd9d7febde68016df8c1fca50f9b"
+}
+}
+}

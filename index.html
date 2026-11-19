@@ -201,6 +201,11 @@ button{font-family:inherit;color:var(--text)}
     <div><div class="lab">手寫粗細(px)</div><input id="sInk" type="number" step="any" inputmode="decimal"></div>
   </div>
   <div class="sec"><div class="lab">鎖點模式</div><div id="osnaps"></div></div>
+  <div class="sec" id="verSec" style="display:none"><div class="lab">程式版本</div>
+    <div class="small" id="verInfo" style="margin-bottom:8px"></div>
+    <div class="row2 eq"><button id="verCheck">檢查更新</button><button id="verApply" style="display:none">馬上套用</button><button id="verReset" class="danger">還原內建版本</button></div>
+    <div class="small" style="margin-top:6px">開 App 時會在背景自動檢查網頁程式新版，下載好下次開 App 生效（也可以按「馬上套用」）。改到原生程式（Java）的版本還是要重裝 APK，會提示。新版如果開不起來會自動退回。圖和設定不受影響。</div>
+  </div>
   <div class="sec"><button class="big danger" id="clearMine">清除這張圖上我畫的東西</button></div>
 </div></div>
 
