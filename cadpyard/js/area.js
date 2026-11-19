@@ -603,12 +603,13 @@ function areaCheck(lines,points,opt){
       const sig=b=>{const k=new Set();let n=0;for(const p of f.all){if(!inB(p,b))continue;n++;k.add(p.k==='H'?'房屋':p.k);}return{n,k,txt:[...k].join('＋'),same(o){return eq(k,o.k);}};};
       cmp(f,P,sig,null,t=>`接邊：圖框切開的區域只有一側有屬性（${t}｜無）`,(a,b)=>`接邊：圖框兩側屬性不同（${a}｜${b}）`,crossPt,true);}
     // (a) 房屋（關掉增建線）：樓層註記
+    // 沒有被增建線圍起來的增建註記＝整棟（這一塊）的增建，算房屋屬性一起比（例：上 5R＋M1、下 5R＋T）
+    const wholeAdd=p=>{if(!p.add)return false;if(!TA)return true;let k=TA.locate(p.x,p.y);if(k<0&&p.cx!=null)k=TA.locate(p.cx,p.cy);return k<0||!(TA.F[k].rl[AR_ADD]>0);};
     if(TH){const PM=placeIn(TH);
-      for(const f of TH.F){const P=partsOf(f);if(P.length<2)continue;const L=(PM.get(f.id)||[]).filter(p=>!p.add);
-        const sig=b=>{const k=new Set();let n=0;for(const p of L){if(!inB(p,b))continue;n++;k.add(p.fl||(p.k==='H'?'房屋':p.k));}
-          // 有樓層註記時，另一側只有「房屋」（中、危、廢之類）不算不同
+      for(const f of TH.F){const P=partsOf(f);if(P.length<2)continue;const L=(PM.get(f.id)||[]).filter(p=>!p.add||wholeAdd(p));
+        const sig=b=>{const k=new Set();let n=0,nf=0;for(const p of L){if(!inB(p,b))continue;if(p.add){k.add('增建'+(p.tx||''));continue;}n++;nf++;k.add(p.fl||(p.k==='H'?'房屋':p.k));}
           return{n,k,txt:[...k].join('＋'),same(o){return eq(k,o.k);}};};
-        cmp(f,P,sig,null,t=>`接邊：房屋跨圖框只有一側有樓層註記（${t}｜無）`,(a,b)=>`接邊：房屋跨圖框兩側樓層不同（${a}｜${b}）`,null,false,TH.locate);}}
+        cmp(f,P,sig,null,t=>`接邊：房屋跨圖框只有一側有樓層註記（${t}｜無）`,(a,b)=>`接邊：房屋跨圖框兩側樓層或增建不同（${a}｜${b}）`,null,false,TH.locate);}}
     // (b) 增建：邊界有增建線的區，兩側增建註記
     if(TA){const PA2=placeIn(TA);
       for(const f of TA.F){if(!(f.rl[AR_ADD]>0))continue;const P=partsOf(f);if(P.length<2)continue;const L=(PA2.get(f.id)||[]).filter(p=>p.add);if(!L.length)continue;
