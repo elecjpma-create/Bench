@@ -1247,7 +1247,7 @@ function render(){
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
   drawSmall();
-  drawAddr();
+  drawAddr();drawSheets();
   drawLoc();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
@@ -1319,6 +1319,7 @@ function eraseAt(w,G){
 }
 function onTap(sp){
   const w=toW(sp);
+  if(!cmd&&sheetPick){sheetTap(w);return;}
   if(!cmd&&fillMode&&areaTopo&&smallMode==='area'&&smallMarks){const T=areaTopo,k=T.locate(w[0]-T.ox,w[1]-T.oy);
     if(k<0){toast('那裡不在任何封閉區裡');return;}if(areaFills.has(k))areaFills.delete(k);else{const P=['#ff5a5a','#4fb3ff','#5ad16a','#ffb13d','#c77dff','#3de0d0'];areaFills.set(k,P[fillCi++%P.length]);}
     const f=T.F[k];setHint(`區域面積 ${f.area<10?f.area.toFixed(2):f.area.toFixed(1)} m²　地物：${[...f.kinds.keys()].map(x=>x==='H'?'房屋':x).join('、')||'（無）'}`,true);schedule();return;}
@@ -1545,7 +1546,7 @@ $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){
 function updChk(){const b=$('newOnly');if(b){b.textContent='只看新圖相關：'+(st.newOnly?'開':'關');b.classList.toggle('on',!!st.newOnly);}
   if(document.activeElement!==$('newDist'))$('newDist').value=newDistV();}
 function chkApply(){if(smallMarks&&smallMarks[smallIdx]&&!markVis(smallMarks[smallIdx]))smallIdx=-1;if(smallMode==='area'){updSmallBar();schedule();}}
-$('chkBtn').onclick=()=>{updOldBtn();updChk();openSheet('chkSheet');};
+$('chkBtn').onclick=()=>{updOldBtn();updChk();updSheetInfo();openSheet('chkSheet');};
 $('newOnly').onclick=()=>{st.newOnly=!st.newOnly;saveSettings();updChk();chkApply();
   if(smallMode==='area'&&smallMarks){const h=smallMarks.filter(newHid).length;toast(st.newOnly?`藏了 ${h} 處離新圖超過 ${newDistV()}m 的舊圖問題`:'全部顯示',2000);}};
 $('newDist').onchange=()=>{const v=parseFloat($('newDist').value);if(v>=0&&v<=100){st.newDist=v;saveSettings();chkApply();}else $('newDist').value=newDistV();};
@@ -1661,12 +1662,65 @@ function areaHoles(k){if(areaHoleC.has(k))return areaHoleC.get(k);const T=areaTo
   const H=C.filter(j=>{const g=T.F[j],x=g.ring[0]+1e-6,y=g.ring[1]+1e-6;return!C.some(o=>{if(o===j)return false;const h=T.F[o];return h.area>g.area&&h.bb[0]<=g.bb[0]&&h.bb[2]>=g.bb[2]&&h.bb[1]<=g.bb[1]&&h.bb[3]>=g.bb[3]&&inR(h.ring,(g.bb[0]+g.bb[2])/2,(g.bb[1]+g.bb[3])/2)&&inR(h.ring,x,y);});});
   areaHoleC.set(k,H);return H;}
 function areaRun(D){
-  const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;
+  const keep=areaKeep(D);
   const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,odd:D.odd,notes:D.notes,keep});
   areaTopo=kt.T?{F:kt.T.F,locate:kt.T.locate,ox:D.ox,oy:D.oy}:null;areaFills=new Map();areaHoleC.clear();
   if(keep){const n0=R.marks.length;R.marks=R.marks.filter(m=>keep(m.x,m.y));R.st.outRange=n0-R.marks.length;}
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;
 }
+/* ---------- 檢查圖幅：圖框圖層（每幅一個外框）＋圖號圖層（框中央的圖號文字）；選了就只檢查這些圖幅 ---------- */
+let sheetSel=new Set(),sheetPick=false,sheetFr=null,sheetFor='';
+const SHEET_PAD=150;// 選定圖幅外多拿 150m 的線一起算，接邊另一側的區域才算得出來
+function sheetFrames(){const key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length;if(sheetFr&&sheetFr.key===key)return sheetFr.list;
+  const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
+  const box=(P,ox,oy,st2)=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<P.length;i+=st2){const x=st2===2?P[i]:P[i][0],y=st2===2?P[i+1]:P[i][1];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
+    if(x1-x0>50&&y1-y0>50)FB.push([x0+ox,y0+oy,x1+ox,y1+oy]);};
+  if(fly.length){
+    if(nativeOn){let R=null;try{R=JSON.parse(CadNative.areaData(JSON.stringify({b:fly,p:[],l:[],g:[]}))||'null');}catch(_){}
+      if(R&&!R.err)for(const a of R.s)box(a.slice(1),R.ox,R.oy,2);}
+    else for(const e of imp)if(fly.includes(e.ly)&&e.t!=='text')for(const P of entPolys(e))box(P,0,0,1);}
+  const B=[];for(const b of FB)if(!B.some(c=>Math.abs(c[0]-b[0])<1&&Math.abs(c[1]-b[1])<1&&Math.abs(c[2]-b[2])<1&&Math.abs(c[3]-b[3])<1))B.push(b);
+  const T=imp.filter(e=>e.t==='text'&&/圖號/.test(e.ly)&&e.p);
+  const list=B.map(b=>{const cx=(b[0]+b[2])/2,cy=(b[1]+b[3])/2;let best=null,bd=Infinity;
+    for(const t of T){if(t.p[0]<b[0]||t.p[0]>b[2]||t.p[1]<b[1]||t.p[1]>b[3])continue;const d=Math.hypot(t.p[0]-cx,t.p[1]-cy);if(d<bd){bd=d;best=t;}}
+    const num=best?best.lines.join('').replace(/\s/g,''):'';return{id:num||`${Math.round(b[0])},${Math.round(b[1])}`,num,b};});
+  if(fly.length&&(!nativeOn||FB.length))sheetFr={key,list};return list;}
+function sheetLoad(){if(sheetFor===impName)return;sheetFor=impName;try{sheetSel=new Set(JSON.parse(localStorage.getItem('sheets:'+impName)||'[]'));}catch(_){sheetSel=new Set();}}
+function sheetSave(){try{localStorage.setItem('sheets:'+impName,JSON.stringify([...sheetSel]));}catch(_){}updSheetInfo();}
+function sheetBoxes(){sheetLoad();return sheetFrames().filter(f=>sheetSel.has(f.id));}
+function updSheetInfo(){const el=$('sheetInfo');if(!el)return;sheetLoad();const S=sheetBoxes();
+  el.textContent=!imp.length?'還沒開底圖':!sheetFrames().length?'這張圖沒有圖框圖層，會檢查整張圖':S.length?`只檢查 ${S.length} 幅：${S.map(f=>f.num||f.id).join('、')}`:'沒選：檢查整張圖';
+  const b=$('sheetClear');if(b)b.disabled=!sheetSel.size;}
+/** 選了圖幅：只留選定圖幅（外加 SHEET_PAD）裡的線和註記，結果只留選定圖幅內（接邊的標記在框線上，框外 0.5m 內也算） */
+function sheetApply(D){const S=sheetBoxes();if(!S.length){if(sheetSel.size)toast('選的圖幅在這張圖找不到，改檢查整張圖',3000);return true;}
+  const ox=D.ox,oy=D.oy,BX=S.map(f=>[f.b[0]-ox,f.b[1]-oy,f.b[2]-ox,f.b[3]-oy]);
+  const PB=BX.map(b=>[b[0]-SHEET_PAD,b[1]-SHEET_PAD,b[2]+SHEET_PAD,b[3]+SHEET_PAD]);
+  const ptIn=(x,y)=>PB.some(b=>x>=b[0]&&x<=b[2]&&y>=b[1]&&y<=b[3]);
+  const arrIn=a=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<a.length;i+=2){if(a[i]<x0)x0=a[i];if(a[i]>x1)x1=a[i];if(a[i+1]<y0)y0=a[i+1];if(a[i+1]>y1)y1=a[i+1];}
+    return PB.some(b=>x1>=b[0]&&x0<=b[2]&&y1>=b[1]&&y0<=b[3]);};
+  const n0=D.lines.length;D.lines=D.lines.filter(L=>arrIn(L.p));D.points=D.points.filter(q=>ptIn(q.x,q.y));
+  if(D.gates)D.gates=D.gates.filter(g=>ptIn(g[0],g[1]));if(D.ditch)D.ditch=D.ditch.filter(arrIn);if(D.odd)D.odd=D.odd.filter(o=>arrIn(o.p||o));
+  if(D.notes)D.notes=D.notes.filter(n=>ptIn(n[0],n[1]));
+  if(D.veg)D.veg=D.veg.filter(v=>!v||!v.p||arrIn(v.p));
+  D.keep=(x,y)=>BX.some(b=>x>=b[0]-0.5&&x<=b[2]+0.5&&y>=b[1]-0.5&&y<=b[3]+0.5);D.range=null;D.sheetN=S.length;D.cut=n0-D.lines.length;
+  if(!D.lines.length){toast('選的圖幅裡沒有可以檢查的線',3000);return false;}return true;}
+function areaKeep(D){return D.keep||(D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null);}
+function sheetAt(w){return sheetFrames().filter(f=>w[0]>=f.b[0]&&w[0]<=f.b[2]&&w[1]>=f.b[1]&&w[1]<=f.b[3]).sort((a,b)=>(a.b[2]-a.b[0])*(a.b[3]-a.b[1])-(b.b[2]-b.b[0])*(b.b[3]-b.b[1]))[0]||null;}
+function sheetPickHint(){setHint(`點圖框裡面選／取消圖幅（已選 ${sheetSel.size} 幅）`,true,{t:'完成',f:sheetPickEnd});}
+function sheetPickStart(){if(!sheetFrames().length){toast('這張圖沒有圖框圖層');return;}sheetLoad();closeSheet('chkSheet');closeSheet('layerSheet');sheetPick=true;sheetPickHint();schedule();}
+function sheetPickEnd(){sheetPick=false;setHint(baseHintText(),false);schedule();updSheetInfo();toast(sheetSel.size?`只檢查 ${sheetSel.size} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查整張圖',2500);}
+function sheetTap(w){const f=sheetAt(w);if(!f){toast('那裡不在任何圖框裡');return;}if(sheetSel.has(f.id))sheetSel.delete(f.id);else sheetSel.add(f.id);sheetSave();sheetPickHint();schedule();}
+function drawSheets(){if(!sheetPick&&!(smallMarks&&smallMode==='area'))return;sheetLoad();const S=sheetBoxes();if(!S.length&&!sheetPick)return;
+  ctx.save();ctx.lineWidth=sheetPick?3:2;ctx.strokeStyle='#ffb13d';ctx.fillStyle='rgba(255,177,61,0.13)';
+  for(const f of S){const a=toS([f.b[0],f.b[3]]),c=toS([f.b[2],f.b[1]]);if(sheetPick)ctx.fillRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
+    if(sheetPick){ctx.fillStyle='#ffb13d';ctx.font='bold 16px sans-serif';ctx.textAlign='center';ctx.fillText(f.num||f.id,(a[0]+c[0])/2,(a[1]+c[1])/2);ctx.fillStyle='rgba(255,177,61,0.13)';}}
+  ctx.restore();}
+$('sheetPickBtn').onclick=sheetPickStart;
+$('sheetClear').onclick=()=>{sheetLoad();sheetSel.clear();sheetSave();schedule();toast('已清除：檢查整張圖',2000);};
+$('sheetGo').onclick=()=>{sheetLoad();const F=sheetFrames();if(!F.length){toast('這張圖沒有圖框圖層');return;}
+  const want=$('sheetIn').value.split(/[\s,，、;；]+/).map(x=>x.trim()).filter(Boolean);if(!want.length)return;const miss=[];
+  let add=0;for(const w of want){const ex=F.filter(f=>f.num===w),M=ex.length?ex:F.filter(f=>f.num&&f.num.endsWith(w));if(!M.length){miss.push(w);continue;}for(const f of M)if(!sheetSel.has(f.id)){sheetSel.add(f.id);add++;}}// 只打尾數：同尾數的都加（例：41＝那一排）
+  sheetSave();$('sheetIn').value='';schedule();toast((miss.length?`找不到圖號：${miss.join('、')}。`:'')+`加入 ${add} 幅，共 ${sheetSel.size} 幅`,2500);};
 /* ---------- 路名對門牌：門牌位置數值資料（CSV，TWD97），比對圖上路名附近的門牌；也可以把門牌點顯示在圖上 ---------- */
 let addrRaw=null,addrName='',addrIdx=null,addrDot=null;const addrFiles=new Map();// 檔名→瘦身後的 CSV（含表頭）；多個縣市可以同時放
 let addrShow=localStorage.getItem('addrShow')==='1';
@@ -1791,20 +1845,21 @@ function addrCheck(){if(!addrRaw)return[];const R=[];const txt=[];let x0=1e18,y0
 async function findArea(onlyNoAdd){
   const D=areaCollect();
   if(!D||!D.lines.length){toast('這張圖沒有認得的房屋、圍牆、道路、地類界圖層（5 碼或 7 碼編碼）',4000);return;}
+  if(sheetSel.size&&!sheetApply(D))return;
   const R=areaRun(D);
   {// 新圖（數字開頭）和 Q 圖層的小線段，一起列在區域檢查結果裡
     const nw=newLayers(),q=qLayers(),only=nw.concat(q);let L=[];
     if(only.length){try{L=nativeOn?await CadCall('Cad','small',{max:smallMaxV(),only,q}):findSmallJS(new Set(only),smallMaxV(),new Set(nw),new Set(q));}catch(_){L=[];}}
-    const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;
+    const keep=areaKeep(D);
     for(const m of L){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:'small',msg:`新圖小線段 ${m.len<0.1?m.len.toFixed(3):m.len.toFixed(2)}m（${m.l}，沒有接到同圖層的線）`});}}
-  {const keep=D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null;let A=[];try{A=addrCheck();}catch(err){console.error(err);}// 路名對門牌（有載入門牌資料才比）
+  {const keep=areaKeep(D);let A=[];try{A=addrCheck();}catch(err){console.error(err);}// 路名對門牌（有載入門牌資料才比）
     for(const m of A){const x=m.x-D.ox,y=m.y-D.oy;if(keep&&!keep(x,y))continue;R.marks.push({x,y,type:m.miss?'rmiss':'rname',msg:m.msg});}}
   const ord={};AREA_CAT.forEach(([t],i)=>ord[t]=i);
   R.marks.sort((a,b)=>(ord[a.type]??99)-(ord[b.type]??99)||b.y-a.y||a.x-b.x);
   smallKey=impName;smallMode='area';setTimeout(()=>{okApply();updSmallBar();schedule();},0);
   smallMarks=R.marks.map(m=>({p:[m.x+D.ox,m.y+D.oy],msg:m.msg,type:m.type,ring:m.ring,gap:m.gap,path:m.path,nd:m.nd,o:[D.ox,D.oy]}));smallIdx=-1;
   const c=R.st;
-  toast(smallMarks.length?`找到 ${smallMarks.length} 處${D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,3500);
+  toast(smallMarks.length?`找到 ${smallMarks.length} 處${D.sheetN?`（只看選的 ${D.sheetN} 幅）`:D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,3500);
   if(!smallMarks.length)smallMarks=null;updSmallBar();updOldBtn();schedule();
   if(smallMarks){fillAreaSheet();openSheet('areaSheet');}// 跑完開分類列表
 }
