@@ -95,6 +95,13 @@ button{font-family:inherit;color:var(--text)}
 .lyr .chip{width:22px;height:22px;border-radius:5px;border:1px solid #fff4}
 .lyr input,.lyr select{padding:6px!important;font-size:14px!important}
 .lyr button{padding:4px!important}
+.lyr.lyr1{grid-template-columns:28px 34px 1fr 36px 34px;margin:4px 0}
+.lyr1 .ci1{width:34px;height:30px;padding:0!important;font-size:12px!important;font-weight:600;border-radius:6px;line-height:1}
+.lyr1 .ci1.long{font-size:10px!important}
+.lymid{min-width:0;display:flex;flex-direction:column;gap:1px}
+.lynm{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:2px 0;cursor:pointer}
+.lyr1 select.ltmini{background:transparent;border:none;color:#9aa1ab;font-size:12px!important;padding:0!important;height:auto;width:100%;appearance:none;-webkit-appearance:none;text-overflow:ellipsis}
+.lyact{gap:8px;margin:0 0 6px 62px}.lyact button{flex:1;padding:6px!important;font-size:14px}
 .rct{display:flex;gap:6px;margin:5px 0;align-items:stretch}
 .rcb{flex:1;min-width:0;text-align:left;padding:8px 10px!important}
 .rcb.cur{border-color:var(--acc)!important}
@@ -207,9 +214,7 @@ button{font-family:inherit;color:var(--text)}
   <div class="sec" id="baseSec">
     <div class="lab">底圖圖層</div>
     <div class="row2 eq" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button><button id="lyOld" title="a 開頭的舊圖層">關舊圖</button></div>
-    <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
-    <div class="row2 eq" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="addrBtn">門牌</button></div>
-    <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">看起來接住（差距小於）</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就算接上</span></div>
+    <div class="row2 eq" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="addrBtn">門牌</button><button id="chkBtn">⚙ 檢查設定</button></div>
     <div id="baseLayers"></div>
   </div>
 </div></div>
@@ -221,6 +226,19 @@ button{font-family:inherit;color:var(--text)}
     <div class="row2"><button id="addrLoad">載入門牌 CSV…</button><button id="addrClear" class="danger">全部移除</button></div><input type="file" id="addrFile" accept=".csv,text/csv,text/plain" style="display:none"></div>
   <div class="sec"><div class="lab">門牌點</div><button class="big" id="addrShow">門牌點：關</button><div class="small" style="margin-top:6px">橘色的點，點一下顯示門牌；只畫底圖圖框（圖幅）範圍內的門牌，拉遠也畫；圖上沒有圖框就全部畫，拉遠超過約 2km 不畫</div></div>
   <div class="sec"><div class="small">路名檢查：載入門牌資料後，區域檢查會一起把圖上道路路名和附近門牌比對（結果分類「路名和附近門牌對不上」）。路名寫不下省略前段的只比寫出來的部分；沒有門牌的快速道路、河濱、農路不比。</div></div>
+</div></div>
+<div id="chkSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>檢查設定</b><button data-close>完成</button></div>
+  <div class="sec"><div class="lab">區域檢查</div>
+    <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">線頭差距小於</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就接上</span></div>
+    <div class="small" style="margin-bottom:10px">只用在懸空的線頭：已經封閉的範圍不會被這個差距接起來切開。改了要重跑區域檢查。</div>
+    <button class="big" id="newOnly">只看新圖相關：關</button>
+    <div class="row2" style="margin:8px 0 6px;align-items:center"><span class="small" style="flex:none">新圖線或註記</span><input type="number" id="newDist" step="1" min="0" max="100" value="20" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺內的問題才顯示</span></div>
+    <div class="small">0＝只看本身就用到新圖（數字開頭圖層）的問題；舊圖（a 開頭）自己的問題離新圖超過這個距離就藏起來。切換不用重跑。</div>
+  </div>
+  <div class="sec"><div class="lab">小線段</div>
+    <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">小線段門檻</span><input type="number" id="smallMax" step="0.1" min="0.01" value="1" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺</span></div>
+  </div>
 </div></div>
 <div id="areaSheet" class="sheet"><div class="sh">
   <div class="shh"><b>區域檢查結果</b><button data-close>完成</button></div>

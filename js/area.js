@@ -525,13 +525,13 @@ function areaCheck(lines,points,opt){
       put({x:p.x,y:p.y,type:'addout',msg:'增建註記不在房屋／增建範圍裡'+(f.kinds.size?'（和'+[...f.kinds.keys()][0]+'同區）':''),ring:f.ring});continue;}
     if(f.kinds.size||f.add.length||f.fac.length)continue;
     if(f.area<opt.minArea||f.area>opt.maxArea||2*f.area/f.per<opt.thin)continue;
-    if(rl(AR_ADD)>0||rl(AR_TEMP)>0||rl(AR_GATE)>0||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
+    if(rl(AR_ADD)>0||rl(AR_TEMP)>=f.per*0.5||rl(AR_GATE)>0||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
     {// 區裡面浮著的島（沒接到外圈的封閉線，例如增建圈）也是這區的邊界，一起算
       let per=f.per;const rr={};const ri=b=>(f.rl[b]||0)+(rr[b]||0);
       for(const g of F){if(g===f||g.area>=f.area||g.bb[0]<f.bb[0]||g.bb[2]>f.bb[2]||g.bb[1]<f.bb[1]||g.bb[3]>f.bb[3])continue;
         if(!arInRing(f.ring,g.ring[0],g.ring[1]))continue;
         per+=g.per;for(const k in g.rl)rr[k]=(rr[k]||0)+g.rl[k];}
-      if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>0||ri(AR_GATE)>0||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||ri(AR_HOUSE)<per*0.5))continue;}
+      if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>=per*0.5||ri(AR_GATE)>0||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||ri(AR_HOUSE)<per*0.5))continue;}
     const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
 
   /* ---- 5. 接邊：圖框切開的區域，兩側都要有屬性且一致（E09，不看距離，以拓樸為準） ---- */
@@ -634,6 +634,28 @@ function areaCheck(lines,points,opt){
     const keepM=[];const sorted=marks.slice().sort((a,b)=>rank(a.type)-rank(b.type));
     for(const m of sorted){if(keepM.some(k=>(rank(k.type)<rank(m.type)&&Math.hypot(k.x-m.x,k.y-m.y)<1)||(k.type==='edge'&&m.type==='edge'&&Math.hypot(k.x-m.x,k.y-m.y)<0.5))){cnt[m.type]--;continue;}keepM.push(m);}// 同一點的接邊只留一筆
     marks.length=0;marks.push(...keepM);}
+  {/* 只看新圖相關：每個標記到最近「新圖」（數字開頭圖層）線或註記的距離 m.nd（公尺，最多算到 ND_MAX；0＝問題本身就用到新圖）
+      量的是標記本身的範圍：有區域就用區域外框（新圖在區裡也算 0），有缺口用缺口線段，其他用標記點 */
+    const ND_MAX=100,NS=20,NG=new Map(),NSeg=[];
+    const addG=(k,x0,y0,x1,y1)=>{for(let i=Math.floor(Math.min(x0,x1)/NS);i<=Math.floor(Math.max(x0,x1)/NS);i++)for(let j=Math.floor(Math.min(y0,y1)/NS);j<=Math.floor(Math.max(y0,y1)/NS);j++){const q=i*1e7+j;let l=NG.get(q);if(!l)NG.set(q,l=[]);l.push(k);}};
+    for(const L of lines){if(!L.nw)continue;const p=L.p;for(let i=2;i<p.length;i+=2){if(!isFinite(p[i])||!isFinite(p[i-2]))continue;
+      if(Math.abs(p[i]-p[i-2])+Math.abs(p[i+1]-p[i-1])>NS*50)continue;NSeg.push([p[i-2],p[i-1],p[i],p[i+1]]);addG(NSeg.length-1,p[i-2],p[i-1],p[i],p[i+1]);}}
+    for(const q of points){if(!q.nw)continue;NSeg.push([q.x,q.y,q.x,q.y]);addG(NSeg.length-1,q.x,q.y,q.x,q.y);}
+    const pd=(x,y,s)=>{const[ax,ay,bx,by]=s,dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;let t=l2?((x-ax)*dx+(y-ay)*dy)/l2:0;t=t<0?0:t>1?1:t;return Math.hypot(ax+dx*t-x,ay+dy*t-y);};
+    const xing=(a,b)=>{const r=(p,q,o)=>(q[0]-p[0])*(o[1]-p[1])-(q[1]-p[1])*(o[0]-p[0]);const A=[a[0],a[1]],B=[a[2],a[3]],C=[b[0],b[1]],D=[b[2],b[3]];
+      return r(A,B,C)*r(A,B,D)<0&&r(C,D,A)*r(C,D,B)<0;};
+    const ssd=(a,b)=>xing(a,b)?0:Math.min(pd(a[0],a[1],b),pd(a[2],a[3],b),pd(b[0],b[1],a),pd(b[2],b[3],a));
+    if(NSeg.length)for(const m of marks){
+      let geo;if(m.ring&&m.ring.length>=6){geo=[];const r=m.ring;for(let i=0;i<r.length;i+=2){const j=(i+2)%r.length;geo.push([r[i],r[i+1],r[j],r[j+1]]);}}
+      else if(m.gap&&m.gap.length>=4)geo=[[m.gap[0],m.gap[1],m.gap[2],m.gap[3]]];else geo=[[m.x,m.y,m.x,m.y]];
+      let a=Infinity,b=Infinity,c=-Infinity,d=-Infinity;for(const g of geo){a=Math.min(a,g[0],g[2]);c=Math.max(c,g[0],g[2]);b=Math.min(b,g[1],g[3]);d=Math.max(d,g[1],g[3]);}
+      let best=ND_MAX;const seen=new Set();
+      for(let i=Math.floor((a-ND_MAX)/NS);i<=Math.floor((c+ND_MAX)/NS);i++)for(let j=Math.floor((b-ND_MAX)/NS);j<=Math.floor((d+ND_MAX)/NS);j++){const l=NG.get(i*1e7+j);if(!l)continue;
+        for(const k of l){if(seen.has(k))continue;seen.add(k);const sg=NSeg[k];if(Math.min(sg[0],sg[2])>c+best||Math.max(sg[0],sg[2])<a-best||Math.min(sg[1],sg[3])>d+best||Math.max(sg[1],sg[3])<b-best)continue;
+          if(m.ring&&geo.length>2&&arInRing(m.ring,sg[0],sg[1])){best=0;break;}
+          for(const g of geo){const v=ssd(g,sg);if(v<best)best=v;}if(!best)break;}if(!best)break;}
+      m.nd=best;}
+    else for(const m of marks)m.nd=ND_MAX;}
   if(opt.debug)opt.debug.dbg={G,F,GH,TH};
   if(opt.keepTopo)opt.keepTopo.T={F,locate};// 填色用：留下分好的區
   return{marks,st:Object.assign(cnt,{seg:G.ns,node:NN,graphEdges:NE,face:F.length,pts:points.length,inside,frames:FB.length,pub:pub.filter(Boolean).length,ms:Date.now()-t0})};
