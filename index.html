@@ -21,6 +21,7 @@ button{font-family:inherit;color:var(--text)}
 .fl button:active{background:var(--panel2)}
 .fl button:disabled{opacity:.35}
 #topbar{top:8px;left:8px}
+#topbar button{width:min(42px,calc((100vw - 40px)/9))}
 #cmdbar{top:58px;right:8px;display:none}
 #smallBar{top:58px;left:8px;right:8px;display:none;align-items:center}
 #selBar{top:58px;right:8px;display:none}
@@ -126,6 +127,8 @@ button{font-family:inherit;color:var(--text)}
 .spin{width:22px;height:22px;border:3px solid #555;border-top-color:var(--acc);border-radius:50%;animation:sp 1s linear infinite;flex:none}
 @keyframes sp{to{transform:rotate(360deg)}}
 #toast{position:fixed;left:50%;top:calc(110px + env(safe-area-inset-top));transform:translateX(-50%);background:rgba(20,22,26,.95);border:1px solid var(--line);padding:8px 14px;border-radius:10px;font-size:13px;z-index:40;display:none;max-width:85%;text-align:center}
+#findList button{display:block;width:100%;text-align:left;margin-bottom:6px;line-height:1.35}
+#findList .fs{display:block;font-size:12px;color:var(--muted);margin-top:2px}
 </style>
 </head>
 <body>
@@ -138,6 +141,7 @@ button{font-family:inherit;color:var(--text)}
       <button id="tRedo" title="重做"></button>
       <button id="tFit" title="全圖"></button>
       <button id="tLoc" title="定位（目前位置）"></button>
+      <button id="tFind" title="搜尋（路名、門牌、文字）"></button>
       <button id="tSnap" title="鎖點"></button>
       <button id="tOrtho" title="正交"></button>
       <button id="tSet" title="設定"></button>
@@ -237,6 +241,13 @@ button{font-family:inherit;color:var(--text)}
     <div class="small" style="margin-top:6px">和區域檢查的「檢查圖幅」分開選。圖號可以只打尾數（同尾數的整排都加）。每張圖各自記住。</div>
   </div>
   <div class="sec"><div class="small">路名檢查：載入門牌資料後，區域檢查會一起把圖上道路路名和附近門牌比對（結果分類「路名和附近門牌對不上」）。路名寫不下省略前段的只比寫出來的部分；沒有門牌的快速道路、河濱、農路不比。</div></div>
+</div></div>
+<div id="findSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>搜尋</b><button data-close>完成</button></div>
+  <div class="sec"><div class="row2"><input type="text" id="findIn" placeholder="路名、門牌、註記文字…" enterkeyhint="search" autocomplete="off"><button id="findGo" style="flex:none">找</button></div>
+    <div class="small" id="findInfo">找圖上的文字（底圖和自己寫的）；載入門牌資料後也找門牌。空白、全形數字、臺／台不分。</div></div>
+  <div class="sec" id="findRes" style="display:none"><div id="findList"></div></div>
+  <div class="sec"><button class="big" id="findClr">清除圖上的搜尋標記</button></div>
 </div></div>
 <div id="chkSheet" class="sheet"><div class="sh">
   <div class="shh"><b>檢查設定</b><button data-close>完成</button></div>

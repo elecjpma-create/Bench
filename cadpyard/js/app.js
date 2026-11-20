@@ -35,6 +35,7 @@ const IC={
   undo:'<path d="M9 7L4 12l5 5"/><path d="M4 12h10a6 6 0 0 1 0 12"/>',
   redo:'<path d="M15 7l5 5-5 5"/><path d="M20 12H10a6 6 0 0 0 0 12"/>',
   fit:'<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+  find:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>',
   loc:'<circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="8"/>',
   snap:'<rect x="8" y="8" width="8" height="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
   ortho:'<path d="M5 19V5M5 19h14"/><path d="M5 12h5M12 19v-5" stroke-dasharray="2 2"/>',
@@ -1249,7 +1250,7 @@ function render(){
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
   drawSmall();
   drawAddr();drawSheets();
-  drawLoc();
+  drawLoc();drawFind();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
   bubble=null;
@@ -1373,7 +1374,7 @@ function updateUI(){
   $('tUndo').disabled=!undoS.length&&!(cmd&&cmd.pts&&cmd.pts.length);$('tRedo').disabled=!redoS.length;
   updateCmdBar();
 }
-for(const[id,k]of[['tFile','file'],['tUndo','undo'],['tRedo','redo'],['tFit','fit'],['tLoc','loc'],['tSnap','snap'],['tOrtho','ortho'],['tSet','set']])$(id).innerHTML=svg(k);
+for(const[id,k]of[['tFile','file'],['tUndo','undo'],['tRedo','redo'],['tFit','fit'],['tLoc','loc'],['tFind','find'],['tSnap','snap'],['tOrtho','ortho'],['tSet','set']])$(id).innerHTML=svg(k);
 $('tUndo').onclick=()=>{doUndo();updateUI();};$('tRedo').onclick=()=>{doRedo();updateUI();};$('tFit').onclick=zoomFit;
 /* ---------- 定位：藍點＋精度圈；按一下開始並跳到目前位置，已經在畫面中央再按一下就關掉 ---------- */
 let locW=null,locP=null,locGo=false;
@@ -1390,6 +1391,54 @@ $('tLoc').onclick=()=>{
 function drawLoc(){if(!locP)return;const q=toS([locP.x,locP.y]),r=locP.acc*st.view.s;ctx.save();
   if(r>8){ctx.beginPath();ctx.arc(q[0],q[1],r,0,TAU);ctx.fillStyle='rgba(66,133,244,.15)';ctx.fill();ctx.strokeStyle='rgba(66,133,244,.6)';ctx.lineWidth=1;ctx.stroke();}
   ctx.beginPath();ctx.arc(q[0],q[1],8,0,TAU);ctx.fillStyle='#4285f4';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();}
+/* ---------- 搜尋（2026-11-20）：圖上的文字（底圖＋自己寫的）、門牌資料；結果依離畫面中心的距離排，點一筆跳過去 ---------- */
+const findNorm=s=>String(s||'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\s|\\P/g,'').replace(/臺/g,'台').toUpperCase();
+let findIdx=null,findMark=null;
+function findTexts(){const key=imp.length+'|'+st.ents.length+'|'+drawKey;if(findIdx&&findIdx.key===key)return findIdx;
+  const T=[],one=new Map();// one：單一個中文字的文字（河名常一個字一個字放），依字分組
+  const add=e=>{if(e.t!=='text'||!e.lines||!e.p)return;const raw=e.lines.join(' '),n=findNorm(raw);if(!n)return;const o={n,raw,x:e.p[0],y:e.p[1],h:e.h||1,ly:e.ly||'',e};T.push(o);
+    if(n.length===1&&/[㐀-鿿]/.test(n)){let l=one.get(n);if(!l)one.set(n,l=[]);l.push(o);}};
+  for(const e of imp)add(e);for(const e of st.ents)add(e);
+  return findIdx={key,T,one};}
+// 一個字一個字分開放的（例如河名「大」「漢」「溪」，字和字常隔 60～200m）：從第一個字開始，同圖層、6 倍字高或 300m 內找最近的下一個字
+function findChain(q,I){const out=[],cs=[...q];if(cs.length<2||!cs.every(c=>I.one.has(c)))return out;
+  for(const a of I.one.get(cs[0])){const ch=[a];let ok=true;
+    for(let k=1;k<cs.length&&ok;k++){const p=ch[ch.length-1];let best=null,bd=Infinity;
+      for(const b of I.one.get(cs[k])){if(b.ly!==p.ly||ch.includes(b))continue;const d=Math.hypot(b.x-p.x,b.y-p.y);if(d<bd&&d<=Math.max(6*Math.max(p.h,b.h),300)){bd=d;best=b;}}
+      if(best)ch.push(best);else ok=false;}
+    if(ok){const x=ch.reduce((t,o)=>t+o.x,0)/ch.length,y=ch.reduce((t,o)=>t+o.y,0)/ch.length;out.push({raw:cs.join(''),x,y,ly:a.ly,e:a.e,kind:'分開的字',ex:1});}}
+  return out;}
+function findAddr(q){const out=[];if(!addrRaw)return out;
+  for(const raw of addrRaw)addrEach(raw,(a,c)=>{const g=i=>i<0?'':addrFw(a[i]);
+    let la=g(c.L).replace(/巷$/,''),al=g(c.B).replace(/弄$/,''),no=g(c.N).replace(/號.*$/,'');
+    const full=(g(c.S)||g(c.A))+(la?la+'巷':'')+(al?al+'弄':'')+(no?no+'號':'');const n=findNorm(full);if(!n.includes(q))return;
+    const x=+a[c.X],y=+a[c.Y];if(!isFinite(x)||!isFinite(y)||!x||!y)return;out.push({raw:full,x,y,ly:'',kind:'門牌',ex:n===q||n.endsWith(q)?1:0});});
+  return out;}
+function findRun(){const q=findNorm($('findIn').value);const list=$('findList'),box=$('findRes');
+  if(!q){box.style.display='none';$('findInfo').textContent='請輸入要找的字';return;}
+  const I=findTexts();let R=[];
+  for(const o of I.T)if(o.n.includes(q))R.push({raw:o.raw,x:o.x,y:o.y,ly:o.ly,e:o.e,kind:o.e.imp?'':'我寫的',ex:o.n===q?1:0});
+  R=R.concat(findChain(q,I),findAddr(q));
+  const c=toW([W/2,H/2]);for(const r of R)r.d=Math.hypot(r.x-c[0],r.y-c[1]);
+  R.sort((a,b)=>(b.ex-a.ex)||(a.d-b.d));const N=R.length,MAX=300;R=R.slice(0,MAX);
+  $('findInfo').textContent=N?`找到 ${N} 筆`+(N>MAX?`（只列最近的 ${MAX} 筆）`:'')+'，依離畫面中心近到遠排（完全相同的排前面）':'找不到'+(addrRaw?'':'（門牌要先在「圖層 → 門牌」載入資料才找得到）');
+  const esc=t=>String(t).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  const dist=d=>d<1000?Math.round(d)+' m':(d/1000).toFixed(d<10000?1:0)+' km';
+  list.innerHTML=R.map((r,i)=>{const off=r.e&&!shown(r.e);const sub=[r.kind,r.ly,'距 '+dist(r.d),off?'圖層關閉中':''].filter(Boolean).join(' · ');
+    return `<button data-i="${i}">${esc(r.raw)}<span class="fs">${esc(sub)}</span></button>`;}).join('');
+  box.style.display=N?'':'none';
+  list.querySelectorAll('button').forEach(b=>b.onclick=()=>findGo(R[+b.dataset.i]));}
+function findGo(r){findMark={x:r.x,y:r.y,t:r.raw};closeSheet('findSheet');
+  const vw=W/st.view.s;if(vw>400||vw<20)st.view.s=clampS(W/150);// 太遠或太近就調到畫面寬約 150m
+  st.view.ox=W/2-r.x*st.view.s;st.view.oy=H/2+r.y*st.view.s;schedule();saveSettings();
+  if(r.e&&!shown(r.e))toast(`這個文字的圖層「${r.ly}」目前關閉，圖上只看得到搜尋標記`,4000);}
+function drawFind(){if(!findMark)return;const q=toS([findMark.x,findMark.y]);ctx.save();
+  ctx.strokeStyle='#ff3b30';ctx.lineWidth=3;ctx.beginPath();ctx.arc(q[0],q[1],22,0,TAU);ctx.stroke();
+  ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(q[0]-34,q[1]);ctx.lineTo(q[0]-14,q[1]);ctx.moveTo(q[0]+14,q[1]);ctx.lineTo(q[0]+34,q[1]);ctx.moveTo(q[0],q[1]-34);ctx.lineTo(q[0],q[1]-14);ctx.moveTo(q[0],q[1]+14);ctx.lineTo(q[0],q[1]+34);ctx.stroke();
+  ctx.restore();}
+$('tFind').onclick=()=>{$('findClr').disabled=!findMark;openSheet('findSheet');setTimeout(()=>{const i=$('findIn');i.focus();i.select();},250);};
+$('findGo').onclick=findRun;$('findIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('findIn').blur();findRun();}};
+$('findClr').onclick=()=>{findMark=null;closeSheet('findSheet');schedule();};
 // 點一下：鎖點開關；長按：選要用哪幾種鎖點
 {let lp=0;const b=$('tSnap');b.onpointerdown=()=>{lp=setTimeout(()=>{lp=-1;fillOsnaps($('osnapsQ'));openSheet('snapSheet');},500);};b.onpointerup=b.onpointerleave=()=>{if(lp>0)clearTimeout(lp);};
   b.oncontextmenu=e=>e.preventDefault();
