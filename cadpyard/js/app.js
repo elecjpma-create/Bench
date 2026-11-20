@@ -608,8 +608,9 @@ function cmdMove(copy){
         else for(const e of sel)xform(e,q=>[q[0]+dx,q[1]+dy],0);
         saveDraw();if(!copy){endCmd();toast('已移動');}},
       base(){return this.pts.length?this.pts[0]:null;},
+      carry(){return this.pts.length>0;},
       ok(){endCmd();},
-      preview(){if(this.pts.length&&cur){const b=this.pts[0],dx=cur.p[0]-b[0],dy=cur.p[1]-b[1];ctx.globalAlpha=.6;for(const e of sel){const c=JSON.parse(JSON.stringify(e));xform(c,q=>[q[0]+dx,q[1]+dy],0);drawTemp(c);}ctx.globalAlpha=1;previewPath([b],cur.p,false,true);}}
+      preview(){if(this.pts.length&&cur){const b=this.pts[0],dx=cur.p[0]-b[0],dy=cur.p[1]-b[1];ctx.globalAlpha=.9;for(const e of sel){const c=JSON.parse(JSON.stringify(e));xform(c,q=>[q[0]+dx,q[1]+dy],0);drawTemp(c);}ctx.globalAlpha=1;previewPath([b],cur.p,false,true);}}
     }));
   },extra:{name:copy?'copy':'move',filter:copy?null:ownOnly,group:copy}});
 }
@@ -667,13 +668,13 @@ function cmdInsert(){return selectStage({title:'插入圖塊',verb:'當樣本',n
     for(const e of sel){const k=draw?JSON.parse(JSON.stringify(e)):ownCopy(e,gm);
       xform(k,q=>{const x=(q[0]-ins[0])*sc,y=(q[1]-ins[1])*sc;return[p[0]+x*c-y*s,p[1]+x*s+y*c];},a);if(sc!==1){if(k.r)k.r*=sc;if(k.h)k.h*=sc;if(k.ls)k.ls*=sc;}if(!draw&&!k.og&&sel.length>1)k.og=gm.get('one')||(gm.set('one',newOg()),gm.get('one'));out.push(k);}return out;};
   let n=0;
-  startCmdKeep(pointsCmd({name:'ins',init(){kp.setMode('xy');},
+  startCmdKeep(pointsCmd({name:'ins',carry(){return true;},init(){kp.setMode('xy');},
     extraBtns(){return[{t:`角度 ${ang}°`,c:'mode',f:()=>{const v=prompt('插入角度（度，逆時針為正）',String(ang));if(v!=null&&isFinite(+v)){ang=+v;refreshCmd();}}},
       {t:`比例 ${sc}`,c:'mode',f:()=>{const v=prompt('插入比例（1＝原大小，0.5＝一半）',String(sc));if(v!=null&&isFinite(+v)&&+v>0){sc=+v;refreshCmd();}}}];},
     hint(){return[`插入圖塊（${sel.length} 個物件${n?`，已插入 ${n} 個`:''}）：點插入點，可連續點；✓ 結束`,!!cur];},
     onPoint(p){this.pts.push(p);snapshot();st.ents.push(...place(p,false));n++;saveDraw();refreshCmd();schedule();},
     ok(){endCmd();if(n)toast(`已插入 ${n} 個圖塊`);},
-    preview(){if(cur){ctx.globalAlpha=.6;for(const k of place(cur.p,true))drawTemp(k);ctx.globalAlpha=1;}}}));
+    preview(){if(cur){ctx.globalAlpha=.9;for(const k of place(cur.p,true))drawTemp(k);ctx.globalAlpha=1;}}}));
   selSet=new Set(sel);
 },extra:{name:'ins',group:true,filter:e=>!!(e.g||e.og)}});}
 function rotEnt(e,b,a){const c=Math.cos(a),s=Math.sin(a);xform(e,q=>[b[0]+(q[0]-b[0])*c-(q[1]-b[1])*s,b[1]+(q[0]-b[0])*s+(q[1]-b[1])*c],a);}
@@ -1283,11 +1284,13 @@ function placeSmallBar(){const b=$('smallBar');if(b.style.display==='none')retur
 
 /* ---------- 指標事件 ---------- */
 let g=null,ink=null;
+// 帶著走（2026-11-20）：移動／複製定好基準點後、插入圖塊時，雙指縮放平移畫面，游標留在螢幕同一個位置，要複製的東西跟著畫面走（像 CAD），可以一路帶到很遠的地方
+const carrying=()=>!!(cmd&&cmd.carry&&cmd.carry()&&cur);
 function evPt(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];}
 cv.addEventListener('pointerdown',e=>{
   e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(_){}
   const sp=evPt(e);lastType=e.pointerType;ptrs.set(e.pointerId,sp);
-  if(ptrs.size===2){const[a,b]=[...ptrs.values()],m=midp(a,b);if(ink){ink=null;}boxNow=null;g={type:'pinch',d0:dist(a,b)||1,s0:st.view.s,w0:toW(m)};schedule();return;}
+  if(ptrs.size===2){const[a,b]=[...ptrs.values()],m=midp(a,b);if(ink){ink=null;}boxNow=null;g={type:'pinch',d0:dist(a,b)||1,s0:st.view.s,w0:toW(m),cs:carrying()?toS(cur.raw):null};schedule();return;}
   if(ptrs.size>2)return;
   if(e.pointerType==='mouse'&&e.button!==0){g={type:'pan',last:sp};return;}
   if(cmd&&cmd.kind==='pen'){
@@ -1303,17 +1306,17 @@ cv.addEventListener('pointerdown',e=>{
 cv.addEventListener('pointermove',e=>{
   const sp=evPt(e);if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,sp);
   if(!g)return;
-  if(g.type==='pinch'){if(ptrs.size<2)return;const[a,b]=[...ptrs.values()],m=midp(a,b),s=clampS(g.s0*dist(a,b)/g.d0);st.view={s,ox:m[0]-g.w0[0]*s,oy:m[1]+g.w0[1]*s};schedule();return;}
+  if(g.type==='pinch'){if(ptrs.size<2)return;const[a,b]=[...ptrs.values()],m=midp(a,b),s=clampS(g.s0*dist(a,b)/g.d0);st.view={s,ox:m[0]-g.w0[0]*s,oy:m[1]+g.w0[1]*s};if(g.cs){const w=toW(g.cs);cur={raw:w,p:w.slice(),snap:null};}schedule();return;}
   if(g.type==='ink'){if(dist(sp,ink.last)>=1.5){ink.pts.push(toW(sp));ink.last=sp;schedule();}return;}
   if(g.type==='erase'){eraseAt(toW(sp),g);return;}
   if(g.type==='box'){boxNow=[g.start,sp];schedule();return;}
   if(g.type==='pending'&&dist(sp,g.start)>8){g.moved=true;g.type=(cmd&&cmd.kind==='points'&&cur)?'cursor':'pan';}
-  if(g.type==='pan'){st.view.ox+=sp[0]-g.last[0];st.view.oy+=sp[1]-g.last[1];g.last=sp;schedule();return;}
+  if(g.type==='pan'){const cs=carrying()?toS(cur.raw):null;st.view.ox+=sp[0]-g.last[0];st.view.oy+=sp[1]-g.last[1];g.last=sp;if(cs){const w=toW(cs);cur={raw:w,p:w.slice(),snap:null};}schedule();return;}
   if(g.type==='cursor'){const s=st.view.s,raw=[cur.raw[0]+(sp[0]-g.last[0])/s,cur.raw[1]-(sp[1]-g.last[1])/s];g.last=sp;setCursorRaw(raw);return;}
 });
 function endPtr(e,cancel){
   ptrs.delete(e.pointerId);if(!g)return;
-  if(g.type==='pinch'){if(ptrs.size<2)g=ptrs.size?{type:'dead'}:null;saveSettings();return;}
+  if(g.type==='pinch'){if(g.cs&&cur)setCursorRaw(cur.raw);if(ptrs.size<2)g=ptrs.size?{type:'dead'}:null;saveSettings();return;}
   if(g.type==='dead'){if(!ptrs.size)g=null;return;}
   const G=g;g=null;if(cancel){ink=null;boxNow=null;schedule();return;}
   if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
