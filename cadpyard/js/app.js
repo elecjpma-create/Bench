@@ -184,7 +184,10 @@ function addEnt(e){e.ly=e.ly||st.cur;st.ents.push(e);}
 let saveT=0,saveDT=0;
 function saveSettings(){clearTimeout(saveT);saveT=setTimeout(()=>{try{const o=Object.assign({},st);delete o.ents;localStorage.setItem('simplecad.v2',JSON.stringify(o));localStorage.setItem('simplecad.lts',JSON.stringify(lts.filter(l=>l.src)));}catch(_){}},250);}
 function saveDraw(){clearTimeout(saveDT);saveDT=setTimeout(saveDrawNow,200);}
-function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('simplecad.draw:'+key)||'[]');}catch(_){st.ents=[];}for(const e of st.ents)delete e.bb;undoS=[];redoS=[];selE=null;selSet.clear();}
+function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('simplecad.draw:'+key)||'[]');}catch(_){st.ents=[];}for(const e of st.ents)delete e.bb;undoS=[];redoS=[];selE=null;selSet.clear();
+  // 修 v0.9.47～0.9.63 的錯：複製／插入底圖的東西沒轉成自己的線（還帶底圖記號，畫面上看不到），開圖時轉回來
+  let fx=0;for(const e of st.ents)if(e.imp){delete e.imp;delete e.g;delete e.c;delete e._sg;delete e.rc;e.ly=st.cur;if(e.lt==='BYLAYER'||e.lt==='BYBLOCK')delete e.lt;fx++;}
+  if(fx){saveDraw();setTimeout(()=>toast(`修正了 ${fx} 個之前複製／插入後看不到的物件，放在「${st.cur}」圖層`,5000),800);}}
 
 /* ---------- 數字鍵盤 ---------- */
 const kp={
@@ -503,7 +506,8 @@ function impIns(e){if(e.gi)return e.gi;if(!e.imp||!e.g)return null;if(insCache.h
 function insSnapCands(w,tol){const R=Math.max(tol,3),seen=new Set(),out=[];
   for(const e of snapEnts(w,R)){let k,p;if(e.imp&&e.g){k='i'+e.g;if(seen.has(k))continue;seen.add(k);p=impIns(e);}else if(!e.imp&&e.og&&e.gi){k='o'+e.og;if(seen.has(k))continue;seen.add(k);p=e.gi;}else continue;
     if(p&&Math.abs(p[0]-w[0])<=tol&&Math.abs(p[1]-w[1])<=tol)out.push(p);}return out;}
-function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const og=ogOf(e,gm);if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}// 複製的圖塊帶著插入點if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}
+function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const og=ogOf(e,gm);if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}// 複製的圖塊帶著插入點
+  if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}
   if(og)c.og=og;else delete c.og;return c;}
 
 /* ---------- 框選：往右拉＝框內的（window），往左拉＝碰到就選（crossing） ---------- */
