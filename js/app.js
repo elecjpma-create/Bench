@@ -1482,13 +1482,14 @@ $('selOff').onclick=closeSelLayer;$('selList').onclick=showSelLayer;
 /* ---------- 舊圖（a 開頭圖層）一鍵開關、小線段標記 ---------- */
 // 舊圖 a 開頭、新圖數字開頭、Q 不確定線；等高線（98111 計曲線、98112 首曲線…）不抓小線段
 const OLD_RE=/^a/i,NEW_RE=/^\d/,Q_RE=/^q/i,CONTOUR_RE=/^a?9811|曲線/i;
-const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};const areaTolV=()=>{const v=+st.areaTol;return v>0?v:0.05;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
+const smallMaxV=()=>{const v=+st.smallMax;return v>0?v:1;};const areaTolV=()=>{const v=+st.areaTol;return v>0?v:0.05;};const edgeTolV=()=>{const v=+st.edgeTol;return v>0?v:0.001;};// 舊圖：a 開頭；新圖：數字開頭（不含 0 圖層）
 const oldLayers=()=>impLayers.filter(l=>OLD_RE.test(l.name)).map(l=>l.name);
 const newLayers=()=>impLayers.filter(l=>NEW_RE.test(l.name)&&l.name!=='0'&&!CONTOUR_RE.test(l.name)).map(l=>l.name);
 const qLayers=()=>impLayers.filter(l=>Q_RE.test(l.name)).map(l=>l.name);
 function oldOff(){const o=oldLayers();return o.length&&o.every(n=>offLy.has(n));}
 function updOldBtn(){const b=$('lyOld');if(!b)return;if(document.activeElement!==$('smallMax'))$('smallMax').value=smallMaxV();const o=oldLayers();b.disabled=!o.length;b.textContent=o.length?(oldOff()?'開舊圖':'關舊圖'):'無舊圖';
   if(document.activeElement!==$('areaTol'))$('areaTol').value=areaTolV();
+  if($('edgeTol')&&document.activeElement!==$('edgeTol'))$('edgeTol').value=edgeTolV();
   $('lyArea').textContent=smallMarks&&smallMode==='area'?'取消區域檢查標記':'區域檢查';}
 $('lyOld').onclick=()=>{const o=oldLayers();if(!o.length)return;if(oldOff())o.forEach(n=>offLy.delete(n));else o.forEach(n=>offLy.add(n));syncHid();fillLayerSheet();schedule();};
 let smallMarks=null,smallIdx=-1,smallKey='',smallMode='small',smallHl=true;// smallHl：目前這筆的範圍、缺口、指示線要不要畫（點旁邊空白處就收起來）
@@ -1543,6 +1544,7 @@ function drawSmall(){updSelBar();if(smallMarks&&smallKey!==impName){smallMarks=n
   if(cm&&cm.ring){const r=cm.ring,o=cm.o;ctx.strokeStyle='#ffea00';ctx.lineWidth=2.5;ctx.setLineDash([8,5]);ctx.beginPath();
     for(let i=0;i<r.length;i+=2){const q=toS([o[0]+r[i],o[1]+r[i+1]]);if(i)ctx.lineTo(q[0],q[1]);else ctx.moveTo(q[0],q[1]);}ctx.closePath();ctx.stroke();ctx.setLineDash([]);}
   ctx.restore();}
+$('edgeTol').onchange=()=>{const v=parseFloat($('edgeTol').value);if(v>0&&v<=1){st.edgeTol=v;saveSettings();}else $('edgeTol').value=edgeTolV();};
 $('areaTol').onchange=()=>{const v=parseFloat($('areaTol').value);if(v>0&&v<=1){st.areaTol=v;saveSettings();}else $('areaTol').value=areaTolV();};
 function updChk(){const b=$('newOnly');if(b){b.textContent='只看新圖相關：'+(st.newOnly?'開':'關');b.classList.toggle('on',!!st.newOnly);}
   if(document.activeElement!==$('newDist'))$('newDist').value=newDistV();}
@@ -1664,9 +1666,9 @@ function areaHoles(k){if(areaHoleC.has(k))return areaHoleC.get(k);const T=areaTo
   areaHoleC.set(k,H);return H;}
 function areaRun(D){
   const keep=areaKeep(D);
-  const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,odd:D.odd,notes:D.notes,keep});
+  const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),edgeTol:edgeTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,odd:D.odd,notes:D.notes,keep});
   areaTopo=kt.T?{F:kt.T.F,locate:kt.T.locate,ox:D.ox,oy:D.oy}:null;areaFills=new Map();areaHoleC.clear();
-  if(keep){const n0=R.marks.length;R.marks=R.marks.filter(m=>keep(m.x,m.y));R.st.outRange=n0-R.marks.length;}
+  if(keep){const n0=R.marks.length;R.marks=R.marks.filter(m=>keep(m.kx??m.x,m.ky??m.y));/* 接邊屬性問題：圓圈畫在區裡，要不要留看框上的點 */R.st.outRange=n0-R.marks.length;}
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;
 }
 /* ---------- 檢查圖幅：圖框圖層（每幅一個外框）＋圖號圖層（框中央的圖號文字）；選了就只檢查這些圖幅 ---------- */

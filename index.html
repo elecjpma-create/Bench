@@ -248,7 +248,9 @@ button{font-family:inherit;color:var(--text)}
   </div>
   <div class="sec"><div class="lab">區域檢查</div>
     <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">線頭差距小於</span><input type="number" id="areaTol" step="0.01" min="0.001" max="1" value="0.05" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺就接上</span></div>
-    <div class="small" style="margin-bottom:10px">只用在懸空的線頭：已經封閉的範圍不會被這個差距接起來切開。改了要重跑區域檢查。</div>
+    <div class="small" style="margin-bottom:10px">只用在圖內懸空的線頭：已經封閉的範圍不會被這個差距接起來切開。</div>
+    <div class="row2" style="margin-bottom:6px;align-items:center"><span class="small" style="flex:none">接邊差距小於</span><input type="number" id="edgeTol" step="0.001" min="0.001" max="1" value="0.001" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺才算接上</span></div>
+    <div class="small" style="margin-bottom:10px">只用在圖框上：兩幅在框上的接點（舊圖沿框封口拿掉後的斷點、線碰到圖框處）差超過這個就報接不上／錯開，不被上面的差距順手接起來。改了要重跑區域檢查。</div>
     <button class="big" id="newOnly">只看新圖相關：關</button>
     <div class="row2" style="margin:8px 0 6px;align-items:center"><span class="small" style="flex:none">新圖線或註記</span><input type="number" id="newDist" step="1" min="0" max="100" value="20" inputmode="decimal" style="width:80px;flex:none"><span class="small" style="flex:none">公尺內的問題才顯示</span></div>
     <div class="small">0＝只看本身就用到新圖（數字開頭圖層）的問題；舊圖（a 開頭）自己的問題離新圖超過這個距離就藏起來。切換不用重跑。</div>

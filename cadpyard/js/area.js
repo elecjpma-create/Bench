@@ -84,8 +84,8 @@ function areaPrep(lines,opt){
    使用者設定的容差 tol 只拿來把「嚴格容差下沒碰到任何東西的開放線端點」接到附近的點或線（加一小段接線）。
    這樣已經封閉的範圍不會因為旁邊的線差幾 mm 就被切出細條。 */
 const AR_EXACT=0.001;
-function arGraph(lines,tol){
-  const loose=tol;tol=Math.min(tol,AR_EXACT);
+function arGraph(lines,tol,edgeTol){
+  const loose=tol;tol=Math.min(tol,AR_EXACT);const eT=edgeTol==null?loose:edgeTol;
   let n=0;for(const L of lines)n+=Math.max(0,L.p.length/2-1);n+=lines.length*2;
   const X0=new Float64Array(n),Y0=new Float64Array(n),X1=new Float64Array(n),Y1=new Float64Array(n),R=new Uint16Array(n),SL=new Int32Array(n);
   let ns=0;const ENDS=[];
@@ -97,7 +97,8 @@ function arGraph(lines,tol){
         // 線頭附近（容差長度內）自己的小碎段和下一段都算自己的線頭，不當成「碰到東西」
         let c=0;const a=[s0];for(let k=s0;k<s1&&(c+=len(k))<=loose;)a.push(++k);
         c=0;const b=[s1];for(let k=s1;k>s0&&(c+=len(k))<=loose;)b.push(--k);
-        ENDS.push([X0[s0],Y0[s0],a,li]);ENDS.push([X1[s1],Y1[s1],b,li]);}}});
+        // 拿掉假邊後在框上的斷點：用接邊容差（預設 0.001），不被一般容差順手接起來
+        ENDS.push([X0[s0],Y0[s0],a,li,L.fe0?Math.min(eT,loose):loose]);ENDS.push([X1[s1],Y1[s1],b,li,L.fe1?Math.min(eT,loose):loose]);}}});
   const G={ns,X0,Y0,X1,Y1,R,SL,tol,loose};
   if(!ns)return G;
   let bx0=Infinity,by0=Infinity,bx1=-Infinity,by1=-Infinity;
@@ -119,7 +120,7 @@ function arGraph(lines,tol){
   // 懸空線頭：嚴格容差下沒碰到別的東西，才在使用者容差內接到最近的端點（優先）或線上
   if(ENDS.length){const ns0=ns,conn=[];
     const segD=(x,y,s)=>{const ax=X0[s],ay=Y0[s],dx=X1[s]-ax,dy=Y1[s]-ay,l2=dx*dx+dy*dy;let t=l2?((x-ax)*dx+(y-ay)*dy)/l2:0;t=t<0?0:t>1?1:t;const qx=ax+dx*t,qy=ay+dy*t;return[Math.hypot(qx-x,qy-y),qx,qy];};
-    for(const[x,y,own,li]of ENDS){const a=cells.get(cellOf(x,y));if(!a)continue;let hit=false;
+    for(const[x,y,own,li,rad]of ENDS){const a=cells.get(cellOf(x,y));if(!a)continue;let hit=false;
       // 「碰到」要和嚴格拓樸一致：離端點夠近（會併成同一點），或落在線段中間（會切開接上）
       for(const s of a){if(s>=ns0||own.includes(s))continue;
         if(Math.hypot(X0[s]-x,Y0[s]-y)<=tol*0.9||Math.hypot(X1[s]-x,Y1[s]-y)<=tol*0.9){hit=true;break;}
@@ -128,15 +129,16 @@ function arGraph(lines,tol){
       // 線頭衝過別條線不到容差長度（出頭）：已經接上了，出頭的小尖刺修掉
       if(!hit){const e=own[0],ex=x,ey=y,ox_=(X0[e]===x&&Y0[e]===y)?X1[e]:X0[e],oy_=(X0[e]===x&&Y0[e]===y)?Y1[e]:Y0[e],rx=ox_-ex,ry=oy_-ey,Ls=Math.hypot(rx,ry);let bt=Infinity;
         if(Ls>0)for(const s of a){if(s>=ns0||own.includes(s))continue;const qx=X1[s]-X0[s],qy=Y1[s]-Y0[s],d=rx*qy-ry*qx;if(Math.abs(d)<1e-12)continue;
-          const wx=X0[s]-ex,wy=Y0[s]-ey,t=(wx*qy-wy*qx)/d,v=(wx*ry-wy*rx)/d;if(t<0||t>1||v<0||v>1)continue;if(t*Ls<=loose&&t<bt)bt=t;}
+          const wx=X0[s]-ex,wy=Y0[s]-ey,t=(wx*qy-wy*qx)/d,v=(wx*ry-wy*rx)/d;if(t<0||t>1||v<0||v>1)continue;if(t*Ls<=rad&&t<bt)bt=t;}
         if(bt<Infinity){const ix=ex+rx*bt,iy=ey+ry*bt;if(X0[e]===x&&Y0[e]===y){X0[e]=ix;Y0[e]=iy;}else{X1[e]=ix;Y1[e]=iy;}continue;}}
       if(hit)continue;
       // 線頭附近容差長度內的頂點（含線頭）都可以當出發點，取離別條線最近的；優先接端點
-      const from=[[x,y]];for(const k of own.slice(0,-1)){for(const v of[[X0[k],Y0[k]],[X1[k],Y1[k]]])if(Math.hypot(v[0]-x,v[1]-y)<=loose)from.push(v);}
+      if(!(rad>tol))continue;
+      const from=[[x,y]];for(const k of own.slice(0,-1)){for(const v of[[X0[k],Y0[k]],[X1[k],Y1[k]]])if(Math.hypot(v[0]-x,v[1]-y)<=rad)from.push(v);}
       let bv=null,bvd=Infinity,bs=null,bsd=Infinity;
       for(const s of a){if(s>=ns0||own.includes(s))continue;
-        for(const[fx,fy]of from){const[d,qx,qy]=segD(fx,fy,s);if(d>loose)continue;if(d<bsd){bsd=d;bs=[fx,fy,qx,qy];}
-          for(const[vx,vy]of[[X0[s],Y0[s]],[X1[s],Y1[s]]]){const dv=Math.hypot(vx-fx,vy-fy);if(dv<=loose&&dv<bvd){bvd=dv;bv=[fx,fy,vx,vy];}}}}
+        for(const[fx,fy]of from){const[d,qx,qy]=segD(fx,fy,s);if(d>rad)continue;if(d<bsd){bsd=d;bs=[fx,fy,qx,qy];}
+          for(const[vx,vy]of[[X0[s],Y0[s]],[X1[s],Y1[s]]]){const dv=Math.hypot(vx-fx,vy-fy);if(dv<=rad&&dv<bvd){bvd=dv;bv=[fx,fy,vx,vy];}}}}
       const q=bv||bs;if(!q)continue;conn.push([q[0],q[1],q[2],q[3],own,li]);}
     for(const[x,y,qx,qy,own,li]of conn){X0[ns]=x;Y0[ns]=y;X1[ns]=qx;Y1[ns]=qy;R[ns]=R[own[0]];SL[ns]=li;reg(ns);ns++;}
     G.ns=ns;G.snapped=conn.length;}
@@ -267,7 +269,7 @@ function arClipBox(ring,b){
  * 回傳 {marks:[{x,y,type,msg,ring,gap,path}], st:統計}
  */
 function areaCheck(lines,points,opt){
-  opt=Object.assign({tol:0.01,minArea:0.05,thin:0.15,maxArea:1e5,maxMarks:8000,over:0.2,posTol:0.3},opt||{});
+  opt=Object.assign({tol:0.01,edgeTol:0.001,minArea:0.05,thin:0.15,maxArea:1e5,maxMarks:8000,over:0.2,posTol:0.3},opt||{});
   const tol=opt.tol,t0=Date.now(),marks=[],mark=m=>{if(marks.length<opt.maxMarks)marks.push(m);};
   const keep=opt.keep||(()=>true);
   const frameL=lines.filter(L=>L.r&AR_FRAME);
@@ -290,8 +292,10 @@ function areaCheck(lines,points,opt){
   if(FB.length){const FT=0.05,XS=[...new Set(FB.flatMap(b=>[b[0],b[2]]))],YS=[...new Set(FB.flatMap(b=>[b[1],b[3]]))];
     const on=(v,A)=>{for(const a of A)if(Math.abs(v-a)<=FT)return a;return null;};
     const both=(a,b)=>a>=0&&b>=0&&a!==b&&pub[a]&&pub[b];
-    const along=(x0,y0,x1,y1)=>{const vx=on(x0,XS);if(vx!=null&&Math.abs(x1-vx)<=FT&&Math.abs(y1-y0)>1e-6){const m=(y0+y1)/2;return both(boxAt(vx-1,m),boxAt(vx+1,m));}
-      const vy=on(y0,YS);if(vy!=null&&Math.abs(y1-vy)<=FT&&Math.abs(x1-x0)>1e-6){const m=(x0+x1)/2;return both(boxAt(m,vy-1),boxAt(m,vy+1));}return false;};
+    // 假封口要剛好壓在框上（舊圖裁切的都是 0.000）：兩端都在 5mm 內才算；5cm 會把穿過框邊的極短段或幾乎貼框的真牆也拿掉
+    const FA=0.005,onA=(v,A)=>{for(const a of A)if(Math.abs(v-a)<=FA)return a;return null;};
+    const along=(x0,y0,x1,y1)=>{const vx=onA(x0,XS);if(vx!=null&&Math.abs(x1-vx)<=FA&&Math.abs(y1-y0)>0.01){const m=(y0+y1)/2;return both(boxAt(vx-1,m),boxAt(vx+1,m));}
+      const vy=onA(y0,YS);if(vy!=null&&Math.abs(y1-vy)<=FA&&Math.abs(x1-x0)>0.01){const m=(x0+x1)/2;return both(boxAt(m,vy-1),boxAt(m,vy+1));}return false;};
     // 對面有沒有東西：框邊上各側的觸點（線的頂點貼在框邊上，從哪一側來）和貼框段
     const key=(ax,v)=>ax+':'+Math.round(v*100);const TP=new Map(),AS=[];
     const sideAt=(p,k,ax,v,dir)=>{for(let j=k;j>=0&&j<p.length/2;j+=dir){const d=ax?p[2*j+1]-v:p[2*j]-v;if(Math.abs(d)>FT)return d>0?1:-1;}return 0;};
@@ -302,12 +306,12 @@ function areaCheck(lines,points,opt){
     const opp=(ax,v,s0,s1,side)=>{const l=TP.get(key(ax,v));if(!l)return false;const a=Math.min(s0,s1),b=Math.max(s0,s1),O=l.filter(t=>t.side!==side);// 對面要碰到這段的兩端，或碰到中間
       return O.some(t=>t.s>a+FT&&t.s<b-FT)||O.some(t=>Math.abs(t.s-a)<=FT)&&O.some(t=>Math.abs(t.s-b)<=FT);};
     const cutAt=[];const out=[];let cut=0;
-    for(const L of lines){if(L.r&AR_GATE){out.push(L);continue;}const p=L.p;let cur=[p[0],p[1]],any=false;
+    for(const L of lines){if(L.r&AR_GATE){out.push(L);continue;}const p=L.p;let cur=[p[0],p[1]],any=false,fs=false;
       for(let i=2;i<p.length;i+=2){let ok=along(p[i-2],p[i-1],p[i],p[i+1]);
         if(ok){const vx=on(p[i-2],XS),ax=vx!=null&&Math.abs(p[i]-vx)<=FT?0:1,v=ax?on(p[i-1],YS):vx,k=i/2-1;
           const side=sideAt(p,k,ax,v,-1)||sideAt(p,k+1,ax,v,1);ok=!!side;}// 共用框邊上的封口段一律當假邊（2026-11-20 使用者：完全貼著圖框的屋線視為不存在，兩端變懸空再逐點報）
-        if(ok){any=true;cut++;cutAt.push(p[i-2],p[i-1],p[i],p[i+1]);if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true}));cur=[p[i],p[i+1]];}else cur.push(p[i],p[i+1]);}
-      if(!any){out.push(L);continue;}if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true}));}
+        if(ok){any=true;cut++;cutAt.push(p[i-2],p[i-1],p[i],p[i+1]);if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true,fe0:fs,fe1:true}));fs=true;cur=[p[i],p[i+1]];}else cur.push(p[i],p[i+1]);}
+      if(!any){out.push(L);continue;}if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true,fe0:fs,fe1:false}));}
     lines=out;opt.frameCut=cut;opt.frameCutAt=cutAt;}
   const cnt={};const put=(m)=>{cnt[m.type]=(cnt[m.type]||0)+1;mark(m);};const noFl=[];
 
@@ -339,7 +343,7 @@ function areaCheck(lines,points,opt){
   /* ---- 0c. 註記、圖例、文字圖層上畫的一般線段（不是圖塊、不是文字）：有圍成封閉就當範圍線，另報圖層用錯；懸空的會被剪掉，不影響 ---- */
   if((opt.odd||[]).length)lines=lines.concat(opt.odd.map(o=>({p:o.p,r:AR_OTHER|AR_FREE,nm:o.nm,ly:o.ly,odd:true,oh:!!o.h})));
   /* ---- 1. 一般拓樸（不含圖框） ---- */
-  const G=arGraph(lines,tol);
+  const G=arGraph(lines,tol,opt.edgeTol);
   if(!G.ns)return{marks:[],st:{seg:0,ms:Date.now()-t0}};
   const{nX,nY,eU,eV,eR,deg0,aS,aE,NN,NE,X0,Y0,X1,Y1,R,cells,bx0,by0,NX,NY,cs}=G;
   const P=arPrune(G),alive=P.alive;
@@ -382,16 +386,16 @@ function areaCheck(lines,points,opt){
 
   /* ---- 2. 房屋拓樸：只用房屋線（不借其他線、不借增建線；七碼屋頂增建算永久） ---- */
   const hR=L=>L.r&(AR_HOUSE|AR_TEMP)?L.r&(AR_HOUSE|AR_TEMP):L.k7?AR_HOUSE:AR_ADD;
-  const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L)})).concat(lines.filter(L=>((L.r&AR_Q)||(L.odd&&L.oh))&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER})));// Q 線也算：看不清楚用 Q 線封閉的房屋不算未封閉
-  const GA=arGraph(hAll,tol);let TA=null;
+  const hAll=lines.filter(L=>L.r&(AR_HOUSE|AR_TEMP|AR_ADD)).map(L=>({p:L.p,r:hR(L),fe0:L.fe0,fe1:L.fe1})).concat(lines.filter(L=>((L.r&AR_Q)||(L.odd&&L.oh))&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER})));// Q 線也算：看不清楚用 Q 線封閉的房屋不算未封閉
+  const GA=arGraph(hAll,tol,opt.edgeTol);let TA=null;
   if(GA.ns){const PA=arPrune(GA);// 房屋未封閉：只算房屋線和增建線，不借圍牆、道路、地類界、圖框
     for(const c of arChains(GA,PA.cut,e=>GA.eR[e]&AR_HOUSE))put({x:c.x,y:c.y,type:'open',msg:'永久性房屋線沒有封閉（只能用房屋線，不借圍牆、道路、地類界或圖框）'});
     TA=arFaces(GA,PA.alive);}
   {// 臨時性、建築中房屋：可以和牆系線（圍牆、柵欄…）接成封閉
-    const GW=arGraph(hAll.concat(lines.filter(L=>(L.r&AR_WALL)&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER}))),tol);
+    const GW=arGraph(hAll.concat(lines.filter(L=>(L.r&AR_WALL)&&!(L.r&(AR_HOUSE|AR_TEMP|AR_ADD))).map(L=>({p:L.p,r:AR_OTHER}))),tol,opt.edgeTol);
     if(GW.ns){const PW=arPrune(GW);for(const c of arChains(GW,PW.cut,e=>(GW.eR[e]&AR_TEMP)&&!(GW.eR[e]&AR_HOUSE)))put({x:c.x,y:c.y,type:'open',msg:'臨時性／建築中房屋線沒有封閉（可借牆系線，不借道路、地類界或圖框）'});}}
   const hLines=hAll.filter(L=>L.r!==AR_ADD);
-  const GH=arGraph(hLines,tol);let TH=null;
+  const GH=arGraph(hLines,tol,opt.edgeTol);let TH=null;
   if(GH.ns){const PH=arPrune(GH);
     // 關掉增建線（五碼）後才出現的缺口（B03）
     const openA=marks.filter(m=>m.type==='open');
@@ -602,10 +606,13 @@ function areaCheck(lines,points,opt){
         if(!A.s.n||!B.s.n){const has=A.s.n?A:B,no=has===A?B:A,sd=sideOf(no);
           let R=runs(f,e,loc);if(!R.length)R=[e.ax?q[0]:q[1]];
           for(const s0 of R){let t=into(e,s0,sd,1.5);if(!(arInRing(f.ring,t[0],t[1])&&(!loc||loc(t[0],t[1])===f.id)))t=into(e,s0,sd,0.3);const m=e.ax?[s0,e.v]:[e.v,s0];
-            if(!keep(m[0],m[1]))continue;const lb=near1(has.s.pts,m);put({x:m[0],y:m[1],type:'edge',msg:msgOne(has.s.txt),path:lb?[lb.x,lb.y,t[0],t[1]]:undefined});}
+            if(!keep(m[0],m[1]))continue;const lb=near1(has.s.pts,m);
+            // 圓圈畫在沒註記那一塊裡面（不在框上，免得誤會框上有錯開）；要不要留看框上的點 kx,ky
+            put({x:t[0],y:t[1],kx:m[0],ky:m[1],lvl:'area',type:'edge',msg:msgOne(has.s.txt),path:lb?[lb.x,lb.y,t[0],t[1]]:undefined});}
           continue;}
         if(A.s.same(B.s))continue;const m=edgePt(f,e,q),la=near1(A.s.pts,m),lb=near1(B.s.pts,m);
-        put({x:m[0],y:m[1],type:'edge',msg:msgDiff(A.s.txt,B.s.txt),path:la&&lb?[la.x,la.y,lb.x,lb.y]:undefined});}};
+        const c=la&&lb?[(la.x+lb.x)/2,(la.y+lb.y)/2]:m;/* 兩側不同：圓圈畫在兩個註記中間 */
+        put({x:c[0],y:c[1],kx:m[0],ky:m[1],lvl:'area',type:'edge',msg:msgDiff(A.s.txt,B.s.txt),path:la&&lb?[la.x,la.y,lb.x,lb.y]:undefined});}};
     // (c) 一般區
     // 房屋裡面的區（只有房屋、樓層、增建註記或沒有註記）交給 (a)(b)；被房屋圍起來的中庭、空地照樣比
     const inHouse=f=>{if(!TH)return false;if(f.all.some(p=>p.k&&p.k!=='H'))return false;const c=arInner(f);return c&&TH.locate(c[0],c[1])>=0;};
@@ -619,8 +626,11 @@ function areaCheck(lines,points,opt){
     const wholeAdd=p=>{if(!p.add)return false;if(!TA)return true;let k=TA.locate(p.x,p.y);if(k<0&&p.cx!=null)k=TA.locate(p.cx,p.cy);return k<0||!(TA.F[k].rl[AR_ADD]>0);};
     if(TH){const PM=placeIn(TH);
       for(const f of TH.F){const P=partsOf(f);if(P.length<2)continue;const L=(PM.get(f.id)||[]).filter(p=>!p.add||wholeAdd(p));
-        const sig=b=>{const k=new Set(),pts=[];let n=0;for(const p of L){if(!inB(p,b))continue;pts.push(p);if(p.add){k.add('增建'+(p.tx||''));continue;}n++;k.add(p.fl||(p.k==='H'?'房屋':p.k));}
-          return{n,k,pts,txt:[...k].join('＋'),same(o){return eq(k,o.k);}};};
+        // 只比主樓層（2026-11-20）：有水塔間的公寓跨圖幅，一側 5R＋6R（水塔間）一側 5R 不報；兩側樓層完全沒交集（例 4R｜5R）才報
+        const meet=(a,b)=>!a.size||!b.size||[...a].some(x=>b.has(x));
+        const sig=b=>{const k=new Set(),fl=new Set(),ad=new Set(),pts=[];let n=0;for(const p of L){if(!inB(p,b))continue;pts.push(p);
+            if(p.add){const t='增建'+(p.tx||'');k.add(t);ad.add(t);continue;}n++;k.add(p.fl||(p.k==='H'?'房屋':p.k));if(p.fl)fl.add(p.fl);}
+          return{n,k,fl,ad,pts,txt:[...k].join('＋'),same(o){return meet(fl,o.fl)&&meet(ad,o.ad);}};};
         cmp(f,P,sig,null,t=>`接邊：房屋跨圖框只有一側有樓層註記（${t}｜無）`,(a,b)=>`接邊：房屋跨圖框兩側樓層或增建不同（${a}｜${b}）`,null,false,TH.locate);}}
     // (b) 增建：邊界有增建線的區，兩側增建註記
     if(TA){const PA2=placeIn(TA);
@@ -637,7 +647,7 @@ function areaCheck(lines,points,opt){
       for(const b of FB){if(lx1<b[0]-0.1||lx0>b[2]+0.1||ly1<b[1]-0.1||ly0>b[3]+0.1)continue;if(lx0>b[0]+0.1&&lx1<b[2]-0.1&&ly0>b[1]+0.1&&ly1<b[3]-0.1)continue;for(const[v,ax]of[[b[0],0],[b[2],0],[b[1],1],[b[3],1]]){const d=k=>ax?p[2*k+1]-v:p[2*k]-v,sAt=k=>ax?p[2*k]:p[2*k+1];
         let side=0;for(let k=0;k<n;k++){const q=d(k);if(Math.abs(q)>0.05){side=q>0?1:-1;break;}}if(!side)continue;
         for(let k=0;k<n;k++)if(Math.abs(d(k))<=0.05){const s0=sAt(k);if(ax?(s0<b[0]-0.1||s0>b[2]+0.1):(s0<b[1]-0.1||s0>b[3]+0.1))continue;TC.push({ax,v,s:s0,side});
-          if(k+1<n&&Math.abs(d(k+1))<=0.05){const s1=sAt(k+1);if(Math.abs(s1-s0)>=0.3)AL.push({ax,v,s0:Math.min(s0,s1),s1:Math.max(s0,s1),side,x:ax?(s0+s1)/2:v,y:ax?v:(s0+s1)/2});}}}}}
+          if(k+1<n&&Math.abs(d(k))<=0.005&&Math.abs(d(k+1))<=0.005){const s1=sAt(k+1);/* 貼框段同假封口：兩端都在 5mm 內（幾乎貼框的真牆不算） */if(Math.abs(s1-s0)>=0.3)AL.push({ax,v,s0:Math.min(s0,s1),s1:Math.max(s0,s1),side,x:ax?(s0+s1)/2:v,y:ax?v:(s0+s1)/2});}}}}}
     const done=[];
     for(const a of AL){const mx=a.x,my=a.y;if(done.some(q=>Math.hypot(q[0]-mx,q[1]-my)<2))continue;
       const A=a.ax?boxAt(mx,a.v-1):boxAt(a.v-1,my),B=a.ax?boxAt(mx,a.v+1):boxAt(a.v+1,my);if(A<0||B<0||A===B||!pub[A]||!pub[B]||!keep(mx,my))continue;
@@ -679,8 +689,8 @@ function areaCheck(lines,points,opt){
         if(many(0,a.s)||many(1,b.s))continue;// 框邊剛好是好幾條線的接點：不硬配成一對比種類（E06）
         const na=nmOf(a.L),nb=nmOf(b.L);if(na&&nb&&na!==nb&&!na.includes(nb)&&!nb.includes(na)){const q=P2((a.s+b.s)/2);
           if(keep(q[0],q[1]))mk(q[0],q[1],`接邊：圖框兩側線的種類不同（${na}｜${nb}）`,[a.x,a.y,q[0],q[1],b.x,b.y]);continue;}
-        // 舊圖在框邊裁切的線兩側應該剛好接在同一點，錯開 5cm 以上就報（例：上幅屋線 816.99、下幅 816.70）
-        if(ds>0.05){const q=P2(a.s);if(keep(q[0],q[1])&&cellNew(q[0],q[1]))mk(q[0],q[1],`接邊：${na||nb||'範圍線'}在圖框處兩側錯開 ${ds.toFixed(2)}m`,[a.x,a.y,b.x,b.y]);}}
+        // 舊圖在框邊裁切的線兩側應該剛好接在同一點，錯開超過接邊容差（預設 0.001）就報（例：上幅屋線 816.99、下幅 816.70）
+        if(ds>opt.edgeTol+1e-9){const q=P2(a.s);if(keep(q[0],q[1])&&cellNew(q[0],q[1]))mk(q[0],q[1],`接邊：${na||nb||'範圍線'}在圖框處兩側錯開 ${ds.toFixed(2)}m`,[a.x,a.y,b.x,b.y]);}}
       for(const side of[0,1])for(const a of ends[side]){if(used[side].has(a))continue;
         // 對面有線剛好在這個位置（不是停在框邊而是轉彎或本來就穿過）就不算中斷
         const q=P2(a.s);if(!keep(q[0],q[1])||!cellNew(q[0],q[1]))continue;
@@ -702,10 +712,14 @@ function areaCheck(lines,points,opt){
   for(const{c,f}of noFl){if(marks.some(m=>m.type==='empty'&&m.x>=f.bb[0]&&m.x<=f.bb[2]&&m.y>=f.bb[1]&&m.y<=f.bb[3]&&arInRing(f.ring,m.x,m.y)))continue;
     put({x:c[0],y:c[1],type:'nofloor',msg:`房屋線圍出的範圍沒有房屋（樓層）註記（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
   for(const v of vegBad){const a=v.p,m=Math.floor(a.length/4)*2;put({x:a[m],y:a[m+1],type:'veg',msg:`範圍線用錯圖層：畫在${v.nm}（植被圖層），應改成地類界等範圍類圖層`});}
+  {// 線級接邊（框上屋線、增建線斷開／錯開／中斷）附近 3m 內的區域級接邊（屬性比對）不報：線沒接好，區域本來就會漏開
+    const LM=marks.filter(m=>m.type==='edge'&&m.lvl!=='area');
+    for(let i=marks.length-1;i>=0;i--){const m=marks[i];if(m.type!=='edge'||m.lvl!=='area')continue;const kx=m.kx??m.x,ky=m.ky??m.y;
+      if(LM.some(l=>Math.hypot(l.x-kx,l.y-ky)<3)){marks.splice(i,1);cnt.edge--;}}}
   {// 同一處（1m 內）有好幾種問題：接邊最優先，房屋優先於植被／道路類
     const rank=t=>t==='edge'?0:['open','floor','floorout','openadd','flooradd','addside','addline','addout'].includes(t)?1:2;
     const keepM=[];const sorted=marks.slice().sort((a,b)=>rank(a.type)-rank(b.type));
-    for(const m of sorted){if(keepM.some(k=>(rank(k.type)<rank(m.type)&&Math.hypot(k.x-m.x,k.y-m.y)<1)||(k.type==='edge'&&m.type==='edge'&&Math.hypot(k.x-m.x,k.y-m.y)<0.5))){cnt[m.type]--;continue;}keepM.push(m);}// 同一點的接邊只留一筆
+    for(const m of sorted){if(keepM.some(k=>(rank(k.type)<rank(m.type)&&Math.hypot((k.kx??k.x)-m.x,(k.ky??k.y)-m.y)<1)||(k.type==='edge'&&m.type==='edge'&&Math.hypot((k.kx??k.x)-(m.kx??m.x),(k.ky??k.y)-(m.ky??m.y))<0.5))){cnt[m.type]--;continue;}keepM.push(m);}// 同一點的接邊只留一筆
     marks.length=0;marks.push(...keepM);}
   {/* 只看新圖相關：每個標記到最近「新圖」（數字開頭圖層）線或註記的距離 m.nd（公尺，最多算到 ND_MAX；0＝問題本身就用到新圖）
       量的是標記本身的範圍：有區域就用區域外框（新圖在區裡也算 0），有缺口用缺口線段，其他用標記點 */
