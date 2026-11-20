@@ -155,8 +155,10 @@ function zoomFit(){
 
 /* ---------- 鎖點與游標 ---------- */
 // 鎖點、點選只看游標附近的物件（大圖時用格網索引，不用逐一檢查全部）
-function* snapEnts(w,tol){for(const e of st.ents)if(ownShown(e))yield e;const L=w?queryImp(w[0]-tol,w[1]-tol,w[0]+tol,w[1]+tol):imp;for(const e of L)if(shown(e))yield e;
-  if(w)for(const e of nativeNear(w[0]-tol,w[1]-tol,w[0]+tol,w[1]+tol,600))if(shown(e))yield e;}
+// 只顯示、不能點也不能鎖點的底圖圖層（2026-11-20：圖號畫圖時一直被點到）
+const VIEW_ONLY_LY=/^a?圖號$/;const pickable=e=>shown(e)&&!VIEW_ONLY_LY.test(e.ly||'');
+function* snapEnts(w,tol){for(const e of st.ents)if(ownShown(e))yield e;const L=w?queryImp(w[0]-tol,w[1]-tol,w[0]+tol,w[1]+tol):imp;for(const e of L)if(pickable(e))yield e;
+  if(w)for(const e of nativeNear(w[0]-tol,w[1]-tol,w[0]+tol,w[1]+tol,600))if(pickable(e))yield e;}
 function snapAt(w,base){
   if(st.snap){const s=findSnap(w,22/st.view.s,base);if(s)return{p:s.p.slice(),snap:s};}
   if(st.ortho&&base){const dx=w[0]-base[0],dy=w[1]-base[1];return{p:Math.abs(dx)>=Math.abs(dy)?[w[0],base[1]]:[base[0],w[1]],snap:null};}
@@ -533,8 +535,8 @@ function boxSelect(s0,s1){
   const f=cmd&&cmd.filter;let n=0;const ok=e=>(!f||f(e))&&!(st.lockBase&&e.imp)&&boxHit(e,R,cross);
   for(const e of st.ents)if(ownShown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
   if(!st.lockBase&&(!f||f({imp:1,t:'line',a:[0,0],b:[0,0]}))){
-    const L=grid?queryImp(R[0],R[1],R[2],R[3]):imp;for(const e of L)if(shown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
-    if(nativeOn)for(const e of nativeNear(R[0],R[1],R[2],R[3],200000))if(shown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
+    const L=grid?queryImp(R[0],R[1],R[2],R[3]):imp;for(const e of L)if(pickable(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
+    if(nativeOn)for(const e of nativeNear(R[0],R[1],R[2],R[3],200000))if(pickable(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
   }
   for(const e of [...selSet])if(!e.imp&&e.og)for(const x of ownGroup(e))selSet.add(x);// 自己的圖塊碰到一部分就整組
   toast(`${cross?'碰到框':'框內'}選到 ${n} 個`,1200);
