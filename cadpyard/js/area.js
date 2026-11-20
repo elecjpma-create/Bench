@@ -313,6 +313,17 @@ function areaCheck(lines,points,opt){
         if(ok){any=true;cut++;cutAt.push(p[i-2],p[i-1],p[i],p[i+1]);if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true,fe0:fs,fe1:true}));fs=true;cur=[p[i],p[i+1]];}else cur.push(p[i],p[i+1]);}
       if(!any){out.push(L);continue;}if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true,fe0:fs,fe1:false}));}
     lines=out;opt.frameCut=cut;opt.frameCutAt=cutAt;}
+  /* 階梯方向線（2026-11-20 使用者）：樓梯不計地物、不用註記。樓梯用箭頭或約 1m 一條的樓梯線表示方向，
+     箭頭常浮在格子中間、不碰邊界，所以除了邊界有階梯線，區裡面有階梯圖層的線也算樓梯。
+     階梯線要佔這區的一大塊（範圍對角線 ≥ 這區的 30%），而且這區不超過 300 m²：
+     體育館、中庭這種大區只是入口有幾段樓梯，不能整塊都不報。 */
+  const SG=5,stG=new Map();
+  for(const L of lines){if(!(L.r&AR_STAIR))continue;const p=L.p;for(let i=0;i<p.length;i+=2){const pts=[[p[i],p[i+1]]];if(i)pts.push([(p[i]+p[i-2])/2,(p[i+1]+p[i-1])/2]);
+    for(const[x,y]of pts){const k=Math.floor(x/SG)+','+Math.floor(y/SG);let c=stG.get(k);if(!c)stG.set(k,c=[]);c.push(x,y);}}}
+  const stairIn=f=>{if(!stG.size||f.area>300)return false;const b=f.bb;let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity,n=0;
+    for(let i=Math.floor(b[0]/SG);i<=Math.floor(b[2]/SG);i++)for(let j=Math.floor(b[1]/SG);j<=Math.floor(b[3]/SG);j++){const c=stG.get(i+','+j);if(!c)continue;
+      for(let k=0;k<c.length;k+=2){const x=c[k],y=c[k+1];if(x<b[0]||x>b[2]||y<b[1]||y>b[3]||!arInRing(f.ring,x,y))continue;n++;x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y);}}
+    return n>=2&&Math.hypot(x1-x0,y1-y0)>=0.3*Math.hypot(b[2]-b[0],b[3]-b[1]);};
   const cnt={};const put=(m)=>{cnt[m.type]=(cnt[m.type]||0)+1;mark(m);};const noFl=[];
 
   /* ---- 0. 土路路口封口：土路（鬆路面）的線頭接在道路、人行道等線上、路口沒封起來的，和對面土路線的線頭配對（12m 內、互為最近），補一條看不見的封口線（懸空的線頭不補，照樣報懸空） ---- */
@@ -561,6 +572,7 @@ function areaCheck(lines,points,opt){
         if(!arInRing(f.ring,g.ring[0],g.ring[1]))continue;
         per+=g.per;for(const k in g.rl)rr[k]=(rr[k]||0)+g.rl[k];}
       if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>=per*0.5||ri(AR_GATE)>0||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||ri(AR_HOUSE)<per*0.5))continue;}
+    if(stairIn(f))continue;// 裡面有樓梯方向線（箭頭、樓梯線）＝樓梯
     const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
 
   /* ---- 5. 接邊：圖框切開的區域，兩側都要有屬性且一致（E09，不看距離，以拓樸為準）
@@ -709,7 +721,7 @@ function areaCheck(lines,points,opt){
     const onF=(x,y)=>nearFrame(x,y,0.3);
     for(const m of marks){if(!m.gap||m.type==='edge')continue;let all=true;for(let i=0;i<m.gap.length;i+=4)if(!(onF(m.gap[i],m.gap[i+1])&&onF(m.gap[i+2],m.gap[i+3])))all=false;
       if(all){cnt[m.type]--;m.type='edge';m.msg='接邊：圖框處'+(m.msg.startsWith('房屋')?'屋線':'範圍線')+'不接（'+m.msg+'）';cnt.edge=(cnt.edge||0)+1;}}}
-  for(const{c,f}of noFl){if(marks.some(m=>m.type==='empty'&&m.x>=f.bb[0]&&m.x<=f.bb[2]&&m.y>=f.bb[1]&&m.y<=f.bb[3]&&arInRing(f.ring,m.x,m.y)))continue;
+  for(const{c,f}of noFl){if(stairIn(f))continue;if(marks.some(m=>m.type==='empty'&&m.x>=f.bb[0]&&m.x<=f.bb[2]&&m.y>=f.bb[1]&&m.y<=f.bb[3]&&arInRing(f.ring,m.x,m.y)))continue;
     put({x:c[0],y:c[1],type:'nofloor',msg:`房屋線圍出的範圍沒有房屋（樓層）註記（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
   for(const v of vegBad){const a=v.p,m=Math.floor(a.length/4)*2;put({x:a[m],y:a[m+1],type:'veg',msg:`範圍線用錯圖層：畫在${v.nm}（植被圖層），應改成地類界等範圍類圖層`});}
   {// 線級接邊（框上屋線、增建線斷開／錯開／中斷）附近 3m 內的區域級接邊（屬性比對）不報：線沒接好，區域本來就會漏開
