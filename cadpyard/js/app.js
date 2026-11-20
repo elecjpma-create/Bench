@@ -167,10 +167,13 @@ function snapAt(w,base){
 function cmdBase(){return cmd&&cmd.base?cmd.base():null;}
 function setCursorRaw(w){const r=snapAt(w,cmdBase());cur={raw:w.slice(),p:r.p,snap:r.snap};kp.unlockAll();refreshCmd();}
 function pickEnt(w,filter){
-  const tol=18/st.view.s;let bi=null,bd=tol;
+  const tol=18/st.view.s;let bi=null,bd=tol,oi=null,od=tol;
   // 文字框內不算 0：點到框裡時，8 像素內有線就選線（大字如圖號才不會擋住下面的線）
-  for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;let d=hitDist(e,w);if(e.t==='text')d=Math.max(d,8/st.view.s);if(d<bd||(d===bd&&!e.imp)){bd=d;bi=e;}}
-  return bi;
+  for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;let d=hitDist(e,w);if(e.t==='text')d=Math.max(d,8/st.view.s);
+    if(e.imp){if(d<bd){bd=d;bi=e;}}else if(d<od){od=d;oi=e;}}
+  // 自己畫的線在最上層（2026-11-20）：和底圖重疊時，自己的線只要不比底圖遠 6 像素以上就選自己的
+  if(oi&&od<=bd+6/st.view.s)return oi;
+  return bi||oi;
 }
 
 /* ---------- 復原與儲存 ---------- */
