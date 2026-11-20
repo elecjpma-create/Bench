@@ -602,7 +602,7 @@ function cmdMove(copy){
   return selectStage({title,verb:title,next(){
     const sel=[...selSet];
     startCmdKeep(pointsCmd({name:copy?'copy':'move',init(){kp.setMode('xy');},
-      hint(){return this.pts.length?[`${title}：點目的點，或輸入距離、角度`+(copy?'（可連續複製，✓ 結束）':''),true]:[`${title}：點基準點`,!!cur];},
+      hint(){return this.pts.length?[`${title}：點目的點，或輸入距離、角度`+(copy?'（可連續複製，✓ 結束）':''),true]:[cur?`${title}：拖曳微調，再點一下或按 ＋ 確定基準點`:`${title}：點基準點`,!!cur];},
       onPoint(p){if(!this.pts.length){this.pts.push(p);return;}const b=this.pts[0],dx=p[0]-b[0],dy=p[1]-b[1];
         snapshot();if(copy){const gm=new Map();for(const e of sel){const c=ownCopy(e,gm);xform(c,q=>[q[0]+dx,q[1]+dy],0);st.ents.push(c);}}
         else for(const e of sel)xform(e,q=>[q[0]+dx,q[1]+dy],0);
@@ -621,7 +621,7 @@ function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
   const angAt=(b,p)=>{const A=kp.num('A');if(A!=null)return rad(A)-(refA??0);return Math.atan2(p[1]-b[1],p[0]-b[0])-(refA??0);};
   const apply=a=>{snapshot();for(const e of sel)rotEnt(e,b0(),a);saveDraw();endCmd();toast('已旋轉');};let b0=()=>null;
   startCmdKeep(pointsCmd({name:'rot',init(){kp.setMode('xy');b0=()=>this.pts[0];},
-    hint(){if(!this.pts.length)return['旋轉：點旋轉中心',!!cur];
+    hint(){if(!this.pts.length)return[cur?'旋轉：拖曳微調，再點一下或按 ＋ 確定旋轉中心':'旋轉：點旋轉中心',!!cur];
       if(ref&&ref.length===0)return['旋轉（參考）：點參考第一點',!!cur];if(ref&&ref.length===1)return['旋轉（參考）：點參考第二點',!!cur];
       if(ref)return['旋轉（參考）：點新的方向點，或在「角度」輸入新方向的角度',true];
       return['旋轉：點一點決定角度，或在「角度」輸入旋轉度數（逆時針為正）；要對齊就按「參考」',true];},
@@ -643,7 +643,7 @@ function cmdScale(){return selectStage({title:'縮放',verb:'縮放',next(){
   const facAt=p=>{if(refL){const D=kp.num('D');return D!=null?D/refL:dist(B,p)/refL;}const K=kp.num('K');return K!=null?K:null;};
   const apply=k=>{if(!(k>0)){toast('比例要大於 0');return;}snapshot();for(const e of sel)scaleEnt(e,B,k);saveDraw();endCmd();toast(`已縮放 ×${+k.toFixed(4)}`);};
   startCmdKeep(pointsCmd({name:'scale',init(){kp.setMode('xy');},
-    hint(){if(!B)return['縮放：點基準點（縮放時這一點不動，圖塊通常點插入點）',!!cur];
+    hint(){if(!B)return[cur?'縮放：拖曳微調，再點一下或按 ＋ 確定基準點':'縮放：點基準點（縮放時這一點不動，圖塊通常點插入點）',!!cur];
       if(ref&&ref.length===0)return['縮放（參考）：點參考第一點',!!cur];if(ref&&ref.length===1)return['縮放（參考）：點參考第二點（量出原長度）',!!cur];
       if(ref)return[`縮放（參考）：原長 ${fmt(refL)}，點新長度的點，或在「距離」輸入新長度`,true];
       return['縮放：在「比例」輸入倍數（2＝放大兩倍、0.5＝一半）按 ✓；要用長度對就按「參考」',true];},
