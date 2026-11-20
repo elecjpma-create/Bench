@@ -212,8 +212,9 @@ const kp={
     $('kfields').innerHTML='';
     for(const[k,n]of this.fields()){
       const d=document.createElement('div');d.className='kf';
-      d.innerHTML=`<label>${n}</label><div class="${this.act===k?'act':''} ${this.lock[k]?'lock':''}">${this.cur(k)||''}</div>`;
-      d.onclick=()=>{this.act=k;this.render();};$('kfields').appendChild(d);
+      d.innerHTML=`<label>${n}</label><div class="${this.act===k?'act':''} ${this.lock[k]?'lock':''}">${this.lock[k]&&this.vals[k]===''?'<span class="kcar">▏</span>':(this.cur(k)||'')}</div>`;
+      // 點已選中、還在跟著游標的欄位＝清空開始打（2026-11-20）
+      d.onclick=()=>{if(this.act===k&&!this.lock[k]&&this.cur(k)){this.clearFor(k);return;}this.act=k;this.render();};$('kfields').appendChild(d);
     }
     if(this.mode==='la'||this.mode==='xy'){const b=document.createElement('button');b.id='kswap';b.textContent='⇄';b.title='切換長度角度／坐標';b.onclick=()=>{this.setMode(this.mode==='la'?'xy':(cmdBase()?'la':'xy'));};$('kfields').appendChild(b);}
     const hb=document.createElement('button');hb.id='kswap';hb.textContent='⌄';hb.title='收起鍵盤';hb.onclick=()=>{this.hidden=true;$('keypad').style.display='none';updateCmdBar();};$('kfields').appendChild(hb);
@@ -221,13 +222,16 @@ const kp={
   key(c){
     const k=this.act;if(!k)return;
     let v=this.lock[k]?this.vals[k]:'';
-    if(c==='⌫'){v=(this.lock[k]?this.vals[k]:'').slice(0,-1);if(!v){delete this.lock[k];delete this.vals[k];this.apply();return;}}
+    // ⌫（2026-11-20）：欄位是跟著游標的數字時，按 ⌫ 先清空讓你打；已經空了再按 ⌫ 才回到跟著游標
+    if(c==='⌫'){if(!this.lock[k]){this.clearFor(k);return;}if(this.vals[k]===''){delete this.lock[k];delete this.vals[k];this.apply();return;}v=this.vals[k].slice(0,-1);}
     else if(c==='-'){v=v.startsWith('-')?v.slice(1):'-'+v;}
     else if(c==='.'){if(!v.includes('.'))v=(v===''||v==='-'?v+'0':v)+'.';}
     else v+=c;
-    if(this.ref==null){const b=cmdBase();this.ref=(b&&cur&&dist(b,cur.p)>1e-12)?Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]):0;}
+    this.setRef();
     this.vals[k]=v;this.lock[k]=true;this.apply();
   },
+  setRef(){if(this.ref==null){const b=cmdBase();this.ref=(b&&cur&&dist(b,cur.p)>1e-12)?Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]):0;}},
+  clearFor(k){this.setRef();this.act=k;this.vals[k]='';this.lock[k]=true;this.apply();},
   num(k){const v=parseFloat(this.vals[k]);return this.lock[k]&&isFinite(v)?v:null;},
   apply(){
     if(this.mode==='d'){this.render();refreshCmd();return;}
