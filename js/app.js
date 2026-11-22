@@ -1435,6 +1435,9 @@ $('parkFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(tru
   try{const r=parkParse(addrText(new Uint8Array(await f.arrayBuffer())));if(!r.length){toast('這份資料看不到停車場的 TWD97 坐標（TW97X／TW97Y）',5000);return;}
     park=r;parkName=f.name;parkShow=true;localStorage.setItem('parkShow','1');idbFile('park',{name:f.name,rows:r});parkUpd();schedule();toast(`停車場資料已載入：${r.length} 個，圖上畫 ${parkPaid().length} 個（只有月租、免費的不畫）`,4000);}
   catch(err){toast('讀不懂這份資料：'+(err.message||err),5000);}finally{busy(false);}};
+// Support 資料夾或其他地方讀到的停車場 CSV（2026-11-23）：認得出停車場坐標欄才收，回傳筆數
+function parkTry(name,txt){let r;try{r=parkParse(txt);}catch(_){return 0;}if(!r.length||!r.some(p=>p.n&&p.fee!==undefined))return 0;
+  park=r;parkName=name;idbFile('park',{name,rows:r});parkUpd();schedule();return r.length;}
 $('parkClear').onclick=()=>{if(park&&confirm(`要移除「${parkName}」嗎？`)){park=null;parkName='';idbFile('park',null);parkUpd();schedule();}};
 $('parkShow').onclick=()=>{parkShow=!parkShow;localStorage.setItem('parkShow',parkShow?'1':'0');parkUpd();schedule();};
 function drawPark(){if(!parkShow||!park)return;const a=toW([0,H]),b=toW([W,0]),m=40/st.view.s,sz=Math.max(9,Math.min(16,st.view.s*4));ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
@@ -2037,7 +2040,7 @@ function supportStatus(){const n=Object.keys(shxFiles),uri=localStorage.getItem(
 function processSupport(name,bytes){
   const ext=(name.split('.').pop()||'').toLowerCase();
   if(ext==='shx'){const r=addShx(bytes,name);return`${name}：`+(r.type==='bigfont'?`大字體 ${r.idx.size} 字`:r.type==='unifont'?`Unicode 字型 ${Object.keys(r.byNum).length} 字`:r.isFont?`字型 ${Object.keys(r.byNum).length} 字`:`${Object.keys(r.byNum).length} 個形狀`);}
-  if(ext==='csv'){const r=addrAdd(name,addrText(bytes));return r?`${name}：門牌 ${r.n} 筆（瘦身後）`:`${name}：不是門牌位置資料，略過`;}
+  if(ext==='csv'){const t=addrText(bytes),r=addrAdd(name,t);if(r)return`${name}：門牌 ${r.n} 筆（瘦身後）`;const k=parkTry(name,t);return k?`${name}：停車場 ${k} 個`:`${name}：不是門牌或停車場資料，略過`;}
   if(ext!=='lin')return`${name}：略過（只吃 .lin、.shx、門牌 .csv`+(/^(rar|zip|7z)$/.test(ext)?'，壓縮檔請先解壓縮':'')+'）';
   let txt;try{txt=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch(_){txt=new TextDecoder('big5').decode(bytes);}
   const list=parseLin(txt);if(!list.length)return`${name}：找不到線型定義`;
@@ -2057,7 +2060,8 @@ async function scanSupport(show){
     if(!todo.length){if(show)toast('Support 資料夾沒有變動');return;}
     if(show)busy(true,`載入 Support：${todo.length} 個檔案…`);else toast(`更新 Support：${todo.length} 個檔案…`);
     let i=0;for(const f of todo){i++;if(show)busy(true,`載入 Support（${i}/${todo.length}）：${f.name}`);
-      try{if(/\.csv$/i.test(f.name)&&NATIVE){const{text}=await SF.slimCsv({uri:f.uri});addrPut(f.name,text);}// 門牌 CSV：原生瘦身後才送過來
+      try{if(/\.csv$/i.test(f.name)&&NATIVE){const{text}=await SF.slimCsv({uri:f.uri});// 門牌 CSV：原生瘦身後才送過來
+          if(text)addrPut(f.name,text);else if(f.size<20e6){const{data}=await SF.read({uri:f.uri});parkTry(f.name,addrText(unb64(data)));}}// 不是門牌：看是不是停車場（小檔才整個讀）
         else{const{data}=await SF.read({uri:f.uri});processSupport(f.name,unb64(data));}man[f.name]=f.size+':'+f.modified;}catch(err){console.warn(f.name,err);}}
     localStorage.setItem('simplecad.supMan',JSON.stringify(man));afterSupport();toast(`Support 已更新 ${todo.length} 個檔案`);
   }catch(err){toast('讀取 Support 資料夾失敗：'+(err.message||err));}
