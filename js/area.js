@@ -12,6 +12,7 @@ const AR_IGN=/行道樹|防風林|流向|號誌|標誌|水管|油管|瓦斯管|�
 // 可單獨存在的附屬設施：圖塊＝圖例（不算主要地物），用該圖層直接畫的散線＝範圍線
 const AR_FAC=/水塔|金爐|油槽|儲存槽|貯存槽|變壓箱座|電信箱座|交換箱|瞭望|亭$|煙囪|紀念碑|紀念像|候車/;// 候車站＝候車亭（七碼用公車車頭圖例）// 紀念碑、紀念像：可單獨存在，底座大時可用自身圖層畫範圍
 // 大型設施：要被範圍線包起來（哪一層的線都可以）並有自己的圖例（圖例算主要地物）
+const AR_FLAG_MAX=300;// 升旗台自己的範圍線圍出的區不會超過這個 m²；更大＝只是放在大區裡的圖例
 const AR_BIGFAC=/變電所|變電站|變壓站|抽水站|升旗|司令臺|司令台|捷運站出入口|地下道出入口|水池|濕地|魚池|養殖池|游泳池|加油站|牌樓|牌坊/;
 const AR_KIND93=/墓地|堆積場|堆置場|廢墟|游泳池|球場|運動場|體育場|兒童遊樂|遊戲場|遊樂場|遊戲區/;// 兒童遊樂設施＝遊戲場、遊樂場、兒童遊樂區
 const AR_KIND93C=new Set(['93523','93726','93902','93553','93555','93556']);
@@ -220,6 +221,8 @@ function arFaces(G,alive){
 function arPlace(T,points,G){
   const{F,locate}=T;let inside=0;const online=[];
   const put=(p,k)=>{p._f=k;if(k<0)return;inside++;const f=F[k];// 圖例一律以插入點為準
+    // 升旗台（2026-11-22 使用者）：有範圍線圍起來才當那一區的地物；沒有範圍線、只放圖例的（例如落在整片運動場裡）只是點圖例，不當區域屬性
+    if(p.k&&/升旗/.test(p.k)&&f.area>AR_FLAG_MAX){f.fac.push(p);return;}
     if(p.add)f.add.push(p);else if(p.fac)f.fac.push(p);else if(p.k){f.all.push(p);if(p.fl)f.fl.push(p);if(!f.kinds.has(p.k))f.kinds.set(p.k,p);}};
   for(const p of points){if(G&&p._x==null){p._x=1;const n=G.nearSeg?G.nearSeg(p.x,p.y,0.005):null;// 5mm 內算壓在線上
       if(n){// 插入點剛好壓在線上：先放著，等兩側都有圖例了，再歸到已經有同種圖例的那一側
@@ -309,7 +312,10 @@ function areaCheck(lines,points,opt){
     for(const L of lines){if(L.r&AR_GATE){out.push(L);continue;}const p=L.p;let cur=[p[0],p[1]],any=false,fs=false;
       for(let i=2;i<p.length;i+=2){let ok=along(p[i-2],p[i-1],p[i],p[i+1]);
         if(ok){const vx=on(p[i-2],XS),ax=vx!=null&&Math.abs(p[i]-vx)<=FT?0:1,v=ax?on(p[i-1],YS):vx,k=i/2-1;
-          const side=sideAt(p,k,ax,v,-1)||sideAt(p,k+1,ax,v,1);ok=!!side;}// 共用框邊上的封口段一律當假邊（2026-11-20 使用者：完全貼著圖框的屋線視為不存在，兩端變懸空再逐點報）
+          const side=sideAt(p,k,ax,v,-1)||sideAt(p,k+1,ax,v,1);
+          // 整條都貼在同一條框線上的小段（封口被分段畫成獨立的線，例 296800,2767835.886 的 0.435m）也是封口（2026-11-22）
+          let all=!side;if(all)for(let j=0;j<p.length;j+=2)if(Math.abs((ax?p[j+1]:p[j])-v)>FT){all=false;break;}
+          ok=!!side||all;}// 共用框邊上的封口段一律當假邊（2026-11-20 使用者：完全貼著圖框的屋線視為不存在，兩端變懸空再逐點報）
         if(ok){any=true;cut++;cutAt.push(p[i-2],p[i-1],p[i],p[i+1]);if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true,fe0:fs,fe1:true}));fs=true;cur=[p[i],p[i+1]];}else cur.push(p[i],p[i+1]);}
       if(!any){out.push(L);continue;}if(cur.length>=4)out.push(Object.assign({},L,{p:cur,fcut:true,fe0:fs,fe1:false}));}
     lines=out;opt.frameCut=cut;opt.frameCutAt=cutAt;}
