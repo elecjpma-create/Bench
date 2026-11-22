@@ -1263,7 +1263,7 @@ function render(){
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
   drawSmall();
-  drawAddr();drawSheets();
+  drawAddr();drawPark();drawSheets();
   drawLoc();drawFind();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
@@ -1343,9 +1343,9 @@ function onTap(sp){
     const f=T.F[k];setHint(`區域面積 ${f.area<10?f.area.toFixed(2):f.area.toFixed(1)} m²　地物：${[...f.kinds.keys()].map(x=>x==='H'?'房屋':x).join('、')||'（無）'}`,true);schedule();return;}
   // 區域檢查標記優先（30px 內有標記就處理標記），沒有標記才看門牌點
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
-    if(bi<0&&addrTap(sp))return;
+    if(bi<0&&(parkTap(sp)||addrTap(sp)))return;
     if(bi>=0){if(bi===smallIdx&&!smallHl){smallHl=true;schedule();return;}if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;smallHl=true;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
-  if(!cmd&&!smallMarks&&addrTap(sp))return;
+  if(!cmd&&!smallMarks&&(parkTap(sp)||addrTap(sp)))return;
   if(!cmd&&smallMarks&&smallHl&&smallIdx>=0){smallHl=false;schedule();setHint(baseHintText(),false);return;}// 點旁邊空白處：收起目前這筆的範圍標示
   if(!cmd){const e=pickEnt(w,st.lockBase?ownOnly:null);if(e){const grp=grpOf(e);
       if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
@@ -1407,6 +1407,37 @@ $('tLoc').onclick=()=>{
 function drawLoc(){if(!locP)return;const q=toS([locP.x,locP.y]),r=locP.acc*st.view.s;ctx.save();
   if(r>8){ctx.beginPath();ctx.arc(q[0],q[1],r,0,TAU);ctx.fillStyle='rgba(66,133,244,.15)';ctx.fill();ctx.strokeStyle='rgba(66,133,244,.6)';ctx.lineWidth=1;ctx.stroke();}
   ctx.beginPath();ctx.arc(q[0],q[1],8,0,TAU);ctx.fillStyle='#4285f4';ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=2.5;ctx.stroke();ctx.restore();}
+/* ---------- 收費停車場（2026-11-23）：新北市路外公共停車場資訊（CSV／JSON，TW97X／TW97Y），只畫有收費的 ---------- */
+let park=null,parkName='',parkShow=localStorage.getItem('parkShow')!=='0';
+function parkParse(txt){txt=txt.replace(/^﻿/,'').trim();let rows=[];
+  if(/^[\[{]/.test(txt)){let j=JSON.parse(txt);if(!Array.isArray(j))j=j.result&&j.result.records||j.records||j.data||Object.values(j).find(Array.isArray)||[];rows=j;}
+  else{const L=txt.split(/\r?\n/),split=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}else if(ch==='"')q=true;else if(ch===','){o.push(c);c='';}else c+=ch;}o.push(c);return o;};
+    const H=split(L[0]).map(h=>h.trim());for(let i=1;i<L.length;i++){if(!L[i].trim())continue;const v=split(L[i]),o={};H.forEach((h,k)=>o[h]=v[k]);rows.push(o);}}
+  const g=(o,re)=>{for(const k in o)if(re.test(k))return String(o[k]??'').trim();return '';};
+  const out=[];for(const o of rows){const x=parseFloat(g(o,/^(tw97x|x_?3826|px|x)$/i)),y=parseFloat(g(o,/^(tw97y|y_?3826|py|y)$/i));if(!(x>100000&&y>2000000))continue;
+    const fee=g(o,/^payex$|費率|收費/i);out.push({x,y,n:g(o,/^name$|名稱/i),ad:g(o,/^address$|地址/i),fee,tm:g(o,/^servicetime$|時間/i),car:g(o,/^totalcar$|汽車/i),mo:g(o,/^totalmotor$|機車/i),ty:g(o,/^type$/i),
+      free:!fee||/^\s*(免費|不收費|0\s*元?)\s*$/.test(fee)||(/免費/.test(fee)&&!/元|\d/.test(fee))});}
+  return out;}
+const parkPaid=()=>park?park.filter(p=>!p.free):[];
+function parkUpd(){const P=parkPaid();$('parkInfo').textContent=park?`${parkName}：${park.length} 個停車場，有收費的 ${P.length} 個`:'還沒載入';$('parkShow').textContent='停車場：'+(parkShow?'開':'關');
+  $('parkBtn').classList.toggle('on',!!(park&&parkShow));findIdx=null;}
+(async()=>{const v=await idbFileGet('park');if(v&&v.rows){park=v.rows;parkName=v.name||'停車場資料';}parkUpd();schedule();})();
+$('parkBtn').onclick=()=>{closeSheet('layerSheet');parkUpd();openSheet('parkSheet');};
+$('parkLoad').onclick=()=>{$('parkFile').value='';$('parkFile').click();};
+$('parkFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取停車場資料…');
+  try{const r=parkParse(addrText(new Uint8Array(await f.arrayBuffer())));if(!r.length){toast('這份資料看不到停車場的 TWD97 坐標（TW97X／TW97Y）',5000);return;}
+    park=r;parkName=f.name;parkShow=true;localStorage.setItem('parkShow','1');idbFile('park',{name:f.name,rows:r});parkUpd();schedule();toast(`停車場資料已載入：${r.length} 個，有收費的 ${parkPaid().length} 個`,4000);}
+  catch(err){toast('讀不懂這份資料：'+(err.message||err),5000);}finally{busy(false);}};
+$('parkClear').onclick=()=>{if(park&&confirm(`要移除「${parkName}」嗎？`)){park=null;parkName='';idbFile('park',null);parkUpd();schedule();}};
+$('parkShow').onclick=()=>{parkShow=!parkShow;localStorage.setItem('parkShow',parkShow?'1':'0');parkUpd();schedule();};
+function drawPark(){if(!parkShow||!park)return;const a=toW([0,H]),b=toW([W,0]),m=40/st.view.s,sz=Math.max(9,Math.min(16,st.view.s*4));ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
+  const lab=W/st.view.s<1500;for(const p of park){if(p.free||p.x<a[0]-m||p.x>b[0]+m||p.y<a[1]-m||p.y>b[1]+m)continue;const q=toS([p.x,p.y]);
+    ctx.fillStyle='#1e6fd9';ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.rect(q[0]-sz,q[1]-sz,sz*2,sz*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(sz*1.4)}px sans-serif`;ctx.fillText('P',q[0],q[1]+1);
+    if(lab&&p.n){ctx.font='12px sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.strokeText(p.n,q[0],q[1]+sz+10);ctx.fillStyle='#8cc4ff';ctx.fillText(p.n,q[0],q[1]+sz+10);}}
+  ctx.restore();}
+function parkTap(sp){if(!parkShow||!park)return false;let bp=null,bd=22;for(const p of park){if(p.free)continue;const q=toS([p.x,p.y]),d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bp=p;}}
+  if(!bp)return false;const v=[bp.n,bp.ad,(bp.car?`汽車 ${bp.car} 格`:'')+(bp.mo&&bp.mo!=='0'?`、機車 ${bp.mo} 格`:''),bp.fee,bp.tm].filter(Boolean);setHint(v.join('｜'),true);return true;}
 /* ---------- 搜尋（2026-11-20）：圖上的文字（底圖＋自己寫的）、門牌資料；結果依離畫面中心的距離排，點一筆跳過去 ---------- */
 const findNorm=s=>String(s||'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\s|\\P/g,'').replace(/臺/g,'台').toUpperCase();
 let findIdx=null,findMark=null;
@@ -1434,7 +1465,7 @@ function findRun(){const q=findNorm($('findIn').value);const list=$('findList'),
   if(!q){box.style.display='none';$('findInfo').textContent='請輸入要找的字';return;}
   const I=findTexts();let R=[];
   for(const o of I.T)if(o.n.includes(q))R.push({raw:o.raw,x:o.x,y:o.y,ly:o.ly,e:o.e,kind:o.e.imp?'':'我寫的',ex:o.n===q?1:0});
-  R=R.concat(findChain(q,I),findAddr(q));
+  R=R.concat(findChain(q,I),findAddr(q));for(const p of parkPaid()){const n=findNorm(p.n+p.ad);if(n.includes(q))R.push({raw:p.n+(p.ad?'（'+p.ad+'）':''),x:p.x,y:p.y,ly:'',kind:'收費停車場',ex:findNorm(p.n)===q?1:0});}
   const c=toW([W/2,H/2]);for(const r of R)r.d=Math.hypot(r.x-c[0],r.y-c[1]);
   R.sort((a,b)=>(b.ex-a.ex)||(a.d-b.d));const N=R.length,MAX=300;R=R.slice(0,MAX);
   $('findInfo').textContent=N?`找到 ${N} 筆`+(N>MAX?`（只列最近的 ${MAX} 筆）`:'')+'，依離畫面中心近到遠排（完全相同的排前面）':'找不到'+(addrRaw?'':'（門牌要先在「圖層 → 門牌」載入資料才找得到）');

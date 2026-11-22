@@ -224,11 +224,20 @@ button{font-family:inherit;color:var(--text)}
   <div class="sec" id="baseSec">
     <div class="lab">底圖圖層</div>
     <div class="row2 eq" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button><button id="lyOld" title="a 開頭的舊圖層">關舊圖</button></div>
-    <div class="row2 eq" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="addrBtn">門牌</button><button id="chkBtn">⚙ 檢查設定</button></div>
+    <div class="row2 eq" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="chkBtn">⚙ 檢查設定</button></div>
+    <div class="row2 eq" style="margin-bottom:6px"><button id="addrBtn">門牌</button><button id="parkBtn">停車場</button></div>
     <div id="baseLayers"></div>
   </div>
 </div></div>
 
+<div id="parkSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>收費停車場</b><button data-close>完成</button></div>
+  <div class="sec"><div class="lab">停車場資料（政府資料開放平台「新北市路外公共停車場資訊」，CSV 或 JSON，TWD97 坐標）</div>
+    <div class="small" id="parkInfo" style="margin-bottom:8px">還沒載入</div>
+    <div class="row2"><button id="parkLoad">載入停車場資料…</button><button id="parkClear" class="danger">移除</button></div><input type="file" id="parkFile" accept=".csv,.json,text/csv,application/json,text/plain" style="display:none"></div>
+  <div class="sec"><button class="big" id="parkShow">停車場：關</button>
+    <div class="small" style="margin-top:6px">只畫有收費的（費率寫「免費」的不畫）。藍底白字 P，放大後會顯示名稱；點一下 P 顯示名稱、地址、車位、費率、營業時間。搜尋也找得到停車場名稱。</div></div>
+</div></div>
 <div id="addrSheet" class="sheet"><div class="sh">
   <div class="shh"><b>門牌</b><button data-close>完成</button></div>
   <div class="sec"><div class="lab">門牌位置資料（各縣市「門牌位置數值資料」CSV，TWD97；也可以放在 Support 資料夾自動載入）</div>
