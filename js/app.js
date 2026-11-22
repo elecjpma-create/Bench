@@ -1522,13 +1522,18 @@ function lyMoveSel(L){const S=selSet.size?[...selSet]:selE?[selE]:[];if(!S.lengt
   if(!own.length){if(S.some(e=>e.imp))toast('底圖的物件不改圖層（先複製成自己的）');return;}snapshot();
   for(const e of own){const old=layerOf(e.ly);if(e.ci!=null&&old&&e.ci===old.ci)delete e.ci;e.ly=L.name;}// 原本跟著舊圖層顏色的，改跟新圖層
   saveDraw();schedule();const sk=S.length-own.length;toast(`已改 ${own.length} 個到圖層「${L.name}」`+(sk?`（略過 ${sk} 個）`:''));}
+// 我的圖層可以收起來（2026-11-23）：收起時只留目前圖層那一行
+let myLyFold=localStorage.getItem('myLyFold')==='1';
+function myLyFoldUpd(){$('myLayers').classList.toggle('fold',myLyFold);$('myLyAdd').style.display=myLyFold?'none':'';
+  $('myLyHead').textContent=myLyFold?`▸ 我的圖層（${st.layers.length} 個，只顯示目前圖層；點這裡展開）`:'▾ 我的圖層（點圓圈設為目前圖層；點這裡收起）';}
+$('myLyHead').onclick=()=>{myLyFold=!myLyFold;localStorage.setItem('myLyFold',myLyFold?'1':'0');myLyFoldUpd();};
 function fillLayerSheet(){
   try{updOldBtn();updSmallBar();}catch(_){}
-  const box=$('myLayers');box.innerHTML='';
+  const box=$('myLayers');box.innerHTML='';myLyFoldUpd();
   for(const L of st.layers){// 一個圖層一行：圓圈｜色塊（顏色號）｜名稱＋線型小字｜燈泡｜⋯（改名、刪除）
-    const r=document.createElement('div');r.className='lyr lyr1';r.dataset.ly=L.name;
+    const r=document.createElement('div');r.className='lyr lyr1'+(st.cur===L.name?' cur':'');r.dataset.ly=L.name;
     const rb=document.createElement('input');rb.type='radio';rb.name='curly';rb.checked=st.cur===L.name;
-    const setCur=()=>{rb.checked=true;st.cur=L.name;saveSettings();lyMoveSel(L);};rb.onchange=setCur;
+    const setCur=()=>{rb.checked=true;st.cur=L.name;box.querySelectorAll('.lyr1').forEach(x=>x.classList.toggle('cur',x===r));saveSettings();lyMoveSel(L);};rb.onchange=setCur;
     const chip=document.createElement('button');chip.className='chip ci1';chip.style.background=aciHex(L.ci);chip.title='選顏色';
     const paintC=()=>{chip.style.background=aciHex(L.ci);const h=aciHex(L.ci).replace('#','');const lum=parseInt(h.slice(0,2),16)*.3+parseInt(h.slice(2,4),16)*.59+parseInt(h.slice(4,6),16)*.11;
       chip.style.color=lum>140?'#111':'#fff';chip.textContent=aciName(L.ci);chip.classList.toggle('long',chip.textContent.length>2);};paintC();

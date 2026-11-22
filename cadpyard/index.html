@@ -130,6 +130,7 @@ button{font-family:inherit;color:var(--text)}
 #toast{position:fixed;left:50%;top:calc(110px + env(safe-area-inset-top));transform:translateX(-50%);background:rgba(20,22,26,.95);border:1px solid var(--line);padding:8px 14px;border-radius:10px;font-size:13px;z-index:40;display:none;max-width:85%;text-align:center}
 #findList button{display:block;width:100%;text-align:left;margin-bottom:6px;line-height:1.35}
 #findList .fs{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+#myLayers.fold>.lyr:not(.cur){display:none}
 </style>
 </head>
 <body>
@@ -217,9 +218,9 @@ button{font-family:inherit;color:var(--text)}
 <div id="layerSheet" class="sheet"><div class="sh">
   <div class="shh"><b>圖層</b><button data-close>完成</button></div>
   <div class="sec">
-    <div class="lab">我的圖層（點圓圈設為目前圖層）</div>
+    <div class="lab" id="myLyHead" style="cursor:pointer;user-select:none;padding:4px 0">▾ 我的圖層（點圓圈設為目前圖層）</div>
     <div id="myLayers"></div>
-    <div class="row2" style="margin-top:8px"><input type="text" id="newLy" placeholder="新圖層名稱"><button id="addLy" style="flex:none">新增</button></div>
+    <div class="row2" id="myLyAdd" style="margin-top:8px"><input type="text" id="newLy" placeholder="新圖層名稱"><button id="addLy" style="flex:none">新增</button></div>
   </div>
   <div class="sec" id="baseSec">
     <div class="lab">底圖圖層</div>
