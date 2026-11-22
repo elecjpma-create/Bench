@@ -245,10 +245,10 @@ button{font-family:inherit;color:var(--text)}
 </div></div>
 <div id="findSheet" class="sheet"><div class="sh">
   <div class="shh"><b>搜尋</b><button data-close>完成</button></div>
-  <div class="sec"><div class="row2"><input type="text" id="findIn" placeholder="路名、門牌、註記文字…" enterkeyhint="search" autocomplete="off"><button id="findGo" style="flex:none">找</button></div>
+  <div class="sec"><div class="row2"><input type="text" id="findIn" placeholder="路名、門牌、註記文字…" enterkeyhint="search" autocomplete="off"><button id="findX" style="flex:none" title="清空">✕</button><button id="findGo" style="flex:none" title="搜尋" aria-label="搜尋"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="vertical-align:middle"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg></button></div>
+    <button class="big" id="findClr" style="margin-top:8px">清除圖上的搜尋標記</button>
     <div class="small" id="findInfo">找圖上的文字（底圖和自己寫的）；載入門牌資料後也找門牌。空白、全形數字、臺／台不分。</div></div>
   <div class="sec" id="findRes" style="display:none"><div id="findList"></div></div>
-  <div class="sec"><button class="big" id="findClr">清除圖上的搜尋標記</button></div>
 </div></div>
 <div id="chkSheet" class="sheet"><div class="sh">
   <div class="shh"><b>檢查設定</b><button data-close>完成</button></div>

@@ -1452,9 +1452,13 @@ function drawFind(){if(!findMark)return;const q=toS([findMark.x,findMark.y]);ctx
   ctx.strokeStyle='#ff3b30';ctx.lineWidth=3;ctx.beginPath();ctx.arc(q[0],q[1],22,0,TAU);ctx.stroke();
   ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(q[0]-34,q[1]);ctx.lineTo(q[0]-14,q[1]);ctx.moveTo(q[0]+14,q[1]);ctx.lineTo(q[0]+34,q[1]);ctx.moveTo(q[0],q[1]-34);ctx.lineTo(q[0],q[1]-14);ctx.moveTo(q[0],q[1]+14);ctx.lineTo(q[0],q[1]+34);ctx.stroke();
   ctx.restore();}
-$('tFind').onclick=()=>{$('findClr').disabled=!findMark;openSheet('findSheet');setTimeout(()=>{const i=$('findIn');i.focus();i.select();},250);};
-$('findGo').onclick=findRun;$('findIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('findIn').blur();findRun();}};
+$('tFind').onclick=()=>{$('findClr').style.display=findMark?'':'none';openSheet('findSheet');setTimeout(()=>{const i=$('findIn');i.focus();i.select();},250);};
+// 搜尋欄清空：結果清單也收掉（2026-11-22）
+const findReset=()=>{$('findRes').style.display='none';$('findList').innerHTML='';$('findInfo').textContent='找圖上的文字（底圖和自己寫的）；載入門牌資料後也找門牌。空白、全形數字、臺／台不分。';};
+$('findIn').oninput=()=>{if(!$('findIn').value.trim())findReset();};
+$('findX').onclick=()=>{$('findIn').value='';findReset();$('findIn').focus();};
 $('findClr').onclick=()=>{findMark=null;closeSheet('findSheet');schedule();};
+$('findGo').onclick=findRun;$('findIn').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('findIn').blur();findRun();}};
 // 點一下：鎖點開關；長按：選要用哪幾種鎖點
 {let lp=0;const b=$('tSnap');b.onpointerdown=()=>{lp=setTimeout(()=>{lp=-1;fillOsnaps($('osnapsQ'));openSheet('snapSheet');},500);};b.onpointerup=b.onpointerleave=()=>{if(lp>0)clearTimeout(lp);};
   b.oncontextmenu=e=>e.preventDefault();
