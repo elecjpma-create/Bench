@@ -1418,7 +1418,8 @@ function parkParse(txt){txt=txt.replace(/^﻿/,'').trim();let rows=[];
     row.push(c);R.push(row);const H=R[0].map(h=>h.trim());
     for(let i=1;i<R.length;i++){if(R[i].length<2)continue;const o={};H.forEach((h,k)=>o[h]=R[i][k]);rows.push(o);}}
   const g=(o,re)=>{for(const k in o)if(re.test(k))return String(o[k]??'').trim();return '';};
-  const out=[];for(const o of rows){let x=parseFloat(g(o,/^(tw97x|x_?3826|px|x)$/i)),y=parseFloat(g(o,/^(tw97y|y_?3826|py|y)$/i));if(x>2000000&&y>100000&&y<500000)[x,y]=[y,x];// 原始資料有幾筆 X、Y 填反
+  const out=[];for(const o of rows){let x=parseFloat(g(o,/^(tw97x|x_?3826|px|x|e|e_?坐標|e_?座標|東坐標|東座標)$/i)),y=parseFloat(g(o,/^(tw97y|y_?3826|py|y|n|n_?坐標|n_?座標|北坐標|北座標)$/i));// E＝6 碼、N＝7 碼（2026-11-23）
+    if(x>2000000&&y>100000&&y<500000)[x,y]=[y,x];// 原始資料有幾筆 X、Y 填反
     if(!(x>100000&&x<500000&&y>2000000))continue;
     const fee=g(o,/^payex$|費率|收費/i).replace(/;+\s*$/,'').replace(/;/g,'；');
     // 分類：可以臨停（計時／計次）＝paid；只有月租＝month；寫免費、沒有收錢的＝free；沒寫費率＝unk
