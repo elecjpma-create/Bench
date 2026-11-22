@@ -1411,33 +1411,40 @@ function drawLoc(){if(!locP)return;const q=toS([locP.x,locP.y]),r=locP.acc*st.vi
 let park=null,parkName='',parkShow=localStorage.getItem('parkShow')!=='0';
 function parkParse(txt){txt=txt.replace(/^﻿/,'').trim();let rows=[];
   if(/^[\[{]/.test(txt)){let j=JSON.parse(txt);if(!Array.isArray(j))j=j.result&&j.result.records||j.records||j.data||Object.values(j).find(Array.isArray)||[];rows=j;}
-  else{const L=txt.split(/\r?\n/),split=l=>{const o=[];let c='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(q){if(ch==='"'){if(l[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}else if(ch==='"')q=true;else if(ch===','){o.push(c);c='';}else c+=ch;}o.push(c);return o;};
-    const H=split(L[0]).map(h=>h.trim());for(let i=1;i<L.length;i++){if(!L[i].trim())continue;const v=split(L[i]),o={};H.forEach((h,k)=>o[h]=v[k]);rows.push(o);}}
+  else{// 整份一起切：引號裡可能有換行（例：水湳洞停車場的 SUMMARY）
+    const R=[];let row=[],c='',q=false;for(let i=0;i<txt.length;i++){const ch=txt[i];
+      if(q){if(ch==='"'){if(txt[i+1]==='"'){c+='"';i++;}else q=false;}else c+=ch;}
+      else if(ch==='"')q=true;else if(ch===','){row.push(c);c='';}else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&txt[i+1]==='\n')i++;row.push(c);c='';R.push(row);row=[];}else c+=ch;}
+    row.push(c);R.push(row);const H=R[0].map(h=>h.trim());
+    for(let i=1;i<R.length;i++){if(R[i].length<2)continue;const o={};H.forEach((h,k)=>o[h]=R[i][k]);rows.push(o);}}
   const g=(o,re)=>{for(const k in o)if(re.test(k))return String(o[k]??'').trim();return '';};
-  const out=[];for(const o of rows){const x=parseFloat(g(o,/^(tw97x|x_?3826|px|x)$/i)),y=parseFloat(g(o,/^(tw97y|y_?3826|py|y)$/i));if(!(x>100000&&y>2000000))continue;
-    const fee=g(o,/^payex$|費率|收費/i);out.push({x,y,n:g(o,/^name$|名稱/i),ad:g(o,/^address$|地址/i),fee,tm:g(o,/^servicetime$|時間/i),car:g(o,/^totalcar$|汽車/i),mo:g(o,/^totalmotor$|機車/i),ty:g(o,/^type$/i),
-      free:!fee||/^\s*(免費|不收費|0\s*元?)\s*$/.test(fee)||(/免費/.test(fee)&&!/元|\d/.test(fee))});}
+  const out=[];for(const o of rows){let x=parseFloat(g(o,/^(tw97x|x_?3826|px|x)$/i)),y=parseFloat(g(o,/^(tw97y|y_?3826|py|y)$/i));if(x>2000000&&y>100000&&y<500000)[x,y]=[y,x];// 原始資料有幾筆 X、Y 填反
+    if(!(x>100000&&x<500000&&y>2000000))continue;
+    const fee=g(o,/^payex$|費率|收費/i).replace(/;+\s*$/,'').replace(/;/g,'；');
+    // 分類：可以臨停（計時／計次）＝paid；只有月租＝month；寫免費、沒有收錢的＝free；沒寫費率＝unk
+    const kind=!fee.replace(/[；\s]/g,'')?'unk':/計時|計次|元\s*\/\s*(時|次)|每小時|每次/.test(fee)?'paid':/月租/.test(fee)?'month':/免費/.test(fee)&&!/\d+\s*元/.test(fee)?'free':'paid';
+    out.push({x,y,n:g(o,/^name$|名稱/i),ad:g(o,/^address$|地址/i),fee,tm:g(o,/^servicetime$|時間/i),car:g(o,/^totalcar$|汽車/i),mo:g(o,/^totalmotor$|機車/i),ty:g(o,/^summary$/i).replace(/\s+/g,''),kind,free:kind==='free'||kind==='month'});}
   return out;}
 const parkPaid=()=>park?park.filter(p=>!p.free):[];
-function parkUpd(){const P=parkPaid();$('parkInfo').textContent=park?`${parkName}：${park.length} 個停車場，有收費的 ${P.length} 個`:'還沒載入';$('parkShow').textContent='停車場：'+(parkShow?'開':'關');
+function parkUpd(){const P=parkPaid();const c=k=>park.filter(p=>p.kind===k).length;$('parkInfo').textContent=park?`${parkName}：${park.length} 個停車場；畫出可以臨停（計時／計次）的 ${c('paid')} 個、沒寫費率的 ${c('unk')} 個（灰色）；不畫只有月租的 ${c('month')} 個、免費的 ${c('free')} 個`:'還沒載入';$('parkShow').textContent='停車場：'+(parkShow?'開':'關');
   $('parkBtn').classList.toggle('on',!!(park&&parkShow));findIdx=null;}
 (async()=>{const v=await idbFileGet('park');if(v&&v.rows){park=v.rows;parkName=v.name||'停車場資料';}parkUpd();schedule();})();
 $('parkBtn').onclick=()=>{closeSheet('layerSheet');parkUpd();openSheet('parkSheet');};
 $('parkLoad').onclick=()=>{$('parkFile').value='';$('parkFile').click();};
 $('parkFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;busy(true,'讀取停車場資料…');
   try{const r=parkParse(addrText(new Uint8Array(await f.arrayBuffer())));if(!r.length){toast('這份資料看不到停車場的 TWD97 坐標（TW97X／TW97Y）',5000);return;}
-    park=r;parkName=f.name;parkShow=true;localStorage.setItem('parkShow','1');idbFile('park',{name:f.name,rows:r});parkUpd();schedule();toast(`停車場資料已載入：${r.length} 個，有收費的 ${parkPaid().length} 個`,4000);}
+    park=r;parkName=f.name;parkShow=true;localStorage.setItem('parkShow','1');idbFile('park',{name:f.name,rows:r});parkUpd();schedule();toast(`停車場資料已載入：${r.length} 個，圖上畫 ${parkPaid().length} 個（只有月租、免費的不畫）`,4000);}
   catch(err){toast('讀不懂這份資料：'+(err.message||err),5000);}finally{busy(false);}};
 $('parkClear').onclick=()=>{if(park&&confirm(`要移除「${parkName}」嗎？`)){park=null;parkName='';idbFile('park',null);parkUpd();schedule();}};
 $('parkShow').onclick=()=>{parkShow=!parkShow;localStorage.setItem('parkShow',parkShow?'1':'0');parkUpd();schedule();};
 function drawPark(){if(!parkShow||!park)return;const a=toW([0,H]),b=toW([W,0]),m=40/st.view.s,sz=Math.max(9,Math.min(16,st.view.s*4));ctx.save();ctx.textAlign='center';ctx.textBaseline='middle';
-  const lab=W/st.view.s<1500;for(const p of park){if(p.free||p.x<a[0]-m||p.x>b[0]+m||p.y<a[1]-m||p.y>b[1]+m)continue;const q=toS([p.x,p.y]);
-    ctx.fillStyle='#1e6fd9';ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.rect(q[0]-sz,q[1]-sz,sz*2,sz*2);ctx.fill();ctx.stroke();
+  const lab=W/st.view.s<600;for(const p of park){if(p.free||p.x<a[0]-m||p.x>b[0]+m||p.y<a[1]-m||p.y>b[1]+m)continue;const q=toS([p.x,p.y]);
+    ctx.fillStyle=p.kind==='unk'?'#7a8591':'#1e6fd9';ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.rect(q[0]-sz,q[1]-sz,sz*2,sz*2);ctx.fill();ctx.stroke();
     ctx.fillStyle='#fff';ctx.font=`bold ${Math.round(sz*1.4)}px sans-serif`;ctx.fillText('P',q[0],q[1]+1);
     if(lab&&p.n){ctx.font='12px sans-serif';ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.75)';ctx.strokeText(p.n,q[0],q[1]+sz+10);ctx.fillStyle='#8cc4ff';ctx.fillText(p.n,q[0],q[1]+sz+10);}}
   ctx.restore();}
 function parkTap(sp){if(!parkShow||!park)return false;let bp=null,bd=22;for(const p of park){if(p.free)continue;const q=toS([p.x,p.y]),d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bp=p;}}
-  if(!bp)return false;const v=[bp.n,bp.ad,(bp.car?`汽車 ${bp.car} 格`:'')+(bp.mo&&bp.mo!=='0'?`、機車 ${bp.mo} 格`:''),bp.fee,bp.tm].filter(Boolean);setHint(v.join('｜'),true);return true;}
+  if(!bp)return false;const v=[bp.n,bp.ad,bp.ty,(bp.car&&bp.car!=='0'?`汽車 ${bp.car} 格`:'')+(bp.mo&&bp.mo!=='0'?`${bp.car&&bp.car!=='0'?'、':''}機車 ${bp.mo} 格`:''),bp.fee||'費率未提供',bp.tm].filter(Boolean);setHint(v.join('｜'),true);return true;}
 /* ---------- 搜尋（2026-11-20）：圖上的文字（底圖＋自己寫的）、門牌資料；結果依離畫面中心的距離排，點一筆跳過去 ---------- */
 const findNorm=s=>String(s||'').replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/\s|\\P/g,'').replace(/臺/g,'台').toUpperCase();
 let findIdx=null,findMark=null;
