@@ -502,7 +502,9 @@ function grpOf(e){return e.imp&&e.g?groupOf(e):(!e.imp&&e.og)?ownGroup(e):[e];}
 /** 選了幾個：一個圖塊算 1 個 */
 function selCount(){const k=new Set();for(const e of selSet)k.add(e.imp&&e.g?'i'+e.g:(!e.imp&&e.og)?'o'+e.og:e);return k.size;}
 /** 底圖圖塊的插入點：讀檔時有就用；原生版另外跟原生要（同一個圖塊只問一次） */
-const insCache=new Map();
+const insCache=new Map(),blkCache=new Map();
+// 底圖圖塊的名稱、旋轉、比例、法向（原生 v6 起才有；2026-11-23：複製過來要匯出成同一個圖塊）
+function impBlk(e){if(!e.imp||!e.g||!nativeOn)return null;if(blkCache.has(e.g))return blkCache.get(e.g);let b=null;try{b=JSON.parse(CadNative.groupBlk(e.g));}catch(_){b=null;}blkCache.set(e.g,b);return b;}
 function impIns(e){if(e.gi)return e.gi;if(!e.imp||!e.g)return null;if(insCache.has(e.g))return insCache.get(e.g);let p=null;
   for(const x of groupOf(e))if(x.gi){p=x.gi;break;}
   if(!p&&nativeOn){try{p=JSON.parse(CadNative.groupIns(e.g));}catch(_){p=null;}}insCache.set(e.g,p);return p;}
@@ -510,7 +512,7 @@ function impIns(e){if(e.gi)return e.gi;if(!e.imp||!e.g)return null;if(insCache.h
 function insSnapCands(w,tol){const R=Math.max(tol,3),seen=new Set(),out=[];
   for(const e of snapEnts(w,R)){let k,p;if(e.imp&&e.g){k='i'+e.g;if(seen.has(k))continue;seen.add(k);p=impIns(e);}else if(!e.imp&&e.og&&e.gi){k='o'+e.og;if(seen.has(k))continue;seen.add(k);p=e.gi;}else continue;
     if(p&&Math.abs(p[0]-w[0])<=tol&&Math.abs(p[1]-w[1])<=tol)out.push(p);}return out;}
-function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const og=ogOf(e,gm);if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}// 複製的圖塊帶著插入點
+function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const og=ogOf(e,gm);if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}if(e.imp&&e.g&&!c.gb){const b=impBlk(e);if(b)c.gb=Object.assign({},b);}// 複製的圖塊帶著插入點
   if(c.imp){delete c.imp;delete c.g;delete c.c;delete c._sg;delete c.rc;c.ly=st.cur;if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;}
   if(og)c.og=og;else delete c.og;return c;}
 
@@ -559,7 +561,7 @@ function hexAci(h){if(h==null)return 7;h=String(h);if(_aciC.has(h))return _aciC.
   const v=parseInt(h.replace('#',''),16);if(!isFinite(v))return 7;const r=v>>16&255,g=v>>8&255,b=v&255;let bi=7,bd=1e9;
   for(let i=1;i<=255;i++){const w=parseInt(aciHex(i).slice(1),16),d=((w>>16&255)-r)**2+((w>>8&255)-g)**2+((w&255)-b)**2;if(d<bd){bd=d;bi=i;}if(!d)break;}
   _aciC.set(h,bi);return bi;}
-function clipCopy(e,gm){const c=JSON.parse(JSON.stringify(e));const og=ogOf(e,gm);if(og)c.og=og;if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}
+function clipCopy(e,gm){const c=JSON.parse(JSON.stringify(e));const og=ogOf(e,gm);if(og)c.og=og;if(e.imp&&e.g&&!c.gi){const p=impIns(e);if(p)c.gi=p.slice();}if(e.imp&&e.g&&!c.gb){const b=impBlk(e);if(b)c.gb=Object.assign({},b);}
   if(c.imp){for(const k of['imp','g','c','_sg','rc','nid','bb','nt','ti'])delete c[k];c.ci=hexAci(e.c);if(c.lt==='BYLAYER'||c.lt==='BYBLOCK')delete c.lt;if(!c.ly)c.ly='0';}
   else{delete c._sg;delete c.rc;}
   return c;}
@@ -581,7 +583,7 @@ function cmdPasteOrig(){
 
 /* ---------- 空白圖：不載底圖、自己命名，畫的東西另外存 ---------- */
 let blankName='';
-function dropBase(){if(NATIVE){nativeOn=false;nFit=null;nCache.clear();try{CadNative.clearBase();}catch(_){}}imp=[];grpIdx=null;insCache.clear();grid=null;impLayers=[];hidLy.clear();offLy.clear();frzLy.clear();impName='';syncHid();invalidateBase();}
+function dropBase(){if(NATIVE){nativeOn=false;nFit=null;nCache.clear();try{CadNative.clearBase();}catch(_){}}imp=[];grpIdx=null;insCache.clear();blkCache.clear();grid=null;impLayers=[];hidLy.clear();offLy.clear();frzLy.clear();impName='';syncHid();invalidateBase();}
 function openBlank(name){
   saveDrawNow();dropBase();blankName=name;const key='blank:'+name;loadDraw(key);endCmd();
   let L=recentList().filter(x=>x.key!==key);L=[{key,name,blank:true,size:0,t:Date.now()},...L];
@@ -638,7 +640,7 @@ function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
   }));
 },extra:{name:'rot',filter:ownOnly}});}
 /* 縮放：點基準點（不動的點），輸入比例；「參考」＝點兩點量出原長度，再點（或輸入）新長度 */
-function scaleEnt(e,b,k){xform(e,q=>[b[0]+(q[0]-b[0])*k,b[1]+(q[1]-b[1])*k],0);if(e.r)e.r*=k;if(e.h)e.h*=k;if(e.ls)e.ls*=k;}
+function scaleEnt(e,b,k){xform(e,q=>[b[0]+(q[0]-b[0])*k,b[1]+(q[1]-b[1])*k],0);if(e.r)e.r*=k;if(e.h)e.h*=k;if(e.ls)e.ls*=k;if(e.gb){e.gb.sx*=k;e.gb.sy*=k;}}
 function cmdScale(){return selectStage({title:'縮放',verb:'縮放',next(){
   const sel=[...selSet];let ref=null,refL=null,B=null;
   const facAt=p=>{if(refL){const D=kp.num('D');return D!=null?D/refL:dist(B,p)/refL;}const K=kp.num('K');return K!=null?K:null;};
@@ -677,7 +679,7 @@ function cmdInsert(){return selectStage({title:'插入圖塊',verb:'當樣本',n
     preview(){if(cur){ctx.globalAlpha=.9;for(const k of place(cur.p,true))drawTemp(k);ctx.globalAlpha=1;}}}));
   selSet=new Set(sel);
 },extra:{name:'ins',group:true,filter:e=>!!(e.g||e.og)}});}
-function rotEnt(e,b,a){const c=Math.cos(a),s=Math.sin(a);xform(e,q=>[b[0]+(q[0]-b[0])*c-(q[1]-b[1])*s,b[1]+(q[0]-b[0])*s+(q[1]-b[1])*c],a);}
+function rotEnt(e,b,a){const c=Math.cos(a),s=Math.sin(a);xform(e,q=>[b[0]+(q[0]-b[0])*c-(q[1]-b[1])*s,b[1]+(q[0]-b[0])*s+(q[1]-b[1])*c],a);if(e.gb)e.gb.r+=(e.gb.ez<0?-a:a);}
 function xform(e,f,da){
   delete e.bb;// 外框要重算，不然放大時會被當成在畫面外（不畫、點不到）
   switch(e.t){
@@ -1249,12 +1251,12 @@ async function nativeLoaded(m){
   const T=await (await fetch('/__native/texts.json?t='+Date.now())).json();
   const ents=T.map((t,ti)=>{const e={t:'text',imp:1,ti,p:t.p,h:t.h,rot:t.r,lines:String(t.t).split('\n'),ha:t.ha,y0:t.y0,ls:t.ls,wf:t.wf,vert:!!t.v,c:t.c,ly:t.l,font:t.f||'',big:t.b||''};if(t.g)e.g=t.g;e.bb=entBox(e);return e;});
   buildGrid(ents);saveDrawNow();
-  imp=ents;grpIdx=null;insCache.clear();nCache.clear();nativeOn=true;nFit=m.fit;_nv='';
+  imp=ents;grpIdx=null;insCache.clear();blkCache.clear();nCache.clear();nativeOn=true;nFit=m.fit;_nv='';
   impLayers=m.layers.filter(l=>l.n>0).map(l=>({name:l.name,c:l.c,off:l.off,frozen:l.frozen,hidden:l.off||l.frozen,n:l.n}));
   offLy=new Set(impLayers.filter(l=>l.off&&!l.frozen).map(l=>l.name));frzLy=new Set(impLayers.filter(l=>l.frozen).map(l=>l.name));syncHid();
   if(Array.isArray(m.lts)&&m.lts.length){const usable=x=>x.els.filter(e=>e.k==='shape').every(e=>e.file&&findShape(e));
     mergeLT(m.lts.filter(x=>x.els.some(e=>e.k==='len'&&e.v)).map(finishLT).filter(x=>{const o=lts.find(y=>y.name===x.name);return!(o&&o.src==='support')||usable(x);}));}
-  nLtNames=m.ltn||[];nLtSig='';nTxSig='';st.ltscale=m.ltscale||st.ltscale||1;
+  nLtNames=m.ltn||[];ltDrawDesc=m.ltd||{};nLtSig='';nTxSig='';st.ltscale=m.ltscale||st.ltscale||1;
   impName=m.name;blankName='';loadDraw(m.key);endCmd();
   let L=recentList();L=[{key:m.key,name:m.name,size:m.size,t:Date.now(),native:1},...L.filter(x=>x.key!==m.key)];
   for(const x of L.slice(RECENT_MAX))if(!x.native)await idbFile('f:'+x.key,null);
@@ -1574,8 +1576,9 @@ window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.ta
 /* ---------- 圖層面板 ---------- */
 /** 線型選單顯示「編號　說明」：133　鐵欄（說明取 .lin 定義第一段文字，後面的圖樣示意不要） */
 // App（原生）讀圖時線型說明是空的（2026-11-23）：沒說明就查這張表（圖例總表 5 碼＋測試圖裡的 3 碼等線型名稱）
+let ltDrawDesc={};// 原生 v6 起：這張圖自帶的線型說明（名稱→說明）
 const LT_NAMES={"101":"連續線","106":"建築中房屋、高架鐵路、行人地下道、高架捷運、地下捷運","109":"田埂、助曲線、排水溝","111":"小徑、建築中道路","122":"高架道路","132":"板牆","133":"鐵欄","134":"水泥欄","135":"鐵絲網","136":"生籬","137":"竹垣","145":"地類界","161":"行道樹","174":"擋土牆","175":"駁坎","176":"土坎","191":"溝渠","201":"水泥牆","202":"磚牆","212":"鬆土路面","215":"行人路橋","90112":"圖廓註記","90121":"方格線","90122":"方格線註記","90211":"圖名","90212":"圖號","90221":"比例尺","90222":"高程起算註記","90223":"地圖投影坐標系","90225":"等高線間隔","90231":"圖幅接合表","90232":"行政界線略圖","90310":"中文地名","90320":"英文地名","90330":"中文註記","90340":"英文註記","90350":"等高線註記","90360":"標高點註記","90400":"圖例說明","90900":"其他","91210":"衛星控制點","91220":"精密導線點","91230":"導線點","91250":"自由測站點","91310":"一等水準點","91320":"水準點","91410":"中心樁","91420":"界樁","91430":"副樁","91440":"虛樁","91450":"測量基點樁","91920":"航測控制點","91930":"衛星定位點","92200":"省、直轄市等界","92201":"省、直轄市名","92300":"縣、省轄市、直轄市區等界","92301":"縣、省轄市、","92400":"鄉、鎮、縣轄市","92401":"鄉、鎮、縣轄市","92500":"村里界","92501":"村里名","93110":"永久性房屋","93111":"無牆壁房屋","93112":"樓層註記","93120":"建築中房屋","93130":"臨時性房屋","93212":"板牆","93214":"施工圍離","93230":"柵欄","93240":"網","93250":"籬","93260":"圍","93261":"舊城垣","93270":"門","93312":"中央政府公署","93314":"直轄市政府","93315":"縣政府","93318":"村里辦公室","93323":"直轄市議會","93324":"縣議會","93331":"大使、領事館","93332":"外國駐華辦事處","93340":"軍事機關","93411":"大專院校","93412":"中學","93413":"小學","93414":"職訓中心","93415":"幼稚園","93416":"駕訓班","93421":"圖書館","93422":"博物館","93423":"資料及陳列館","93424":"文化中心","93425":"社教館","93431":"紀念堂(館)","93432":"孔廟","93433":"忠烈祠","93434":"紀念墓園","93441":"紀念碑","93442":"紀念塔","93443":"紀念像","93444":"牌坊","93445":"牌樓","93451":"天文台","93452":"氣象台、測候所","93453":"水文觀測站","93454":"絕對重力站","93455":"衛星定位追蹤站","93460":"古蹟","93491":"升旗台","93511":"醫院","93512":"衛生所","93513":"孤兒院","93514":"養老院","93521":"殯儀館","93522":"火葬場","93523":"墓地","93524":"獨立墓","93531":"市場","93532":"地下街","93540":"戲院","93541":"劇院","93542":"音樂廳","93543":"活動中心","93544":"風景名勝區","93545":"公園","93546":"遊樂場(園)","93547":"露天劇場、音樂台","93548":"動物園","93549":"植物園","93551":"體育館","93552":"體育場","93553":"游泳池","93554":"海水浴場","93555":"運動場","93556":"球場","93560":"郵筒","93561":"郵局","93562":"電信公司營服處","93563":"電力公司服務處","93564":"電話亭","93571":"警察局、分駐所","93572":"監獄、看守所","93573":"消防隊","93574":"消防栓","93575":"防空洞","93576":"法院","93581":"銀行","93582":"證券公司","93583":"信託公司","93584":"信用合作社","93591":"塔","93592":"亭","93593":"水塔","93594":"水井","93595":"噴泉","93596":"油塔","93611":"教堂","93612":"寺廟","93613":"回教寺","93614":"宗祠","93691":"土地廟","93692":"大佛像","93711":"工廠","93712":"發電廠","93713":"造船廠","93714":"自來水廠","93721":"變電所","93722":"船塢","93723":"倉庫","93724":"油庫","93725":"抽水站","93726":"堆積場","93731":"污水處理廠","93732":"垃圾處理場","93733":"焚化爐","93734":"鍋爐","93741":"礦場","93742":"溫泉區","93744":"材料場","93781":"瓦斯整壓箱","93782":"高架配電台","93791":"輸送管","93792":"煙囪","93793":"油井、瓦斯井","93794":"油槽","93795":"瓦斯槽","93796":"儲存槽","93797":"變壓箱座","93798":"磚瓦窯","93799":"獨立標","93811":"雷達站","93812":"微波中繼站","93813":"衛星資料接收站","93814":"無線電台","93815":"天線","93821":"廣播電台","93822":"電視台","93823":"攝影棚","93891":"廣告架","93901":"界標","93902":"廢墟","93903":"靶場","93904":"階梯","93905":"碉堡","93906":"瞭望台(塔)","93907":"司令台","93908":"金爐","93909":"電信箱座","93911":"大樓","93912":"飯店(旅館)","93913":"公司","93914":"百貨公司","93915":"眷村","93916":"社區","93917":"其他","94111":"鐵路","94112":"高速鐵路","94113":"輕便鐵路","94121":"火車站","94122":"轉車台","94123":"平交道柵欄","94124":"平交道警視燈","94125":"鐵路機車廠","94211":"國道","94212":"省道","94213":"市區道路","94214":"縣道","94215":"鄉鎮道","94216":"小徑","94217":"小徑","94218":"人行道","94219":"區塊內道路","94221":"汽車站","94222":"交流道","94223":"立體交叉道","94224":"中央分隔島","94225":"行人陸橋","94226":"行地下道","94227":"收費站","94228":"加油站","94232":"交通號誌","94233":"交通標誌","94311":"地面捷運","94321":"捷運車站","94322":"捷運機車廠","94411":"鐵路隧道","94412":"公路隧道","94421":"鐵路橋","94422":"公路橋","94423":"車行吊橋","94424":"人行吊橋","94425":"浮橋","94426":"便橋","94427":"小橋","94431":"箱涵","94432":"管涵","94433":"擋土牆","94434":"路堤","94435":"路塹","94436":"駁坎","94511":"陸上機場","94512":"水上機場","94521":"跑道","94522":"滑行道","94523":"停機坪","94524":"停機棚","94525":"修護廠","94526":"航站大廈","94527":"管制塔台","94611":"商港","94612":"漁港","94613":"工礦港","94614":"軍港","94621":"港管所(哨)","94622":"防波堤","94623":"燈塔","94624":"港燈","94625":"錨地","94627":"沉船浮","94628":"消波塊","94901":"纜車線","94902":"高架索道","94903":"國道編號","94904":"省道編號","94905":"縣市道編號","94906":"鄉鎮道編號","94911":"方向指引","95111":"江、河、溪","95112":"時令河","95113":"乾河","95114":"小河","95115":"運河","95116":"溝、渠","95117":"溝、渠","95118":"暗溝","95121":"引水槽","95122":"渡口","95124":"水壩","95126":"水閘","95127":"攔河堰、攔沙壩","95128":"渡船碼頭","95132":"混凝土塊護岸","95133":"蛇籠","95134":"土坎","95141":"石磯","95142":"沙洲","95152":"瀑布","95153":"河川流向","95211":"湖泊","95212":"池塘","95213":"乾池","95214":"沼澤","95215":"濕地","95216":"水庫","95217":"蓄水池","95221":"湖濱碼頭","95222":"水涯線","95311":"崖岸","95312":"海岸線","95321":"海濱碼頭","95322":"水岸拋角石","95412":"珊瑚礁","95421":"泥底地質","95422":"沙底地質","95423":"礫底地質","95424":"岩床","95905":"島嶼","96111":"輸送線(高壓線)","96112":"配電線(電力線)","96120":"電信線路","96210":"水管","96220":"油管","96230":"瓦斯管","96911":"高壓線塔","96912":"電信塔","96914":"路燈","96920":"人孔","96921":"電力人孔","96922":"電信人孔","96923":"排水人孔","96924":"軍訊人孔","97111":"獨立樹","97121":"防風林","97122":"行道樹","97131":"針葉樹","97132":"闊葉樹","97133":"針、闊葉混合林","97134":"灌木林","97135":"竹林","97210":"草地","97220":"細草地","97311":"水田","97312":"蓮田","97321":"旱作地","97322":"蔗田","97331":"果園","97332":"茶園","97333":"菜園","97334":"花圃","97335":"苗圃","97411":"魚池","97412":"魚塭","97413":"養蚵場","97421":"牧場","97430":"鹽田","97912":"荒地","97913":"空地","97921":"地類界","97922":"田埂","98111":"計曲線","98112":"首曲線","98113":"間曲線","98114":"助曲線","98121":"一般標高點","98122":"特殊標高點","98211":"凹地","98212":"土墩、台地、小丘","98213":"斷崖","98221":"雨裂","98222":"流土","98223":"崩土","98224":"惡地","98231":"獨立岩","98232":"散岩","98233":"露岩","98240":"沙丘","9320500":"籬","9390009":"候車亭","93110H":"房屋斜線","93130H":"房屋斜線","93210a":"水泥牆","93210b":"磚牆","93210c":"石牆","93210d":"板牆","93210e":"土牆","93210f":"鋼鐵牆","93220a":"竹垣","93230a":"水泥欄","93230b":"鐵欄","93230c":"木欄","93240a":"鐵絲網","93250a":"生籬","93260a":"壘石圍","93712a":"水力發電廠","93712b":"火力發電廠","94110a":"單線鐵路","94110b":"雙線鐵路","94110c":"高架鐵路","94110d":"地下鐵路","94110e":"建築中鐵路","94200a":"產業道路","94200b":"高架道路","94200c":"鬆路面道路","94200d":"建築中道路","94226a":"行人地下道出入口","94229a":"平面停車場","94229b":"立體停車場","94229c":"停車場出入口","94300a":"高架捷運","94300b":"地下捷運","94300c":"建築中捷運","94420a":"鐵橋","94420b":"鋼筋混凝土橋","94420c":"磚石橋","94420d":"木橋","95131a":"土堤","95131b":"石堤","95131c":"混凝土堤","95131d":"小土堤","95411a":"泥濱","95411b":"沙濱","95411c":"礫濱","95411d":"岩濱","96913a":"電力桿","96913b":"電信桿","97330a":"香蕉園","97330b":"鳳梨園","97330c":"檳榔園","94214C":"縣道鬆面道路","95131C":"混凝土堤","94213A":"省道高架道路","94310A":"高架捷運","94215A":"縣道高架道路","94211A":"國道高架道路"};
-function ltLabel(n){if(n==='CONTINUOUS')return'CONTINUOUS　連續線';const l=lts.find(x=>x.name===n);let d=l&&l.desc?l.desc.trim().split(/\s+/)[0]:'';if(!d||d===n)d=LT_NAMES[n]||LT_NAMES[String(n).toUpperCase()]||'';return d&&d!==n?n+'　'+d:n;}
+function ltLabel(n){if(n==='CONTINUOUS')return'CONTINUOUS　連續線';const l=lts.find(x=>x.name===n);let d=l&&l.desc?l.desc.trim().split(/\s+/)[0]:'';if(!d||d===n){const t=(ltDrawDesc[String(n).toUpperCase()]||'').trim().split(/\s+/)[0];d=t&&t!==n?t:(LT_NAMES[n]||LT_NAMES[String(n).toUpperCase()]||'');}return d&&d!==n?n+'　'+d:n;}
 /** 先點選物件再到圖層列表點別的圖層：自己畫的物件改到那層（底圖不改） */
 function lyMoveSel(L){const S=selSet.size?[...selSet]:selE?[selE]:[];if(!S.length)return;const own=S.filter(e=>!e.imp&&st.ents.includes(e)&&e.ly!==L.name);
   if(!own.length){if(S.some(e=>e.imp))toast('底圖的物件不改圖層（先複製成自己的）');return;}snapshot();
@@ -2149,7 +2152,7 @@ async function openDrawing(name,bytes,store){
     for(const x of r.ents)x.bb=entBox(x);
     buildGrid(r.ents);
     saveDrawNow();
-    imp=r.ents;grpIdx=null;insCache.clear();impLayers=r.layers;offLy=new Set(r.layers.filter(l=>l.off||(l.hidden&&!l.frozen)).map(l=>l.name));frzLy=new Set(r.layers.filter(l=>l.frozen).map(l=>l.name));syncHid();
+    imp=r.ents;grpIdx=null;insCache.clear();blkCache.clear();impLayers=r.layers;offLy=new Set(r.layers.filter(l=>l.off||(l.hidden&&!l.frozen)).map(l=>l.name));frzLy=new Set(r.layers.filter(l=>l.frozen).map(l=>l.name));syncHid();
     if(r.lts.length){const usable=x=>x.els.filter(e=>e.k==='shape').every(e=>e.file&&findShape(e));
       mergeLT(r.lts.map(finishLT).filter(x=>{const o=lts.find(y=>y.name===x.name);return!(o&&o.src==='support')||usable(x);}));}
     st.ltscale=r.ltscale||1;impName=name;blankName='';loadDraw(name+'|'+bytes.length);endCmd();
@@ -2195,13 +2198,30 @@ function fillRecent(){
 }
 function saveDrawNow(){clearTimeout(saveDT);try{localStorage.setItem('simplecad.draw:'+drawKey,JSON.stringify(st.ents));}catch(_){toast('手機空間存不下這麼多東西，請先匯出 DXF 備份',5000);}}
 $('newBlank').onclick=newBlank;
-$('impClear').onclick=()=>{blankName='';if(NATIVE){nativeOn=false;nFit=null;nCache.clear();try{CadNative.clearBase();}catch(_){}}saveDrawNow();imp=[];grpIdx=null;insCache.clear();grid=null;impLayers=[];hidLy.clear();offLy.clear();frzLy.clear();impName='';localStorage.removeItem('simplecad.lastKey');loadDraw('(無底圖)');closeSheet('fileSheet');schedule();};
+$('impClear').onclick=()=>{blankName='';if(NATIVE){nativeOn=false;nFit=null;nCache.clear();try{CadNative.clearBase();}catch(_){}}saveDrawNow();imp=[];grpIdx=null;insCache.clear();blkCache.clear();grid=null;impLayers=[];hidLy.clear();offLy.clear();frzLy.clear();impName='';localStorage.removeItem('simplecad.lastKey');loadDraw('(無底圖)');closeSheet('fileSheet');schedule();};
 
 /* ---------- IndexedDB（最後開的圖） ---------- */
 function idb2(){return new Promise((res,rej)=>{try{const r=indexedDB.open('simplecad',2);r.onupgradeneeded=()=>{const d=r.result;if(!d.objectStoreNames.contains('shx'))d.createObjectStore('shx');if(!d.objectStoreNames.contains('files'))d.createObjectStore('files');};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){rej(e);}});}
 async function idbFile(k,v){try{const d=await idb2();await new Promise(r=>{const t=d.transaction('files','readwrite');const s=t.objectStore('files');v==null?s.delete(k):s.put(v,k);t.oncomplete=t.onerror=()=>r();});}catch(_){}}
 async function idbFileGet(k){try{const d=await idb2();return await new Promise(r=>{const t=d.transaction('files','readonly'),q=t.objectStore('files').get(k);q.onsuccess=()=>r(q.result);q.onerror=()=>r(null);});}catch(_){return null;}}
 
+/* 世界坐標 → 圖塊坐標（反算 INSERT：world = E·(ins + R(r)·S·b)，E＝法向 -1 時 X 反向） */
+function blkInv(gb,gi){const ez=gb.ez<0?-1:1,c=Math.cos(-gb.r),s=Math.sin(-gb.r),ix=ez*gi[0],iy=gi[1],sx=gb.sx||1,sy=gb.sy||1;
+  return w=>{const x=ez*w[0]-ix,y=w[1]-iy;return[(x*c-y*s)/sx,(x*s+y*c)/sy];};}
+/** 用仿射函數 F 換算一個物件（角度從方向向量換、鏡射時弧的起訖對調、凸度反號） */
+function mapEnt(e,F){const c=JSON.parse(JSON.stringify(e));delete c.bb;delete c.gi;delete c.og;delete c.gb;delete c._sg;delete c.rc;
+  const p0=F([0,0]),px=F([1,0]),py=F([0,1]),ax=[px[0]-p0[0],px[1]-p0[1]],ay=[py[0]-p0[0],py[1]-p0[1]],det=ax[0]*ay[1]-ax[1]*ay[0],k=Math.sqrt(Math.abs(det))||1;
+  const ang=a=>{const v=[Math.cos(a),Math.sin(a)];return Math.atan2(ax[1]*v[0]+ay[1]*v[1],ax[0]*v[0]+ay[0]*v[1]);};const M=q=>F(q);
+  switch(c.t){
+    case'line':c.a=M(c.a);c.b=M(c.b);break;
+    case'pline':case'ink':if(c.pts)c.pts=c.pts.map(M);if(c.av)c.av=c.av.map(M);if(det<0&&c.bu)c.bu=c.bu.map(b=>-b);if(c.w)c.w*=k;break;
+    case'circle':c.o=M(c.o);c.r*=k;break;
+    case'arc':{c.o=M(c.o);c.r*=k;const a0=ang(c.a0),a1=ang(c.a1);if(det<0){c.a0=a1;c.a1=a0;}else{c.a0=a0;c.a1=a1;}break;}
+    case'text':c.p=M(c.p);c.rot=ang(c.rot||0);c.h*=k;if(c.ls)c.ls*=k;if(c.y0)c.y0*=k;break;
+    case'point':c.p=M(c.p);break;
+    case'dim':c.a=M(c.a);c.b=M(c.b);if(c.off)c.off*=(det<0?-k:k);if(c.h)c.h*=k;break;
+    case'fill':c.rings=c.rings.map(r=>r.map(M));break;}
+  return c;}
 /* ---------- 匯出 DXF（R12，中文用 \U+ 表示） ---------- */
 function encDxf(s){let o='';for(const ch of String(s)){const c=ch.codePointAt(0);if(c<128&&c>=32)o+=ch;else if(c>0xffff)o+='?';else o+='\\U+'+c.toString(16).toUpperCase().padStart(4,'0');}return o;}
 const nf=v=>{const s=(+v).toFixed(6);return s.replace(/\.?0+$/,'')||'0';};
@@ -2219,20 +2239,28 @@ function buildDXF(only){
   w(0,'TABLE');w(2,'LAYER');w(70,lys.length);for(const L of lys){w(0,'LAYER');w(2,encDxf(L.name));w(70,0);w(62,L.on===false?-L.ci:L.ci);w(6,encDxf((L.lt||'CONTINUOUS').toUpperCase()));}w(0,'ENDTAB');
   w(0,'TABLE');w(2,'STYLE');w(70,1);w(0,'STYLE');w(2,'STANDARD');w(70,0);w(40,0);w(41,1);w(50,0);w(71,0);w(42,2.5);w(3,'txt');w(4,'chineset.shx');w(0,'ENDTAB');
   w(0,'ENDSEC');
-  const head=(t,e)=>{w(0,t);w(8,encDxf(e.ly||st.cur));if(e.ci!=null)w(62,e.ci);if(e.lt)w(6,encDxf(e.lt.toUpperCase()));};
+  let BL=false;const lyN=e=>BL?'0':encDxf(e.ly||st.cur);// 同名圖塊的定義：內容放 0 層、顏色 BYBLOCK，跟著 INSERT 的圖層
+  const head=(t,e)=>{w(0,t);w(8,lyN(e));if(BL)w(62,0);else if(e.ci!=null)w(62,e.ci);if(e.lt)w(6,encDxf(e.lt.toUpperCase()));};
   let OX=0,OY=0;const pt=(c,p)=>{w(c,nf(p[0]-OX));w(c+10,nf(p[1]-OY));w(c+20,0);};
   // 圖塊（og 一組）輸出成 BLOCK＋INSERT，CAD 打開還是一個圖塊；圖塊名稱用原本的名稱＋流水號，避免和底圖同名但內容不同
   const G=new Map();for(const e of ents)if(e.og){let l=G.get(e.og);if(!l)G.set(e.og,l=[]);l.push(e);}
-  const blk=[];let bn=0;const usedN=new Set();
-  for(const[og,L]of G){let ins=null;for(const e of L)if(e.gi){ins=e.gi;break;}
-    if(!ins){let b=[1e18,1e18];for(const e of L){const r=entBox(e);if(r){b=[Math.min(b[0],r[0]),Math.min(b[1],r[1])];}}const e0=L[0];ins=b[0]<1e17?b:(e0.a||e0.o||e0.p||(e0.pts&&e0.pts[0])||[0,0]);}
+  const blk=[],ins=[];let bn=0;const usedN=new Set();
+  // 2026-11-23：從底圖複製的圖塊（有 gb＝原圖塊名稱、旋轉、比例、法向）匯出成同名圖塊的 INSERT，只換圖層；
+  // BLOCK 定義用第一份複本反算回圖塊坐標（貼進原 DWG 時 CAD 會沿用原本的定義）
+  const named=new Map();
+  for(const[og,L]of G){const gE=L.find(e=>e.gb&&e.gb.n&&!/^\*/.test(e.gb.n)&&e.gi);
+    if(gE){const gb=gE.gb,gi=gE.gi,ez=gb.ez<0?-1:1;if(!named.has(gb.n)){named.set(gb.n,1);usedN.add(gb.n);const F=blkInv(gb,gi);blk.push({nm:gb.n,ins:[0,0],L:L.map(e=>mapEnt(e,F)),ly:'0',bl:1});}
+      ins.push({nm:gb.n,p:[ez*gi[0],gi[1]],gb,ly:gE.ly||st.cur});continue;}
+    let ip=null;for(const e of L)if(e.gi){ip=e.gi;break;}
+    if(!ip){let b=[1e18,1e18];for(const e of L){const r=entBox(e);if(r){b=[Math.min(b[0],r[0]),Math.min(b[1],r[1])];}}const e0=L[0];ip=b[0]<1e17?b:(e0.a||e0.o||e0.p||(e0.pts&&e0.pts[0])||[0,0]);}
     let base=String(L.find(e=>e.gn)?.gn||'CPY').replace(/[<>\/":;?*|=,`\s]/g,'_').slice(0,24);let nm;do{nm=`${base}_${++bn}`;}while(usedN.has(nm));usedN.add(nm);
-    blk.push({nm,ins,L,ly:L[0].ly||st.cur});}
+    blk.push({nm,ins:ip,L,ly:L[0].ly||st.cur});ins.push({nm,p:ip,ly:L[0].ly||st.cur});}
   w(0,'SECTION');w(2,'BLOCKS');
-  for(const B of blk){w(0,'BLOCK');w(8,'0');w(2,encDxf(B.nm));w(70,0);w(10,0);w(20,0);w(30,0);w(3,encDxf(B.nm));OX=B.ins[0];OY=B.ins[1];for(const e of B.L)wEnt(e);OX=OY=0;w(0,'ENDBLK');w(8,'0');}
+  for(const B of blk){w(0,'BLOCK');w(8,'0');w(2,encDxf(B.nm));w(70,0);w(10,0);w(20,0);w(30,0);w(3,encDxf(B.nm));OX=B.ins[0];OY=B.ins[1];BL=!!B.bl;for(const e of B.L)wEnt(e);BL=false;OX=OY=0;w(0,'ENDBLK');w(8,'0');}
   w(0,'ENDSEC');
   w(0,'SECTION');w(2,'ENTITIES');
-  for(const B of blk){w(0,'INSERT');w(8,encDxf(B.ly));w(2,encDxf(B.nm));pt(10,B.ins);}
+  for(const I of ins){w(0,'INSERT');w(8,encDxf(I.ly));w(2,encDxf(I.nm));pt(10,I.p);
+    if(I.gb){if(I.gb.sx!==1)w(41,nf(I.gb.sx));if(I.gb.sy!==1)w(42,nf(I.gb.sy));if(I.gb.r)w(50,nf(normA(deg(I.gb.r))));if(I.gb.ez<0){w(210,0);w(220,0);w(230,-1);}}}
   for(const e of ents)if(!e.og)wEnt(e);
   w(0,'ENDSEC');w(0,'EOF');
   return o.join('\r\n')+'\r\n';
@@ -2246,14 +2274,14 @@ function buildDXF(only){
         let ang=Math.atan2(uy,ux);if(Math.cos(ang)<-1e-6)ang+=Math.PI;const m=midp(A2,B2),tp=[m[0]-Math.sin(ang)*h*0.4,m[1]+Math.cos(ang)*h*0.4];
         head('TEXT',e);pt(10,tp);w(40,nf(h));w(1,fmt(L));w(50,nf(normA(deg(ang))));w(7,'STANDARD');w(72,1);pt(11,tp);break;}
       case'pline':case'ink':head('POLYLINE',e);w(66,1);pt(10,[OX,OY]);w(70,e.closed?1:0);
-        if(e.av)e.av.forEach((p,i)=>{w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);if(e.bu&&e.bu[i])w(42,nf(e.bu[i]));w(70,0);});
-        else for(const p of e.pts){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));break;
+        if(e.av)e.av.forEach((p,i)=>{w(0,'VERTEX');w(8,lyN(e));pt(10,p);if(e.bu&&e.bu[i])w(42,nf(e.bu[i]));w(70,0);});
+        else for(const p of e.pts){w(0,'VERTEX');w(8,lyN(e));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,lyN(e));break;
       case'circle':head('CIRCLE',e);pt(10,e.o);w(40,nf(e.r));break;
       case'arc':head('ARC',e);pt(10,e.o);w(40,nf(e.r));w(50,nf(normA(deg(e.a0))));w(51,nf(normA(deg(e.a1))));break;
       case'text':e.lines.forEach((ln,i)=>{head('TEXT',e);const off=(e.y0||0)+i*(e.ls||e.h*1.667),r=e.rot||0,p=[e.p[0]+Math.sin(r)*off,e.p[1]-Math.cos(r)*off];pt(10,p);w(40,nf(e.h));w(1,encDxf(ln));w(50,nf(normA(deg(r))));if(e.wf&&e.wf!==1)w(41,nf(e.wf));w(7,'STANDARD');if(e.ha){w(72,e.ha);pt(11,p);}});break;
       case'point':head('POINT',e);pt(10,e.p);break;
       case'fill':for(const r of e.rings){if(r.length===3||r.length===4){head('SOLID',e);pt(10,r[0]);pt(11,r[1]);pt(12,r[r.length-1]);pt(13,r.length===4?r[2]:r[2]);}
-        else{head('POLYLINE',e);w(66,1);pt(10,[OX,OY]);w(70,1);for(const p of r){w(0,'VERTEX');w(8,encDxf(e.ly||st.cur));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,encDxf(e.ly||st.cur));}}break;
+        else{head('POLYLINE',e);w(66,1);pt(10,[OX,OY]);w(70,1);for(const p of r){w(0,'VERTEX');w(8,lyN(e));pt(10,p);w(70,0);}w(0,'SEQEND');w(8,lyN(e));}}break;
     }
   }
 }
