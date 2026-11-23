@@ -180,6 +180,15 @@ function perMix(o){// 給直線、多段線用：this.per＝{b,n,i,A}
   o.perDraw=function(){const P=this.per;if(!P||!P.n)return;const L=4000/st.view.s,a=toS([P.b[0]-P.n[0]*L,P.b[1]-P.n[1]*L]),c=toS([P.b[0]+P.n[0]*L,P.b[1]+P.n[1]*L]);
     ctx.save();ctx.setLineDash([6,6]);ctx.strokeStyle='rgba(255,200,60,.7)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(c[0],c[1]);ctx.stroke();ctx.restore();};
   return o;}
+// 疊在一起的線（2026-11-23）：同一個位置再點一下＝換選下一條（像 CAD 的循環選取）
+let pickCyc=null;// {sp,list,i}
+function pickCands(w,filter){const tol=18/st.view.s,O=[],B=[];
+  for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;let d=hitDist(e,w);if(e.t==='text')d=Math.max(d,8/st.view.s);if(d>tol)continue;(e.imp?B:O).push([d,e]);}
+  O.sort((a,b)=>a[0]-b[0]);B.sort((a,b)=>a[0]-b[0]);const first=pickEnt(w,filter),L=[];if(first)L.push(first);
+  for(const[,e]of O.concat(B))if(!L.includes(e)&&!(e.og&&L.some(x=>x.og===e.og))&&!(e.imp&&e.g&&L.some(x=>x.imp&&x.g===e.g)))L.push(e);return L;}
+function pickCycle(sp,w,filter,cur0){// 回傳 [要選的, 要取消的]；不是循環就回傳 null
+  const C=pickCands(w,filter);if(C.length<2||!pickCyc||dist(pickCyc.sp,sp)>12||!cur0||!C.includes(cur0)){pickCyc={sp,i:0};return null;}
+  const i=(C.indexOf(cur0)+1)%C.length;pickCyc={sp,i};toast(`這裡疊了 ${C.length} 個，換第 ${i+1} 個`,1500);return[C[i],cur0];}
 function pickEnt(w,filter){
   const tol=18/st.view.s;let bi=null,bd=tol,oi=null,od=tol;
   // 文字框內不算 0：點到框裡時，8 像素內有線就選線（大字如圖號才不會擋住下面的線）
@@ -1440,7 +1449,10 @@ function onTap(sp){
     if(bi>=0){if(bi===smallIdx&&!smallHl){smallHl=true;schedule();return;}if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;smallHl=true;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
   if(!cmd&&!smallMarks&&(parkTap(sp)||addrTap(sp)))return;
   if(!cmd&&smallMarks&&smallHl&&smallIdx>=0){smallHl=false;schedule();setHint(baseHintText(),false);return;}// 點旁邊空白處：收起目前這筆的範圍標示
-  if(!cmd){const e=pickEnt(w,st.lockBase?ownOnly:null);if(e){const grp=grpOf(e);
+  if(!cmd){const flt=st.lockBase?ownOnly:null,cy=pickCycle(sp,w,flt,selE);
+    if(cy){const[nx,old]=cy;for(const x of grpOf(old))selSet.delete(x);for(const x of grpOf(nx))selSet.add(x);selE=nx;selGrpKey=null;
+      setHint(baseHintText(),true,selSet.size===1&&!selE.imp&&selE.t==='text'?{t:'編輯文字',f:()=>openTextEdit(selE)}:null);updSelBar();schedule();return;}
+    const e=pickEnt(w,flt);if(e){const grp=grpOf(e);
       if(selSet.has(e)){for(const x of grp)selSet.delete(x);if(!selE||grp.includes(selE)){const L=[...selSet];selE=L.length?L[L.length-1]:null;}}
       else{for(const x of grp)selSet.add(x);selE=e;}}
     setHint(baseHintText(),!!selE,selSet.size===1&&selE&&!selE.imp&&selE.t==='text'?{t:'編輯文字',f:()=>openTextEdit(selE)}:null);updSelBar();schedule();return;}
@@ -1449,7 +1461,10 @@ function onTap(sp){
       if(cmd.live){setCursorRaw(w);return;}
       if(cur){commitPoint();if(!cmd||cmd.kind!=='points')return;}
       setCursorRaw(w);return;
-    case'select':{const f0=cmd.filter,e=pickEnt(w,st.lockBase?(x=>!x.imp&&(!f0||f0(x))):f0);if(e){const grp=(!e.imp&&e.og)?ownGroup(e):(cmd.group&&e.g)?groupOf(e):[e];const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);}refreshCmd();return;}
+    case'select':{const f0=cmd.filter,flt=st.lockBase?(x=>!x.imp&&(!f0||f0(x))):f0,gOf=e=>(!e.imp&&e.og)?ownGroup(e):(cmd.group&&e.g)?groupOf(e):[e];
+      const cy=pickCycle(sp,w,flt,cmd._lastAdd&&selSet.has(cmd._lastAdd)?cmd._lastAdd:null);
+      if(cy){const[nx,old]=cy;for(const x of gOf(old))selSet.delete(x);for(const x of gOf(nx))selSet.add(x);cmd._lastAdd=nx;refreshCmd();return;}
+      const e=pickEnt(w,flt);if(e){const grp=gOf(e);const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);cmd._lastAdd=on?e:null;}refreshCmd();return;}
     case'pickObj':{const e=pickEnt(w,cmd.filter);if(e&&blkLocked(e)&&['trim','extend','brk'].includes(cmd.name)){toast('這是圖塊，裡面的線不能單獨修改',2500);return;}if(e)cmd.onPick(e,w);else toast('那裡沒有物件');refreshCmd();return;}
     case'side':cmd.onSide(w);return;
     default:selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();
