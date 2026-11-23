@@ -990,7 +990,7 @@ function extendEnt(e,w,prims){
 }
 
 /* 手寫 */
-function cmdPen(){return{kind:'pen',name:'pen',hint(){return[eraser?'橡皮擦：在筆跡上劃過就整筆刪掉':'手寫：手指或觸控筆直接寫，雙指平移縮放',false];}};}
+function cmdPen(){return{kind:'pen',name:'pen',hint(){return[eraser?'橡皮擦：在筆跡上劃過就整筆刪掉':'手寫：手指或觸控筆直接寫，雙指平移縮放；畫完停住不放＝變直線／弧／圓／多邊形',false];}};}
 function buildPenBar(){
   const bar=$('penbar');bar.innerHTML='';
   if(!Array.isArray(st.penSlots)||st.penSlots.length!==3)st.penSlots=[1,7,5];
@@ -1284,9 +1284,44 @@ function placeSmallBar(){const b=$('smallBar');if(b.style.display==='none')retur
 
 /* ---------- 指標事件 ---------- */
 let g=null,ink=null;
-// 手寫拉直（2026-11-23，像 Samsung 筆記）：畫完停住不放約 0.5 秒，整筆變成起點到手指的直線；拉直後還可以繼續拖，終點跟著手指
-function inkHold(){if(!ink)return;clearTimeout(ink.ht);ink.ht=setTimeout(()=>{if(!ink||ink.straight||ink.len<24||ink.pts.length<3)return;
-  ink.straight=true;ink.pts=[ink.pts[0],ink.pts[ink.pts.length-1]];try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}schedule();},500);}
+// 手寫停住變形狀（2026-11-23，像 Samsung 筆記）：畫完停住不放約 0.5 秒，認成直線／弧／圓／多邊形（三角、矩形…）就換成乾淨的形狀；
+// 認不出來就維持手寫。直線認出來後還可以繼續拖，終點跟著手指；其他形狀認出來後就固定
+function inkHold(){if(!ink)return;clearTimeout(ink.ht);ink.ht=setTimeout(()=>{if(!ink||ink.shape||ink.len<24||ink.pts.length<3)return;
+  const r=inkShape(ink.pts);if(!r)return;ink.shape=r.k;ink.straight=r.k==='line';ink.pts=r.pts;try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}
+  setHint({line:'直線（還可以拖終點）',arc:'弧線',circle:'圓',poly:'折線',gon:'多邊形',rect:'矩形'}[r.k]+'：放開就畫上去',false);schedule();},500);}
+function fitCircle(P){let n=P.length,sx=0,sy=0;for(const p of P){sx+=p[0];sy+=p[1];}const mx=sx/n,my=sy/n;let Suu=0,Svv=0,Suv=0,Suuu=0,Svvv=0,Suvv=0,Svuu=0;
+  for(const p of P){const u=p[0]-mx,v=p[1]-my;Suu+=u*u;Svv+=v*v;Suv+=u*v;Suuu+=u*u*u;Svvv+=v*v*v;Suvv+=u*v*v;Svuu+=v*u*u;}
+  const det=Suu*Svv-Suv*Suv;if(Math.abs(det)<1e-12)return null;const b1=(Suuu+Suvv)/2,b2=(Svvv+Svuu)/2,uc=(b1*Svv-b2*Suv)/det,vc=(Suu*b2-Suv*b1)/det;
+  const o=[uc+mx,vc+my],r=Math.sqrt(uc*uc+vc*vc+(Suu+Svv)/n);let e=0;for(const p of P){const d=dist(p,o)-r;e+=d*d;}return{o,r,rms:Math.sqrt(e/n)};}
+function rdp(P,tol){if(P.length<3)return P.slice();const keep=new Uint8Array(P.length);keep[0]=keep[P.length-1]=1;const st2=[[0,P.length-1]];
+  while(st2.length){const[i,j]=st2.pop();let md=0,mk=-1;const a=P[i],b=P[j],L=dist(a,b)||1e-12;for(let k=i+1;k<j;k++){const p=P[k];const d=Math.abs((b[0]-a[0])*(a[1]-p[1])-(a[0]-p[0])*(b[1]-a[1]))/L;if(d>md){md=d;mk=k;}}
+    if(md>tol){keep[mk]=1;st2.push([i,mk],[mk,j]);}}return P.filter((_,i)=>keep[i]);}
+function inkShape(P){const n=P.length;if(n<5)return null;let L=0;for(let i=1;i<n;i++)L+=dist(P[i-1],P[i]);
+  let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const p of P){x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1]);}
+  const D=Math.hypot(x1-x0,y1-y0)||1e-9,a=P[0],b=P[n-1],d=dist(a,b),closed=d<0.25*D&&L>1.8*D;
+  const sweepOf=c=>{let s=0,pa=Math.atan2(P[0][1]-c.o[1],P[0][0]-c.o[0]);for(let i=1;i<n;i++){const q=Math.atan2(P[i][1]-c.o[1],P[i][0]-c.o[0]);let dd=q-pa;while(dd>Math.PI)dd-=2*Math.PI;while(dd<-Math.PI)dd+=2*Math.PI;s+=dd;pa=q;}return s;};
+  const ring=(c,a0,sw,m)=>{const out=[];for(let i=0;i<=m;i++){const t=a0+sw*i/m;out.push([c.o[0]+c.r*Math.cos(t),c.o[1]+c.r*Math.sin(t)]);}return out;};
+  if(!closed){let md=0;for(const p of P){const dd=Math.abs((b[0]-a[0])*(a[1]-p[1])-(a[0]-p[0])*(b[1]-a[1]))/(d||1e-12);if(dd>md)md=dd;}
+    if(md<0.07*d)return{k:'line',pts:[a.slice(),b.slice()]};
+    const c=fitCircle(P);if(c&&c.rms<0.05*c.r&&c.r<4*D){const sw=sweepOf(c),deg=Math.abs(sw)*180/Math.PI;
+      if(deg>25&&deg<330){const a0=Math.atan2(a[1]-c.o[1],a[0]-c.o[0]);return{k:'arc',pts:ring(c,a0,sw,Math.max(12,Math.round(deg/4)))};}}
+    const V=rdp(P,0.06*D);if(V.length>=3&&V.length<=8)return{k:'poly',pts:V.map(p=>p.slice())};return null;}
+  const c=fitCircle(P);if(c&&c.rms<0.07*c.r&&Math.abs(sweepOf(c))>1.6*Math.PI){const a0=Math.atan2(a[1]-c.o[1],a[0]-c.o[0]);return{k:'circle',pts:ring(c,a0,2*Math.PI*Math.sign(sweepOf(c)||1),64)};}
+  // 封閉多邊形：先找角點，頭尾黏在一起
+  // 頭尾是同一點，直接簡化會找不到角：先從離起點最遠的點切成兩半各自簡化
+  const Q=P.concat([P[0]]);let fk=0,fd=0;for(let i=1;i<Q.length-1;i++){const dd=dist(Q[0],Q[i]);if(dd>fd){fd=dd;fk=i;}}
+  let V=rdp(Q.slice(0,fk+1),0.07*D).concat(rdp(Q.slice(fk),0.07*D).slice(1));V.pop();
+  // 起點不一定在角上：起點兩側幾乎一直線就拿掉
+  const colin=(p,q,r)=>Math.abs((q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]))/(dist(p,r)||1e-12)<0.07*D;
+  while(V.length>3&&colin(V[V.length-1],V[0],V[1]))V.shift();
+  for(let i=V.length-1;i>0&&V.length>3;i--)if(dist(V[i],V[i-1])<0.08*D)V.splice(i,1);
+  if(V.length<3||V.length>8)return null;
+  if(V.length===4){// 四個角都接近直角＝矩形，扶正成真的矩形
+    const ang=i=>{const p=V[(i+3)%4],q=V[i],r=V[(i+1)%4],u=[p[0]-q[0],p[1]-q[1]],v=[r[0]-q[0],r[1]-q[1]];return Math.acos(Math.max(-1,Math.min(1,(u[0]*v[0]+u[1]*v[1])/((Math.hypot(...u)*Math.hypot(...v))||1))))*180/Math.PI;};
+    if([0,1,2,3].every(i=>Math.abs(ang(i)-90)<15)){const th=Math.atan2(V[1][1]-V[0][1],V[1][0]-V[0][0]),ux=Math.cos(th),uy=Math.sin(th);let u0=Infinity,u1=-Infinity,v0=Infinity,v1=-Infinity;
+      for(const p of V){const u=p[0]*ux+p[1]*uy,v=-p[0]*uy+p[1]*ux;u0=Math.min(u0,u);u1=Math.max(u1,u);v0=Math.min(v0,v);v1=Math.max(v1,v);}
+      const W=(u,v)=>[u*ux-v*uy,u*uy+v*ux];const R=[W(u0,v0),W(u1,v0),W(u1,v1),W(u0,v1)];R.push(R[0].slice());return{k:'rect',pts:R};}}
+  const G=V.map(p=>p.slice());G.push(G[0].slice());return{k:'gon',pts:G};}
 // 帶著走（2026-11-20）：移動／複製定好基準點後、插入圖塊時，雙指縮放平移畫面，游標留在螢幕同一個位置，要複製的東西跟著畫面走（像 CAD），可以一路帶到很遠的地方
 const carrying=()=>!!(cmd&&cmd.carry&&cmd.carry()&&cur);
 function evPt(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];}
@@ -1310,7 +1345,7 @@ cv.addEventListener('pointermove',e=>{
   const sp=evPt(e);if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,sp);
   if(!g)return;
   if(g.type==='pinch'){if(ptrs.size<2)return;const[a,b]=[...ptrs.values()],m=midp(a,b),s=clampS(g.s0*dist(a,b)/g.d0);st.view={s,ox:m[0]-g.w0[0]*s,oy:m[1]+g.w0[1]*s};if(g.cs){const w=toW(g.cs);cur={raw:w,p:w.slice(),snap:null};}schedule();return;}
-  if(g.type==='ink'){if(dist(sp,ink.last)>=1.5){ink.len+=dist(sp,ink.last);if(ink.straight)ink.pts[1]=toW(sp);else ink.pts.push(toW(sp));ink.last=sp;schedule();}
+  if(g.type==='ink'){if(dist(sp,ink.last)>=1.5){ink.len+=dist(sp,ink.last);if(ink.straight)ink.pts[1]=toW(sp);else if(!ink.shape)ink.pts.push(toW(sp));ink.last=sp;schedule();}
     if(dist(sp,ink.hp)>6){ink.hp=sp;inkHold();}return;}
   if(g.type==='erase'){eraseAt(toW(sp),g);return;}
   if(g.type==='box'){boxNow=[g.start,sp];schedule();return;}
@@ -1324,7 +1359,7 @@ function endPtr(e,cancel){
   if(g.type==='dead'){if(!ptrs.size)g=null;return;}
   const G=g;g=null;if(ink)clearTimeout(ink.ht);if(cancel){ink=null;boxNow=null;schedule();return;}
   if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
-  if(G.type==='ink'){const P=ink.pts;ink=null;if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
+  if(G.type==='ink'){const P=ink.pts,sh=ink.shape;ink=null;if(sh&&cmd&&cmd.hint)setHint(...[].concat(cmd.hint()));if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
   if(G.type==='erase'){if(G.did)saveDraw();return;}
   if(G.type==='pan'){saveSettings();return;}
   if(G.type==='pending'&&!G.moved){if(G.grip){const c0=cmd&&cmd.name==='grip'?cmd:null;const e0=selE0,g0=gripHit0;endCmd();selE=e0;setHint(baseHintText(),true);if(e0&&g0)gripMenu(e0,g0,G.start);schedule();return;}onTap(G.start);}
