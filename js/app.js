@@ -1263,7 +1263,7 @@ function render(){
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
   drawSmall();
-  drawAddr();drawPark();drawSheets();
+  drawAddr();drawPark();drawSheets();drawEf();
   drawLoc();drawFind();
   if(cmd&&cmd.preview)cmd.preview();
   if(ink&&ink.pts.length>1)drawInk({pts:ink.pts,w:st.inkW/st.view.s},colorFor(aciHex(st.penCi)));
@@ -1337,6 +1337,7 @@ function eraseAt(w,G){
 }
 function onTap(sp){
   const w=toW(sp);
+  if(!cmd&&efPick){efTap(w);return;}
   if(!cmd&&sheetPick){sheetTap(w);return;}
   if(!cmd&&fillMode&&areaTopo&&smallMode==='area'&&smallMarks){const T=areaTopo,k=T.locate(w[0]-T.ox,w[1]-T.oy);
     if(k<0){toast('那裡不在任何封閉區裡');return;}if(areaFills.has(k))areaFills.delete(k);else{const P=['#ff5a5a','#4fb3ff','#5ad16a','#ffb13d','#c77dff','#3de0d0'];areaFills.set(k,P[fillCi++%P.length]);}
@@ -2146,9 +2147,9 @@ async function idbFileGet(k){try{const d=await idb2();return await new Promise(r
 /* ---------- 匯出 DXF（R12，中文用 \U+ 表示） ---------- */
 function encDxf(s){let o='';for(const ch of String(s)){const c=ch.codePointAt(0);if(c<128&&c>=32)o+=ch;else if(c>0xffff)o+='?';else o+='\\U+'+c.toString(16).toUpperCase().padStart(4,'0');}return o;}
 const nf=v=>{const s=(+v).toFixed(6);return s.replace(/\.?0+$/,'')||'0';};
-function buildDXF(){
+function buildDXF(only){
   const o=[];const w=(c,v)=>{o.push(String(c).padStart(3,' '));o.push(String(v));};
-  const ents=st.ents.filter(e=>['line','pline','ink','circle','arc','text','dim','point','fill'].includes(e.t));
+  const ents=(only||st.ents).filter(e=>['line','pline','ink','circle','arc','text','dim','point','fill'].includes(e.t));
   const used=new Set(['CONTINUOUS']);for(const L of st.layers)used.add((L.lt||'CONTINUOUS').toUpperCase());for(const e of ents)if(e.lt)used.add(e.lt.toUpperCase());
   w(0,'SECTION');w(2,'HEADER');w(9,'$ACADVER');w(1,'AC1009');w(9,'$DWGCODEPAGE');w(3,'ANSI_950');w(9,'$LTSCALE');w(40,nf(st.ltscale));w(0,'ENDSEC');
   w(0,'SECTION');w(2,'TABLES');
@@ -2209,6 +2210,77 @@ async function exportDXF(share){
     toast('已下載：'+name);
   }catch(err){if(!/cancel/i.test(err.message||''))toast('匯出失敗：'+(err.message||err),4000);}
 }
+
+/* ---------- 依圖幅匯出（2026-11-23）：選整幅或分圖幅（-1 左下、-2 左上、-3 右上、-4 右下），每幅一個 DXF；兩幅以上包 ZIP ---------- */
+let efQuad=localStorage.getItem('efQuad')==='1',efPick=false,efFor='';const efSel=new Map();// key `${id}|${q}` → {id,num,q}
+function efLoad(){if(efFor===impName)return;efFor=impName;efSel.clear();try{for(const x of JSON.parse(localStorage.getItem('efSel:'+impName)||'[]'))efSel.set(x.id+'|'+x.q,x);}catch(_){}}
+function efSave(){try{localStorage.setItem('efSel:'+impName,JSON.stringify([...efSel.values()]));}catch(_){}efUpd();}
+const efName=x=>(x.num||x.id)+(x.q?'-'+x.q:'');
+function efBox(x){const f=sheetFrames().find(f=>f.id===x.id);if(!f)return null;const[x0,y0,x1,y1]=f.b,xm=(x0+x1)/2,ym=(y0+y1)/2;
+  return x.q===1?[x0,y0,xm,ym]:x.q===2?[x0,ym,xm,y1]:x.q===3?[xm,ym,x1,y1]:x.q===4?[xm,y0,x1,ym]:f.b;}
+function efUpd(){efLoad();$('efWhole').classList.toggle('on',!efQuad);$('efQuad').classList.toggle('on',efQuad);
+  const L=[...efSel.values()].sort((a,b)=>efName(a).localeCompare(efName(b),'zh-Hant',{numeric:true}));
+  $('efInfo').textContent=!imp.length?'還沒開底圖（沒有圖框的請用上面的「另存新檔」）':!sheetFrames().length?'這張圖沒有圖框圖層，請用上面的「另存新檔」':L.length?`${L.length} 幅：${L.map(efName).join('、')}`:'還沒選';
+  $('efClear').disabled=!efSel.size;$('efSave').disabled=$('efShare').disabled=!efSel.size;}
+const efQ=(f,w)=>{const xm=(f.b[0]+f.b[2])/2,ym=(f.b[1]+f.b[3])/2;return w[0]<xm?(w[1]<ym?1:2):(w[1]<ym?4:3);};
+function efTap(w){const f=sheetAt(w);if(!f){toast('那裡不在任何圖框裡');return;}const q=efQuad?efQ(f,w):0,k=f.id+'|'+q;
+  if(efSel.has(k))efSel.delete(k);else efSel.set(k,{id:f.id,num:f.num,q});efSave();efHint();schedule();}
+function efHint(){setHint(`點圖框${efQuad?'裡的四分之一':'裡面'}選／取消（已選 ${efSel.size} 幅）`,true,{t:'完成',f:efEnd});}
+function efEnd(){efPick=false;setHint(baseHintText(),false);schedule();openSheet('expFrSheet');efUpd();}
+function drawEf(){if(!efPick)return;ctx.save();ctx.lineWidth=3;ctx.strokeStyle='#4fc3f7';ctx.font='bold 16px sans-serif';ctx.textAlign='center';
+  if(efQuad){ctx.setLineDash([6,6]);ctx.lineWidth=1.5;for(const f of sheetFrames()){const a=toS([(f.b[0]+f.b[2])/2,f.b[3]]),b=toS([(f.b[0]+f.b[2])/2,f.b[1]]),c=toS([f.b[0],(f.b[1]+f.b[3])/2]),d=toS([f.b[2],(f.b[1]+f.b[3])/2]);
+    ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.moveTo(c[0],c[1]);ctx.lineTo(d[0],d[1]);ctx.stroke();}ctx.setLineDash([]);ctx.lineWidth=3;}
+  for(const x of efSel.values()){const b=efBox(x);if(!b)continue;const a=toS([b[0],b[3]]),c=toS([b[2],b[1]]);ctx.fillStyle='rgba(79,195,247,0.15)';ctx.fillRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
+    ctx.fillStyle='#4fc3f7';ctx.fillText(efName(x),(a[0]+c[0])/2,(a[1]+c[1])/2);}
+  ctx.restore();}
+// 碰到判斷：線段和矩形相交（含整段在裡面）
+function segHitBox(ax,ay,bx,by,B){if(Math.max(ax,bx)<B[0]||Math.min(ax,bx)>B[2]||Math.max(ay,by)<B[1]||Math.min(ay,by)>B[3])return false;
+  const ins=(x,y)=>x>=B[0]&&x<=B[2]&&y>=B[1]&&y<=B[3];if(ins(ax,ay)||ins(bx,by))return true;
+  const cr=(x1,y1,x2,y2,x3,y3,x4,y4)=>{const d=(x2-x1)*(y4-y3)-(y2-y1)*(x4-x3);if(!d)return false;const t=((x3-x1)*(y4-y3)-(y3-y1)*(x4-x3))/d,u=((x3-x1)*(y2-y1)-(y3-y1)*(x2-x1))/d;return t>=0&&t<=1&&u>=0&&u<=1;};
+  return cr(ax,ay,bx,by,B[0],B[1],B[2],B[1])||cr(ax,ay,bx,by,B[2],B[1],B[2],B[3])||cr(ax,ay,bx,by,B[2],B[3],B[0],B[3])||cr(ax,ay,bx,by,B[0],B[3],B[0],B[1]);}
+function entHitBox(e,B){if(e.t==='text'||e.t==='point'){const p=e.p;return p[0]>=B[0]&&p[0]<=B[2]&&p[1]>=B[1]&&p[1]<=B[3];}
+  const r=entBox(e);if(!r||r[2]<B[0]||r[0]>B[2]||r[3]<B[1]||r[1]>B[3])return false;
+  if(e.t==='line')return segHitBox(e.a[0],e.a[1],e.b[0],e.b[1],B);
+  if(e.t==='pline'||e.t==='ink'){const P=e.av||e.pts;for(let i=1;i<P.length;i++)if(segHitBox(P[i-1][0],P[i-1][1],P[i][0],P[i][1],B))return true;if(e.closed&&P.length>2&&segHitBox(P[P.length-1][0],P[P.length-1][1],P[0][0],P[0][1],B))return true;return P.length===1&&segHitBox(P[0][0],P[0][1],P[0][0],P[0][1],B);}
+  if(e.t==='fill')return e.rings.some(R=>R.some((p,i)=>segHitBox(R[(i||R.length)-1][0],R[(i||R.length)-1][1],p[0],p[1],B)));
+  return true;}// 圓、弧、標註：外框有碰到就算
+function efEnts(B){const out=new Set(),grp=new Map();for(const e of st.ents)if(e.og){let l=grp.get(e.og);if(!l)grp.set(e.og,l=[]);l.push(e);}
+  for(const e of st.ents){if(out.has(e))continue;if(!entHitBox(e,B))continue;if(e.og)for(const m of grp.get(e.og))out.add(m);else out.add(e);}// 圖塊整組
+  return st.ents.filter(e=>out.has(e));}
+// 不壓縮的 ZIP（store），檔名 UTF-8
+function zipStore(files){const crcT=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;crcT[n]=c>>>0;}
+  const crc=b=>{let c=0xFFFFFFFF;for(let i=0;i<b.length;i++)c=crcT[(c^b[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0;};
+  const te=new TextEncoder(),parts=[],cen=[];let off=0;const d=new Date(),dt=((d.getHours()<<11)|(d.getMinutes()<<5)|(d.getSeconds()>>1)),dd=(((d.getFullYear()-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate());
+  for(const f of files){const nm=te.encode(f.name),c=crc(f.data),n=f.data.length;const h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint16(8,0,true);h.setUint16(10,dt,true);h.setUint16(12,dd,true);h.setUint32(14,c,true);h.setUint32(18,n,true);h.setUint32(22,n,true);h.setUint16(26,nm.length,true);h.setUint16(28,0,true);
+    parts.push(new Uint8Array(h.buffer),nm,f.data);const C=new DataView(new ArrayBuffer(46));
+    C.setUint32(0,0x02014b50,true);C.setUint16(4,20,true);C.setUint16(6,20,true);C.setUint16(8,0x0800,true);C.setUint16(10,0,true);C.setUint16(12,dt,true);C.setUint16(14,dd,true);C.setUint32(16,c,true);C.setUint32(20,n,true);C.setUint32(24,n,true);C.setUint16(28,nm.length,true);C.setUint32(42,off,true);
+    cen.push(new Uint8Array(C.buffer),nm);off+=30+nm.length+n;}
+  const cs=cen.reduce((a,b)=>a+b.length,0),E=new DataView(new ArrayBuffer(22));E.setUint32(0,0x06054b50,true);E.setUint16(8,files.length,true);E.setUint16(10,files.length,true);E.setUint32(12,cs,true);E.setUint32(16,off,true);
+  const all=[...parts,...cen,new Uint8Array(E.buffer)],tot=all.reduce((a,b)=>a+b.length,0),z=new Uint8Array(tot);let p=0;for(const a of all){z.set(a,p);p+=a.length;}return z;}
+async function efExport(share){efLoad();const L=[...efSel.values()].sort((a,b)=>efName(a).localeCompare(efName(b),'zh-Hant',{numeric:true}));if(!L.length)return;
+  const te=new TextEncoder(),files=[],empty=[];for(const x of L){const B=efBox(x);if(!B){empty.push(efName(x));continue;}const E=efEnts(B);if(!E.length){empty.push(efName(x));continue;}files.push({name:efName(x)+'.dxf',data:te.encode(buildDXF(E)),n:E.length});}
+  if(!files.length){toast('選的圖幅裡都沒有你畫的東西',3500);return;}
+  const z=n=>String(n).padStart(2,'0'),d=new Date(),stamp=`${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;
+  let name,bytes,mime;if(files.length===1){name=files[0].name.replace(/\.dxf$/,`_${stamp}.dxf`);bytes=files[0].data;mime='application/dxf';}
+  else{name=`圖幅匯出_${files.length}幅_${stamp}.zip`;bytes=zipStore(files.map(f=>({name:f.name,data:f.data})));mime='application/zip';}
+  const msg=`${files.map(f=>f.name.replace('.dxf','')+`（${f.n}）`).join('、')}`+(empty.length?`；沒東西略過：${empty.join('、')}`:'');
+  const data=b64(bytes),P=NP();
+  try{if(!share&&P.SupportFolder&&P.SupportFolder.saveAs){await P.SupportFolder.saveAs({name,data,mime});toast('已存檔：'+name+'\n'+msg,5000);return;}
+    if(P.Filesystem&&P.Share){const r=await P.Filesystem.writeFile({path:name,data,directory:'CACHE'});await P.Share.share({title:name,files:[r.uri],dialogTitle:'分享'});toast(msg,4000);return;}
+    const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([bytes],{type:mime}));a.download=name;document.body.appendChild(a);a.click();a.remove();toast('已下載：'+name+'\n'+msg,5000);}
+  catch(err){if(!/cancel/i.test(err.message||''))toast('匯出失敗：'+(err.message||err),4000);}}
+$('expByFr').onclick=()=>{closeSheet('fileSheet');efFor='';efUpd();openSheet('expFrSheet');};
+$('efWhole').onclick=()=>{efQuad=false;localStorage.setItem('efQuad','0');efUpd();};
+$('efQuad').onclick=()=>{efQuad=true;localStorage.setItem('efQuad','1');efUpd();};
+$('efPick').onclick=()=>{if(!sheetFrames().length){toast('這張圖沒有圖框圖層');return;}efLoad();closeSheet('expFrSheet');efPick=true;efHint();schedule();};
+$('efClear').onclick=()=>{efLoad();efSel.clear();efSave();schedule();};
+$('efGo').onclick=()=>{efLoad();const F=sheetFrames();if(!F.length){toast('這張圖沒有圖框圖層');return;}
+  const want=$('efIn').value.split(/[\s,，、;；]+/).map(x=>x.trim()).filter(Boolean),miss=[];let add=0;
+  for(const w of want){const m=w.match(/^(.+?)(?:[-－](\d))?$/),num=m[1],qq=m[2]?+m[2]:null;const f=F.find(f=>f.num===num);if(!f||(qq!=null&&(qq<1||qq>4))){miss.push(w);continue;}
+    const qs=qq!=null?[qq]:efQuad?[1,2,3,4]:[0];for(const q of qs){const k=f.id+'|'+q;if(!efSel.has(k)){efSel.set(k,{id:f.id,num:f.num,q});add++;}}}
+  efSave();$('efIn').value='';schedule();toast((miss.length?`找不到：${miss.join('、')}。`:'')+`加入 ${add} 幅，共 ${efSel.size} 幅`,2500);};
+$('efSave').onclick=()=>efExport(false);$('efShare').onclick=()=>efExport(true);
 $('expSave').onclick=()=>{closeSheet('fileSheet');exportDXF(false);};
 $('expShare').onclick=()=>{closeSheet('fileSheet');exportDXF(true);};
 

@@ -131,6 +131,7 @@ button{font-family:inherit;color:var(--text)}
 #findList button{display:block;width:100%;text-align:left;margin-bottom:6px;line-height:1.35}
 #findList .fs{display:block;font-size:12px;color:var(--muted);margin-top:2px}
 #myLayers.fold>.lyr:not(.cur){display:none}
+#efWhole.on,#efQuad.on{background:var(--acc);color:#fff}
 </style>
 </head>
 <body>
@@ -182,11 +183,22 @@ button{font-family:inherit;color:var(--text)}
     <div class="lab">交件：匯出我畫的東西（DXF）</div>
     <button class="big" id="expSave">另存新檔（DXF）到手機…</button>
     <button class="big" id="expShare">分享 DXF（LINE、Email、雲端硬碟…）</button>
+    <button class="big" id="expByFr">依圖幅匯出…</button>
     <div class="small">只輸出你畫的線、文字、手寫，圖層照你訂的名稱。座標跟原圖相同，編輯人員用插入或外部參考疊上去就對齊。</div>
   </div>
   <div class="sec"><button class="big danger" id="impClear">移除底圖</button></div>
 </div></div>
 
+<div id="expFrSheet" class="sheet"><div class="sh">
+  <div class="shh"><b>依圖幅匯出</b><button data-close>完成</button></div>
+  <div class="sec"><div class="row2 eq"><button id="efWhole">整幅</button><button id="efQuad">分圖幅</button></div>
+    <div class="small" style="margin-top:6px">分圖幅：一幅分四張，左下 -1、左上 -2、右上 -3、右下 -4。</div></div>
+  <div class="sec"><div class="lab">要匯出的圖幅</div><div class="small" id="efInfo" style="margin-bottom:8px">還沒選</div>
+    <div class="row2" style="margin-bottom:6px"><input type="text" id="efIn" placeholder="圖號，例如 3442 或 3442-2，多個用逗號分開"><button id="efGo" style="flex:none">加入</button></div>
+    <div class="row2 eq"><button id="efPick">在圖上點選</button><button id="efClear" class="danger">清除</button></div></div>
+  <div class="sec"><button class="big" id="efSave">存到手機</button><button class="big" id="efShare">分享（LINE、Email…）</button>
+    <div class="small">每幅一個 DXF，檔名用圖號（3442.dxf、3442-2.dxf）。只輸出你畫的；線只要有一段碰到那一幅就整條帶出去（不切斷），文字看插入點；圖塊整組一起。選兩幅以上會包成一個 ZIP，裡面還是每幅一個 DXF。</div></div>
+</div></div>
 <div id="setSheet" class="sheet"><div class="sh">
   <div class="shh"><b>設定</b><button data-close>完成</button></div>
   <div class="sec">
