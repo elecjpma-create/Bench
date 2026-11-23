@@ -1284,18 +1284,21 @@ function placeSmallBar(){const b=$('smallBar');if(b.style.display==='none')retur
 
 /* ---------- 指標事件 ---------- */
 let g=null,ink=null;
+// 手寫拉直（2026-11-23，像 Samsung 筆記）：畫完停住不放約 0.5 秒，整筆變成起點到手指的直線；拉直後還可以繼續拖，終點跟著手指
+function inkHold(){if(!ink)return;clearTimeout(ink.ht);ink.ht=setTimeout(()=>{if(!ink||ink.straight||ink.len<24||ink.pts.length<3)return;
+  ink.straight=true;ink.pts=[ink.pts[0],ink.pts[ink.pts.length-1]];try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}schedule();},500);}
 // 帶著走（2026-11-20）：移動／複製定好基準點後、插入圖塊時，雙指縮放平移畫面，游標留在螢幕同一個位置，要複製的東西跟著畫面走（像 CAD），可以一路帶到很遠的地方
 const carrying=()=>!!(cmd&&cmd.carry&&cmd.carry()&&cur);
 function evPt(e){const r=cv.getBoundingClientRect();return[e.clientX-r.left,e.clientY-r.top];}
 cv.addEventListener('pointerdown',e=>{
   e.preventDefault();try{cv.setPointerCapture(e.pointerId);}catch(_){}
   const sp=evPt(e);lastType=e.pointerType;ptrs.set(e.pointerId,sp);
-  if(ptrs.size===2){const[a,b]=[...ptrs.values()],m=midp(a,b);if(ink){ink=null;}boxNow=null;g={type:'pinch',d0:dist(a,b)||1,s0:st.view.s,w0:toW(m),cs:carrying()?toS(cur.raw):null};schedule();return;}
+  if(ptrs.size===2){const[a,b]=[...ptrs.values()],m=midp(a,b);if(ink){clearTimeout(ink.ht);ink=null;}boxNow=null;g={type:'pinch',d0:dist(a,b)||1,s0:st.view.s,w0:toW(m),cs:carrying()?toS(cur.raw):null};schedule();return;}
   if(ptrs.size>2)return;
   if(e.pointerType==='mouse'&&e.button!==0){g={type:'pan',last:sp};return;}
   if(cmd&&cmd.kind==='pen'){
     if(eraser){g={type:'erase',last:sp,snap:false};eraseAt(toW(sp),g);}
-    else{ink={pts:[toW(sp)],last:sp};g={type:'ink'};}
+    else{ink={pts:[toW(sp)],last:sp,hp:sp,len:0};inkHold();g={type:'ink'};}
     schedule();return;
   }
   hideGripMenu();
@@ -1307,7 +1310,8 @@ cv.addEventListener('pointermove',e=>{
   const sp=evPt(e);if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,sp);
   if(!g)return;
   if(g.type==='pinch'){if(ptrs.size<2)return;const[a,b]=[...ptrs.values()],m=midp(a,b),s=clampS(g.s0*dist(a,b)/g.d0);st.view={s,ox:m[0]-g.w0[0]*s,oy:m[1]+g.w0[1]*s};if(g.cs){const w=toW(g.cs);cur={raw:w,p:w.slice(),snap:null};}schedule();return;}
-  if(g.type==='ink'){if(dist(sp,ink.last)>=1.5){ink.pts.push(toW(sp));ink.last=sp;schedule();}return;}
+  if(g.type==='ink'){if(dist(sp,ink.last)>=1.5){ink.len+=dist(sp,ink.last);if(ink.straight)ink.pts[1]=toW(sp);else ink.pts.push(toW(sp));ink.last=sp;schedule();}
+    if(dist(sp,ink.hp)>6){ink.hp=sp;inkHold();}return;}
   if(g.type==='erase'){eraseAt(toW(sp),g);return;}
   if(g.type==='box'){boxNow=[g.start,sp];schedule();return;}
   if(g.type==='pending'&&dist(sp,g.start)>8){g.moved=true;g.type=(cmd&&cmd.kind==='points'&&cur)?'cursor':'pan';}
@@ -1318,7 +1322,7 @@ function endPtr(e,cancel){
   ptrs.delete(e.pointerId);if(!g)return;
   if(g.type==='pinch'){if(g.cs&&cur)setCursorRaw(cur.raw);if(ptrs.size<2)g=ptrs.size?{type:'dead'}:null;saveSettings();return;}
   if(g.type==='dead'){if(!ptrs.size)g=null;return;}
-  const G=g;g=null;if(cancel){ink=null;boxNow=null;schedule();return;}
+  const G=g;g=null;if(ink)clearTimeout(ink.ht);if(cancel){ink=null;boxNow=null;schedule();return;}
   if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
   if(G.type==='ink'){const P=ink.pts;ink=null;if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
   if(G.type==='erase'){if(G.did)saveDraw();return;}
