@@ -628,7 +628,8 @@ function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
       return['旋轉：點一點決定角度，或在「角度」輸入旋轉度數（逆時針為正）；要對齊就按「參考」',true];},
     extraBtns(){return this.pts.length?[{t:ref?'參考中':'參考',c:'mode'+(ref?' on':''),f:()=>{if(ref){ref=null;refA=null;kp.setMode('la');}else{ref=[];kp.setMode('xy');}refreshCmd();}}]:[];},
     onPoint(p){if(!this.pts.length){this.pts.push(p);kp.setMode('la');return;}
-      if(ref&&ref.length<2){ref.push(p);if(ref.length===2){refA=Math.atan2(ref[1][1]-ref[0][1],ref[1][0]-ref[0][0]);kp.setMode('a');}refreshCmd();return;}
+      if(ref&&ref.length<2){ref.push(p);if(ref.length===2){if(dist(ref[0],ref[1])<1e-6){ref.pop();toast('參考第二點和第一點同一個位置，量不出方向：請點這條邊的另一端',3500);refreshCmd();return;}// 2026-11-23
+        refA=Math.atan2(ref[1][1]-ref[0][1],ref[1][0]-ref[0][0]);kp.setMode('a');}refreshCmd();return;}
       apply(angAt(this.pts[0],p));},
     base(){if(ref&&ref.length===1)return ref[0];return this.pts.length?this.pts[0]:null;},
     ok(){if(this.pts.length&&kp.num('A')!=null&&(!ref||ref.length===2))apply(angAt(this.pts[0],this.pts[0]));},
