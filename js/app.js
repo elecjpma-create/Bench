@@ -192,8 +192,10 @@ function pickCycle(sp,w,filter,cur0){// 回傳 [要選的, 要取消的]；不�
 function pickEnt(w,filter){
   const tol=18/st.view.s;let bi=null,bd=tol,oi=null,od=tol;
   // 文字框內不算 0：點到框裡時，8 像素內有線就選線（大字如圖號才不會擋住下面的線）
-  for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;let d=hitDist(e,w);if(e.t==='text')d=Math.max(d,8/st.view.s);
-    if(e.imp){if(d<bd){bd=d;bi=e;}}else if(d<od){od=d;oi=e;}}
+  const own=[];for(const e of snapEnts(w,tol)){if(filter&&!filter(e))continue;if(!near(e,w,tol))continue;let d=hitDist(e,w);if(e.t==='text')d=Math.max(d,8/st.view.s);
+    if(e.imp){if(d<bd){bd=d;bi=e;}}else{own.push([d,e]);if(d<od){od=d;oi=e;}}}
+  // 自己畫的線之間：距離差不多（6 像素內）時，後畫的在上面，先選它（2026-11-23）
+  if(oi){let top=-1;for(const[d,e]of own)if(d<=od+6/st.view.s){const i=st.ents.indexOf(e);if(i>top){top=i;oi=e;}}}
   // 自己畫的線在最上層（2026-11-20）：和底圖重疊時，自己的線只要不比底圖遠 6 像素以上就選自己的
   if(oi&&od<=bd+6/st.view.s)return oi;
   return bi||oi;
