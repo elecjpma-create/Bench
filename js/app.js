@@ -865,15 +865,32 @@ function drawGrips(e){for(const g of gripsOf(e)){const q=toS(g.p);ctx.fillStyle=
 function gripMenu(e,g,sp){const m=$('gripMenu');m.innerHTML='';const add=(t,f)=>{const b=document.createElement('button');b.textContent=t;b.onclick=()=>{hideGripMenu();f();};m.appendChild(b);};
   const go=(gg,base)=>{startCmd(gripCmd(e,gg,base));cur=null;refreshCmd();};
   if(e.t==='pline'&&!e.spl){const V=plVerts(e),n=V.length;
-    if(g.k==='v'){add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'addv',i:g.i},g.p));
+    if(g.k==='v'){add('拉伸',()=>go(g));if(lenFix(e,g))add('調整長度',()=>startCmd(cmdLength(e,g)));add('加入頂點',()=>go({p:g.p,k:'addv',i:g.i},g.p));
       if(n>2)add('移除頂點',()=>{const i=st.ents.indexOf(e);if(i<0)return;snapshot();const c=JSON.parse(JSON.stringify(e));const W=c.av||c.pts;W.splice(g.i,1);if(c.av){c.bu.splice(g.i,1);plBuild(c);}st.ents[i]=c;selE=c;saveDraw();setHint(baseHintText(),true);schedule();});}
     else if(g.k==='m'){const arc=!!((e.bu||[])[g.i]);add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'addv',i:g.i},g.p));
       if(arc)add('轉換為直線',()=>{const i=st.ents.indexOf(e);if(i<0)return;snapshot();const c=JSON.parse(JSON.stringify(e));c.bu[g.i]=0;plBuild(c);st.ents[i]=c;selE=c;saveDraw();setHint(baseHintText(),true);schedule();});
       else add('轉換為弧',()=>{const c=e.av?e:Object.assign(e,{av:e.pts.map(p=>p.slice()),bu:e.pts.map(()=>0)});go({p:g.p,k:'arcm',i:g.i},g.p);});}}
   else if(e.t==='line'){if(g.k==='move'){add('移動',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));add('轉換為弧',()=>go({p:g.p,k:'linearc'},g.p));}
-    else{add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));}}
+    else{add('拉伸',()=>go(g));add('調整長度',()=>startCmd(cmdLength(e,g)));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));}}
   else{go(g);return;}
   m.style.display='flex';const r=cv.getBoundingClientRect();m.style.left=Math.min(r.left+sp[0]+12,window.innerWidth-170)+'px';m.style.top=Math.min(r.top+sp[1]+12,window.innerHeight-200)+'px';}
+/* 調整長度（2026-11-23）：點直線端點或多段線頭尾的頂點 → 輸入新的總長（另一端不動，沿原方向伸縮）；打負數＝縮短多少 */
+function lenFix(e,g){// 回傳不動的那一點；多段線只有頭尾頂點、而且那一段是直的才可以
+  if(e.t==='line')return g.k==='a'?e.b:g.k==='b'?e.a:null;
+  if(e.t==='pline'&&!e.spl&&!e.closed&&g.k==='v'){const V=plVerts(e),n=V.length;if(n<2)return null;
+    if(g.i===0&&!((e.bu||[])[0]))return V[1];if(g.i===n-1&&!((e.bu||[])[n-2]))return V[n-2];}return null;}
+function lenApply(e,g,L){const f=lenFix(e,g),m=g.p,d=dist(f,m);if(!(d>1e-12)||!(L>0))return null;const q=[f[0]+(m[0]-f[0])/d*L,f[1]+(m[1]-f[1])/d*L];
+  const c=JSON.parse(JSON.stringify(e));delete c.bb;if(c.t==='line'){c[g.k]=q;return c;}
+  if(c.av){c.av[g.i]=q;plBuild(c);}else c.pts[g.i]=q;return c;}
+function cmdLength(e,g){const f=lenFix(e,g),L0=dist(f,g.p);return{kind:'dist',name:'length',keypad:'d',
+  init(){kp.setMode('d');kp.clearFor('D');},
+  hint(){return[`調整長度：目前 ${fmt(L0)} m。輸入新的總長按 ✓（另一端不動）；打負數＝縮短多少`,false];},
+  newL(){const v=kp.num('D');if(v==null||isNaN(v))return null;return v<0?L0+v:v;},
+  preview(){const L=this.newL();if(L>0){const c=lenApply(e,g,L);if(c){ctx.globalAlpha=.8;drawTemp(c);ctx.globalAlpha=1;}}},
+  ok(){const L=this.newL();if(!(L>0)){toast('長度要大於 0');return;}const c=lenApply(e,g,L),i=st.ents.indexOf(e);if(!c||i<0){endCmd();return;}
+    snapshot();st.ents[i]=c;saveDraw();endCmd();selE=c;setHint(baseHintText(),true);schedule();toast(`長度 ${fmt(L0)} → ${fmt(L)} m`);},
+  cancel(){endCmd();selE=e;setHint(baseHintText(),true);schedule();return false;}
+};}
 function hideGripMenu(){const m=$('gripMenu');if(m)m.style.display='none';}
 function gripCmd(e,g,base0){
   const ctr=(g.k==='rad'||g.k==='a0'||g.k==='a1')?e.o:null;
