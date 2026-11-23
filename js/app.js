@@ -618,23 +618,28 @@ function startCmdKeep(c){const keep=new Set(selSet);startCmd(c);selSet=keep;sche
 /* 旋轉 */
 /* 旋轉：點中心，再點方向或輸入角度；「參考」＝點兩點量出原方向，再點（或輸入）新方向，轉兩者的差（像 CAD 的 R） */
 function cmdRotate(){return selectStage({title:'旋轉',verb:'旋轉',next(){
-  const sel=[...selSet];let ref=null,refA=null;
+  const sel=[...selSet];let ref=null,refA=null,np=null;// np：新方向用兩點（2026-11-23：參考方向要和某條線平行）
+  const angTwo=(p,q)=>{let a=Math.atan2(q[1]-p[1],q[0]-p[0])-(refA??0);while(a>Math.PI/2)a-=Math.PI;while(a<=-Math.PI/2)a+=Math.PI;return a;};// 平行：取轉比較少的那個方向
   const angAt=(b,p)=>{const A=kp.num('A');if(A!=null)return rad(A)-(refA??0);return Math.atan2(p[1]-b[1],p[0]-b[0])-(refA??0);};
   const apply=a=>{snapshot();for(const e of sel)rotEnt(e,b0(),a);saveDraw();endCmd();toast('已旋轉');};let b0=()=>null;
   startCmdKeep(pointsCmd({name:'rot',init(){kp.setMode('xy');b0=()=>this.pts[0];},
     hint(){if(!this.pts.length)return[cur?'旋轉：拖曳微調，再點一下或按 ＋ 確定旋轉中心':'旋轉：點旋轉中心',!!cur];
       if(ref&&ref.length===0)return['旋轉（參考）：點參考第一點',!!cur];if(ref&&ref.length===1)return['旋轉（參考）：點參考第二點',!!cur];
-      if(ref)return['旋轉（參考）：點新的方向點，或在「角度」輸入新方向的角度',true];
+      if(np&&np.length===0)return['旋轉（兩點）：點新方向的第一點（例如欄的一端）',!!cur];if(np&&np.length===1)return['旋轉（兩點）：點新方向的第二點，參考方向會轉到和這兩點連線平行',!!cur];
+      if(ref)return['旋轉（參考）：點新的方向點（參考方向會指向那一點），或按「兩點」點兩點讓它平行對齊，或輸入角度',true];
       return['旋轉：點一點決定角度，或在「角度」輸入旋轉度數（逆時針為正）；要對齊就按「參考」',true];},
-    extraBtns(){return this.pts.length?[{t:ref?'參考中':'參考',c:'mode'+(ref?' on':''),f:()=>{if(ref){ref=null;refA=null;kp.setMode('la');}else{ref=[];kp.setMode('xy');}refreshCmd();}}]:[];},
+    extraBtns(){if(!this.pts.length)return[];const B=[{t:ref?'參考中':'參考',c:'mode'+(ref?' on':''),f:()=>{if(ref){ref=null;refA=null;np=null;kp.setMode('la');}else{ref=[];kp.setMode('xy');}refreshCmd();}}];
+      if(ref&&ref.length===2)B.push({t:np?'兩點中':'兩點',c:'mode'+(np?' on':''),f:()=>{np=np?null:[];kp.setMode(np?'xy':'a');refreshCmd();}});return B;},
     onPoint(p){if(!this.pts.length){this.pts.push(p);kp.setMode('la');return;}
+      if(np){np.push(p);if(np.length===2){if(dist(np[0],np[1])<1e-6){np.pop();toast('兩點同一個位置，請點另一端',3000);refreshCmd();return;}apply(angTwo(np[0],np[1]));return;}refreshCmd();return;}
       if(ref&&ref.length<2){ref.push(p);if(ref.length===2){if(dist(ref[0],ref[1])<1e-6){ref.pop();toast('參考第二點和第一點同一個位置，量不出方向：請點這條邊的另一端',3500);refreshCmd();return;}// 2026-11-23
         refA=Math.atan2(ref[1][1]-ref[0][1],ref[1][0]-ref[0][0]);kp.setMode('a');}refreshCmd();return;}
       apply(angAt(this.pts[0],p));},
-    base(){if(ref&&ref.length===1)return ref[0];return this.pts.length?this.pts[0]:null;},
+    base(){if(np&&np.length===1)return np[0];if(ref&&ref.length===1)return ref[0];return this.pts.length?this.pts[0]:null;},
     ok(){if(this.pts.length&&kp.num('A')!=null&&(!ref||ref.length===2))apply(angAt(this.pts[0],this.pts[0]));},
     preview(){if(!this.pts.length||!cur)return;const b=this.pts[0];
       if(ref&&ref.length<2){if(ref.length===1)previewPath([ref[0]],cur.p,false,true);return;}
+      if(np){if(np.length===1&&dist(np[0],cur.p)>1e-6){const a=angTwo(np[0],cur.p);ctx.globalAlpha=.6;sel.forEach(e=>{const c=JSON.parse(JSON.stringify(e));rotEnt(c,b,a);drawTemp(c);});ctx.globalAlpha=1;previewPath([np[0]],cur.p,false,true);}return;}
       const a=angAt(b,cur.p);ctx.globalAlpha=.6;sel.forEach(e=>{const c=JSON.parse(JSON.stringify(e));rotEnt(c,b,a);drawTemp(c);});ctx.globalAlpha=1;previewPath([b],cur.p,false,true);}
   }));
 },extra:{name:'rot',filter:ownOnly}});}
