@@ -241,10 +241,12 @@ const kp={
       // 點已選中、還在跟著游標的欄位＝清空開始打（2026-11-20）
       d.onclick=()=>{if(this.act===k&&!this.lock[k]&&this.cur(k)){this.clearFor(k);return;}this.act=k;this.render();};$('kfields').appendChild(d);
     }
-    if(this.mode==='la'||this.mode==='xy'){const b=document.createElement('button');b.id='kswap';b.textContent='⇄';b.title='切換長度角度／坐標';b.onclick=()=>{this.setMode(this.mode==='la'?'xy':(cmdBase()?'la':'xy'));};$('kfields').appendChild(b);}
+    {const mb=$('kmode');if(mb){const can=this.mode==='la'||this.mode==='xy';mb.textContent=this.mode==='la'?'座標':this.mode==='xy'?'長度':'';mb.disabled=!can;}}
     const hb=document.createElement('button');hb.id='kswap';hb.textContent='⌄';hb.title='收起鍵盤';hb.onclick=()=>{this.hidden=true;$('keypad').style.display='none';updateCmdBar();};$('kfields').appendChild(hb);
   },
   key(c){
+    // 長度模式還沒有第一點：游標已經放好就自動當第一點（中心、基準點），打的數字＝長度／半徑（2026-11-23）
+    if(this.mode==='la'&&!cmdBase()&&cmd&&cmd.kind==='points'){if(!cur){toast('先在圖上點一下位置',2000);return;}commitPoint();if(!cmdBase())return;this.setMode('la');}
     const k=this.act;if(!k)return;
     let v=this.lock[k]?this.vals[k]:'';
     // ⌫（2026-11-20）：欄位是跟著游標的數字時，按 ⌫ 先清空讓你打；已經空了再按 ⌫ 才回到跟著游標
@@ -255,6 +257,7 @@ const kp={
     this.setRef();
     this.vals[k]=v;this.lock[k]=true;this.apply();
   },
+  toggleMode(){if(this.mode==='la')this.setMode('xy');else if(this.mode==='xy'){this.setMode('la');if(cmd&&cmd.kind==='points'&&cmd.keypad==='la')kp.keepXY=false;}refreshCmd();},
   setRef(){if(this.ref==null){const b=cmdBase();this.ref=(b&&cur&&dist(b,cur.p)>1e-12)?Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]):0;}},
   clearFor(k){this.setRef();this.act=k;this.vals[k]='';this.lock[k]=true;this.apply();},
   num(k){const v=parseFloat(this.vals[k]);return this.lock[k]&&isFinite(v)?v:null;},
@@ -271,9 +274,10 @@ const kp={
   }
 };
 (function buildKeys(){
-  const keys=['7','8','9','⌫','4','5','6','✗','1','2','3','+','0','-','.','✓'];
-  for(const k of keys){const b=document.createElement('button');b.textContent=k;if(k==='✗')b.className='x';if(k==='+')b.className='p';if(k==='✓')b.className='ok';
-    b.onclick=()=>{if(k==='✗')cancelCmd();else if(k==='+')cmdPlus();else if(k==='✓')cmdOk();else kp.key(k);};$('kkeys').appendChild(b);}
+  const keys=['7','8','9','MODE','4','5','6','⌫','1','2','3','✗','0','-','.','✓'];// 2026-11-23：拿掉＋，右上改成「座標／長度」切換
+  for(const k of keys){const b=document.createElement('button');b.textContent=k;if(k==='✗')b.className='x';if(k==='✓')b.className='ok';
+    if(k==='MODE'){b.id='kmode';b.className='md';b.onclick=()=>kp.toggleMode();$('kkeys').appendChild(b);continue;}
+    b.onclick=()=>{if(k==='✗')cancelCmd();else if(k==='✓')cmdOk();else kp.key(k);};$('kkeys').appendChild(b);}
 })();
 
 /* ---------- 指令系統 ---------- */
@@ -294,7 +298,8 @@ function startCmd(c){
 function endCmd(){if(cmd&&cmd.cleanup)cmd.cleanup();cmd=null;cur=null;selSet.clear();kp.hide();$('penbar').style.display='none';$('penW').style.display='none';$('cmdbar').style.display='none';setHint(baseHintText());updateUI();schedule();}
 function cancelCmd(){if(cmd&&cmd.cancel&&cmd.cancel()===false){refreshCmd();return;}endCmd();}
 function cmdPlus(){if(!cmd)return;if(cmd.kind==='points'){if(cur)commitPoint();}else if(cmd.plus)cmd.plus();}
-function cmdOk(){if(!cmd)return;if(cmd.kind==='points'&&cur&&!cmd.live){const last=cmdBase();if(!last||dist(last,cur.p)>1e-9)commitPoint();}if(cmd&&cmd.ok)cmd.ok();refreshCmd();}
+function cmdOk(){if(!cmd)return;if(cmd.kind==='points'&&cur&&cur.typed&&Object.keys(kp.lock).length&&!cmd.live){const last=cmdBase();if(!last||dist(last,cur.p)>1e-9){commitPoint();return;}}// 有打數字：✓＝放這一點、繼續（取代原本的＋）
+  if(cmd.kind==='points'&&cur&&!cmd.live){const last=cmdBase();if(!last||dist(last,cur.p)>1e-9)commitPoint();}if(cmd&&cmd.ok)cmd.ok();refreshCmd();}
 function commitPoint(){if(!cmd||!cur)return;const p=cur.p.slice();kp.unlockAll();
   cmd.onPoint(p);if(cmd&&cmd.kind==='points'&&cmd.keypad==='la'&&cmdBase()&&kp.mode==='xy'&&!kp.keepXY)kp.setMode('la');kp.keepXY=false;refreshCmd();}
 function cmdUndoPt(){if(cmd&&cmd.pts&&cmd.pts.length){cmd.pts.pop();if(cmd.onUndoPt)cmd.onUndoPt();refreshCmd();}}
@@ -326,7 +331,7 @@ function pointsCmd(o){return Object.assign({kind:'points',keypad:'la',pts:[],bas
 
 /* 多段線 */
 function cmdPline(){return pointsCmd(perMix({name:'pline',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   hint(){return this.pts.length?[`多段線：已 ${this.pts.length} 點。點下一點（拖曳微調），或輸入長度、角度（負值＝反方向）。✓ 完成`,!!cur]:[cur?'拖曳游標微調，再點下一點或按 ＋ 確定':'多段線：點擊第一點',!!cur];},
   onPoint(p){this.pts.push(p);this.per=null;},
   extraBtns(){return this.perBtn().concat(this.pts.length>=2?[{t:'閉合',f:()=>{this.closed=true;this.finish();}}]:[]);},
@@ -337,7 +342,7 @@ function cmdPline(){return pointsCmd(perMix({name:'pline',
 }));}
 /* 直線（連續） */
 function cmdLine(){return pointsCmd(perMix({name:'line',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   extraBtns(){return this.perBtn();},
   hint(){return[this.pts.length?'直線：點下一點（可輸入長度、角度），✓ 結束':(cur?'拖曳微調，再點下一點':'直線：點擊第一點'),!!cur];},
   onPoint(p){if(this.pts.length){const a=this.pts[this.pts.length-1];if(dist(a,p)>1e-9){snapshot();addEnt({t:'line',a:a.slice(),b:p.slice()});saveDraw();}}this.pts.push(p);this.per=null;},
@@ -347,7 +352,7 @@ function cmdLine(){return pointsCmd(perMix({name:'line',
 /* ---------- 標註（對齊標註）：點兩點，再點標註線位置；字高用「文字高度」設定 ---------- */
 function dimOff(a,b,p){const L=dist(a,b);if(!L)return 0;const ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;return ux*(p[1]-a[1])-uy*(p[0]-a[0]);}
 function cmdDim(){return pointsCmd({name:'dim',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   hint(){const n=this.pts.length;return[n===0?(cur?'拖曳微調，再點一下確定第一點':'標註：點第一點（可鎖點）'):n===1?'標註：點第二點（可鎖點）':'標註：點標註線要放的位置（拉離兩點連線）',!!cur];},
   onPoint(p){if(this.pts.length<2){if(this.pts.length===1&&dist(this.pts[0],p)<1e-9)return;this.pts.push(p);return;}
     const[a,b]=this.pts;snapshot();addEnt({t:'dim',a:a.slice(),b:b.slice(),off:dimOff(a,b,p),h:st.textH||2});saveDraw();startCmd(cmdDim());},
@@ -386,7 +391,7 @@ function askNum(msg,v,min,max){const r=window.prompt(msg,String(v));if(r==null)r
 
 /* 圓：中心、2P、3P */
 function cmdCircle(){const M=st.circM||'cen';return pointsCmd({name:'circle',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   extraBtns(){return modeBtns([['cen','中心'],['2p','2P'],['3p','3P']],M,k=>{st.circM=k;saveSettings();startCmd(cmdCircle());});},
   hint(){const n=this.pts.length;
     if(M==='cen')return n?[`圓：點半徑上的一點，或輸入長度＝半徑。${cur?'半徑 '+fmt(dist(this.pts[0],cur.p)):''}`,true]:['圓（中心）：點圓心',!!cur];
@@ -408,7 +413,7 @@ function cmdCircle(){const M=st.circM||'cen';return pointsCmd({name:'circle',
 });}
 /* 弧：3P、中心-起點-終點 */
 function cmdArc(){const M=st.arcM||'3p';return pointsCmd({name:'arc',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   extraBtns(){return modeBtns([['3p','3P'],['cse','中心']],M,k=>{st.arcM=k;saveSettings();startCmd(cmdArc());});},
   hint(){const n=this.pts.length,t=this.tmp();const info=t?`　半徑 ${fmt(t.r)}　弧長 ${fmt(t.r*sweepOf(t.a0,t.a1))}`:'';
     if(M==='3p')return[['弧（3P）：點起點','弧（3P）：點弧上經過的一點','弧（3P）：點終點'][n]+info,!!cur];
@@ -423,7 +428,7 @@ function cmdArc(){const M=st.arcM||'3p';return pointsCmd({name:'arc',
 });}
 /* 雲形線（擬合） */
 function cmdSpline(){return pointsCmd({name:'spline',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   hint(){const n=this.pts.length;return[n?`雲形線：已 ${n} 個擬合點，點下一點。✓ 完成`:(cur?'拖曳微調，再點下一點':'雲形線（擬合）：點第一個擬合點'),!!cur];},
   onPoint(p){const P=this.pts;if(!P.length||dist(P[P.length-1],p)>1e-9)P.push(p);},
   extraBtns(){return this.pts.length>=3?[{t:'閉合',f:()=>{this.closed=true;this.finish();}}]:[];},
@@ -436,7 +441,7 @@ function cmdSpline(){return pointsCmd({name:'spline',
 });}
 /* 多邊形 */
 function cmdPolygon(){const M=st.polyM||'i',N=st.polyN||4;return pointsCmd({name:'polygon',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   extraBtns(){return[{t:`${N}邊`,c:'mode',f:()=>{const v=askNum('邊數（3–1024）',N,3,1024);if(v){st.polyN=v;saveSettings();startCmd(cmdPolygon());}}},
     ...modeBtns([['i','內接'],['c','外切'],['e','邊']],M,k=>{st.polyM=k;saveSettings();startCmd(cmdPolygon());})];},
   hint(){const n=this.pts.length;
@@ -489,7 +494,7 @@ function lineAngleAt(e,w){
 
 /* 量測 */
 function cmdMeasure(){return pointsCmd({name:'mlen',
-  init(){kp.setMode('xy');},
+  init(){kp.setMode('la');},
   hint(){const P=this.pts.concat(cur?[cur.p]:[]);if(P.length<2)return[cur?'拖曳微調，再點下一點':'量長度：點第一點',!!cur];
     const a=P[P.length-2],b=P[P.length-1];let tot=0;for(let i=1;i<P.length;i++)tot+=dist(P[i-1],P[i]);
     return[`本段 ${fmt(dist(a,b))}　方位角 ${dms(azimuth(a,b))}`+(P.length>2?`　總長 ${fmt(tot)}`:'')+'　（✓ 結束）',true];},
@@ -634,7 +639,7 @@ function cmdMove(copy){
   const title=copy?'複製':'移動';
   return selectStage({title,verb:title,next(){
     const sel=[...selSet];
-    startCmdKeep(pointsCmd({name:copy?'copy':'move',init(){kp.setMode('xy');},
+    startCmdKeep(pointsCmd({name:copy?'copy':'move',init(){kp.setMode('la');},
       hint(){return this.pts.length?[`${title}：點目的點，或輸入距離、角度`+(copy?'（可連續複製，✓ 結束）':''),true]:[cur?`${title}：拖曳微調，再點一下或按 ＋ 確定基準點`:`${title}：點基準點`,!!cur];},
       onPoint(p){if(!this.pts.length){this.pts.push(p);return;}const b=this.pts[0],dx=p[0]-b[0],dy=p[1]-b[1];
         snapshot();if(copy){const gm=new Map();for(const e of sel){const c=ownCopy(e,gm);xform(c,q=>[q[0]+dx,q[1]+dy],0);st.ents.push(c);}}
