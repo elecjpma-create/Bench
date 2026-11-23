@@ -165,7 +165,21 @@ function snapAt(w,base){
   return{p:w.slice(),snap:null};
 }
 function cmdBase(){return cmd&&cmd.base?cmd.base():null;}
-function setCursorRaw(w){const r=snapAt(w,cmdBase());cur={raw:w.slice(),p:r.p,snap:r.snap};kp.unlockAll();refreshCmd();}
+function setCursorRaw(w){const r=snapAt(w,cmdBase());cur={raw:w.slice(),p:r.p,snap:r.snap};if(cmd&&cmd.cons){const q=cmd.cons(cur.p);if(q)cur.p=q;}kp.unlockAll();refreshCmd();}
+/* 反向垂足（2026-11-23）：從邊上一點開始畫，下一點只能沿著跟那條邊垂直的方向。perCands＝那一點所在的邊（轉角有兩條，按「垂直」輪流換） */
+function perCands(b){const tol=Math.max(4/st.view.s,1e-3),A=[];const add=a=>{if(a!=null&&!A.some(x=>Math.abs(Math.sin(x-a))<0.02))A.push(a);};
+  for(const e of snapEnts(b,tol)){if(!near(e,b,tol)||hitDist(e,b)>tol)continue;
+    if((e.t==='pline'||e.t==='ink')&&e.pts){const P=e.pts,n=P.length,m=e.closed?n:n-1;for(let i=0;i<m;i++){const p0=P[i],p1=P[(i+1)%n];if(dist(closestOnSeg(b,p0,p1),b)<=tol)add(Math.atan2(p1[1]-p0[1],p1[0]-p0[0]));}}// 多段線轉角：兩段都算
+    else add(lineAngleAt(e,b));}return A;}
+function perMix(o){// 給直線、多段線用：this.per＝{b,n,i,A}
+  o.cons=function(p){const P=this.per;if(!P)return null;const t=(p[0]-P.b[0])*P.n[0]+(p[1]-P.b[1])*P.n[1];return[P.b[0]+P.n[0]*t,P.b[1]+P.n[1]*t];};
+  o.perBtn=function(){if(!this.pts.length)return[];return[{t:this.per?(this.per.A.length>1?'垂直 '+(this.per.i+1)+'/'+this.per.A.length:'垂直中'):'垂直',c:'mode'+(this.per?' on':''),f:()=>{
+    const b=this.pts[this.pts.length-1];if(this.per&&this.per.i<this.per.A.length-1){this.per.i++;}else if(this.per){this.per=null;refreshCmd();return;}
+    else{const A=perCands(b);if(!A.length){toast('這一點不在任何線上，找不到要垂直的邊',3000);return;}this.per={b:b.slice(),A,i:0};}
+    const a=this.per.A[this.per.i]+Math.PI/2;this.per.n=[Math.cos(a),Math.sin(a)];if(cur){const q=this.cons(cur.p);if(q)cur.p=q;}refreshCmd();}}];};
+  o.perDraw=function(){const P=this.per;if(!P||!P.n)return;const L=4000/st.view.s,a=toS([P.b[0]-P.n[0]*L,P.b[1]-P.n[1]*L]),c=toS([P.b[0]+P.n[0]*L,P.b[1]+P.n[1]*L]);
+    ctx.save();ctx.setLineDash([6,6]);ctx.strokeStyle='rgba(255,200,60,.7)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(c[0],c[1]);ctx.stroke();ctx.restore();};
+  return o;}
 function pickEnt(w,filter){
   const tol=18/st.view.s;let bi=null,bd=tol,oi=null,od=tol;
   // 文字框內不算 0：點到框裡時，8 像素內有線就選線（大字如圖號才不會擋住下面的線）
@@ -300,24 +314,25 @@ function updateCmdBar(){
 function pointsCmd(o){return Object.assign({kind:'points',keypad:'la',pts:[],base(){return this.pts.length?this.pts[this.pts.length-1]:null;}},o);}
 
 /* 多段線 */
-function cmdPline(){return pointsCmd({name:'pline',
+function cmdPline(){return pointsCmd(perMix({name:'pline',
   init(){kp.setMode('xy');},
   hint(){return this.pts.length?[`多段線：已 ${this.pts.length} 點。點下一點（拖曳微調），或輸入長度、角度（負值＝反方向）。✓ 完成`,!!cur]:[cur?'拖曳游標微調，再點下一點或按 ＋ 確定':'多段線：點擊第一點',!!cur];},
-  onPoint(p){this.pts.push(p);},
-  extraBtns(){return this.pts.length>=2?[{t:'閉合',f:()=>{this.closed=true;this.finish();}}]:[];},
+  onPoint(p){this.pts.push(p);this.per=null;},
+  extraBtns(){return this.perBtn().concat(this.pts.length>=2?[{t:'閉合',f:()=>{this.closed=true;this.finish();}}]:[]);},
   ok(){this.finish();},
   finish(){if(this.pts.length>=2){snapshot();addEnt({t:'pline',pts:this.pts.map(p=>p.slice()),closed:!!this.closed});saveDraw();toast('已畫好多段線');}
     startCmd(cmdPline());},
-  preview(){previewPath(this.pts,cur&&cur.p,this.closed);}
-});}
+  preview(){this.perDraw();previewPath(this.pts,cur&&cur.p,this.closed);}
+}));}
 /* 直線（連續） */
-function cmdLine(){return pointsCmd({name:'line',
+function cmdLine(){return pointsCmd(perMix({name:'line',
   init(){kp.setMode('xy');},
+  extraBtns(){return this.perBtn();},
   hint(){return[this.pts.length?'直線：點下一點（可輸入長度、角度），✓ 結束':(cur?'拖曳微調，再點下一點':'直線：點擊第一點'),!!cur];},
-  onPoint(p){if(this.pts.length){const a=this.pts[this.pts.length-1];if(dist(a,p)>1e-9){snapshot();addEnt({t:'line',a:a.slice(),b:p.slice()});saveDraw();}}this.pts.push(p);},
+  onPoint(p){if(this.pts.length){const a=this.pts[this.pts.length-1];if(dist(a,p)>1e-9){snapshot();addEnt({t:'line',a:a.slice(),b:p.slice()});saveDraw();}}this.pts.push(p);this.per=null;},
   ok(){startCmd(cmdLine());},
-  preview(){if(this.pts.length&&cur)previewPath([this.pts[this.pts.length-1]],cur.p);}
-});}
+  preview(){this.perDraw();if(this.pts.length&&cur)previewPath([this.pts[this.pts.length-1]],cur.p);}
+}));}
 /* ---------- 標註（對齊標註）：點兩點，再點標註線位置；字高用「文字高度」設定 ---------- */
 function dimOff(a,b,p){const L=dist(a,b);if(!L)return 0;const ux=(b[0]-a[0])/L,uy=(b[1]-a[1])/L;return ux*(p[1]-a[1])-uy*(p[0]-a[0]);}
 function cmdDim(){return pointsCmd({name:'dim',
