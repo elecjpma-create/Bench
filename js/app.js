@@ -494,6 +494,8 @@ function selectStage(o){const x=o.extra||{};boxArm=false;return{kind:'select',na
   hint:o.hint||function(){return[`${o.title}：點選要${o.verb}的物件${x.group?'（底圖也可以，圖塊會整個選起來）':''}（再點一次取消；按「框選」再拖曳可一次選一片：往右拉選框內的、往左拉碰到就選），選好按 ✓　已選 ${selCount()}`,selSet.size>0];},
   ok:o.ok||function(){if(!selSet.size){toast('還沒選物件');return;}o.next();}};}
 const ownOnly=e=>!e.imp;
+// 圖塊（從底圖複製來、帶 gb 的一組）裡的線不能單獨改：修剪、延伸、打斷、接合、夾點都擋（2026-11-23 使用者：除非進圖塊編輯，不然圖塊不能動）
+const blkLocked=e=>!!(e&&!e.imp&&e.og&&e.gb);
 let grpIdx=null;
 function groupOf(e){if(nativeOn&&e.g){const a=imp.filter(x=>x.g===e.g);return a.concat(nativeGroup(e.g));}if(!grpIdx){grpIdx=new Map();for(const x of imp)if(x.g){let a=grpIdx.get(x.g);if(!a)grpIdx.set(x.g,a=[]);a.push(x);}}return grpIdx.get(e.g)||[e];}
 // 底圖物件複製成自己的：放到目前圖層、顏色隨圖層，保留線型
@@ -747,7 +749,7 @@ function cmdJoin(){return selectStage({title:'接合',verb:'接合',next(){
   snapshot();const first=st.ents.indexOf(sel[0]);
   st.ents=st.ents.filter(e=>!r.used.has(e));st.ents.splice(Math.min(first,st.ents.length),0,...r.out);
   saveDraw();endCmd();toast(`已接合 ${r.joined} 段成 ${r.out.length} 條`+(r.left?`，${r.left} 條沒接上`:''),3000);
-},extra:{name:'join',filter:e=>!e.imp&&(e.t==='line'||(e.t==='pline'&&!e.closed))}});}
+},extra:{name:'join',filter:e=>!e.imp&&!blkLocked(e)&&(e.t==='line'||(e.t==='pline'&&!e.closed))}});}
 function joinEnts(sel){
   const ch=sel.map(e=>({e,pts:e.t==='line'?[e.a.slice(),e.b.slice()]:e.pts.map(p=>p.slice()),done:false}));
   const same=(a,b)=>dist(a,b)<=JOIN_TOL;const out=[],used=new Set();let joined=0,left=0;
@@ -843,7 +845,8 @@ function gripsOf(e){
   }
   return G;
 }
-function hitGrip(sp){if(!selE||selE.imp||!ownShown(selE)||selSet.size>1||(selE.og&&selE.gb))return null;let best=null,bd=22;for(const g of gripsOf(selE)){const q=toS(g.p),d=dist(q,sp);if(d<bd){bd=d;best=g;}}return best;}
+function hitGrip(sp){if(selE&&!selE.imp&&selE.og&&selE.gb&&ownShown(selE)&&selSet.size<=1){selBlock();const ins=selIns||selE.gi;return ins&&dist(toS(ins),sp)<22?{p:ins,k:'blk'}:null;}// 圖塊只有插入點一個夾點
+  if(!selE||selE.imp||!ownShown(selE)||selSet.size>1)return null;let best=null,bd=22;for(const g of gripsOf(selE)){const q=toS(g.p),d=dist(q,sp);if(d<bd){bd=d;best=g;}}return best;}
 function applyGrip(e,g,p){
   const c=JSON.parse(JSON.stringify(e)),b=g.p;
   switch(g.k){
@@ -875,6 +878,8 @@ function gripMenu(e,g,sp){const m=$('gripMenu');m.innerHTML='';const add=(t,f)=>
     else if(g.k==='m'){const arc=!!((e.bu||[])[g.i]);add('拉伸',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'addv',i:g.i},g.p));
       if(arc)add('轉換為直線',()=>{const i=st.ents.indexOf(e);if(i<0)return;snapshot();const c=JSON.parse(JSON.stringify(e));c.bu[g.i]=0;plBuild(c);st.ents[i]=c;selE=c;saveDraw();setHint(baseHintText(),true);schedule();});
       else add('轉換為弧',()=>{const c=e.av?e:Object.assign(e,{av:e.pts.map(p=>p.slice()),bu:e.pts.map(()=>0)});go({p:g.p,k:'arcm',i:g.i},g.p);});}}
+  else if(g.k==='blk'){add('移動',()=>go(g));
+    add('旋轉',()=>{const G=st.ents.filter(x=>x.og===e.og);selSet=new Set(G);startCmd(cmdRotate());if(cmd&&cmd.ok)cmd.ok();cur={raw:g.p.slice(),p:g.p.slice(),snap:null};commitPoint();refreshCmd();});}// 繞插入點旋轉，方向點照樣可以鎖點
   else if(e.t==='line'){if(g.k==='move'){add('移動',()=>go(g));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));add('轉換為弧',()=>go({p:g.p,k:'linearc'},g.p));}
     else{add('拉伸',()=>go(g));add('調整長度',()=>startCmd(cmdLength(e,g)));add('加入頂點',()=>go({p:g.p,k:'lineadd'},g.p));}}
   else{go(g);return;}
@@ -897,7 +902,18 @@ function cmdLength(e,g){const f=lenFix(e,g),L0=dist(f,g.p);return{kind:'dist',na
   cancel(){endCmd();selE=e;setHint(baseHintText(),true);schedule();return false;}
 };}
 function hideGripMenu(){const m=$('gripMenu');if(m)m.style.display='none';}
+// 圖塊的插入點夾點：拖＝整個圖塊移動（2026-11-23 使用者：圖塊原則上只能抓插入點）
+function blkMoveCmd(e,g){const G=st.ents.filter(x=>x.og===e.og);
+  return pointsCmd({name:'grip',hint(){return[cur?'移動圖塊：拖曳微調位置，再點一下或按 ＋ 確定':'移動圖塊：點新位置（插入點會放在那裡）',!!cur];},
+    base(){return g.p;},
+    onPoint(p){const dx=p[0]-g.p[0],dy=p[1]-g.p[1];if(Math.hypot(dx,dy)>1e-12){snapshot();for(const x of G)xform(x,q=>[q[0]+dx,q[1]+dy],0);saveDraw();}
+      endCmd();selE=e;selGrpKey=null;setHint(baseHintText(),true);schedule();},
+    ok(){endCmd();selE=e;setHint(baseHintText(),true);},
+    cancel(){endCmd();selE=e;setHint(baseHintText(),true);schedule();return false;},
+    preview(){const p=cur?cur.p:g.p,dx=p[0]-g.p[0],dy=p[1]-g.p[1];ctx.globalAlpha=.75;for(const x of G){const c=JSON.parse(JSON.stringify(x));xform(c,q=>[q[0]+dx,q[1]+dy],0);drawTemp(c);}ctx.globalAlpha=1;
+      const q=toS(g.p);ctx.fillStyle='#ef4444';ctx.fillRect(q[0]-5,q[1]-5,10,10);if(cur)previewPath([g.p],cur.p,false,true);}});}
 function gripCmd(e,g,base0){
+  if(g.k==='blk')return blkMoveCmd(e,g);
   const ctr=(g.k==='rad'||g.k==='a0'||g.k==='a1')?e.o:null;
   return pointsCmd({name:'grip',
     hint(){const t={move:'移動：點新位置',m:'拉伸這一段：點新位置',addv:'加入頂點：點新頂點的位置',lineadd:'加入頂點：點新頂點的位置',arcm:'轉換為弧：點弧要經過的點',linearc:'轉換為弧：點弧要經過的點'}[g.k]||'夾點：點新位置';return[cur?'拖曳微調位置（可鎖點、輸入長度角度），點一下或按 ✓ 確定':t,!!cur];},
@@ -1419,7 +1435,7 @@ function onTap(sp){
       if(cur){commitPoint();if(!cmd||cmd.kind!=='points')return;}
       setCursorRaw(w);return;
     case'select':{const f0=cmd.filter,e=pickEnt(w,st.lockBase?(x=>!x.imp&&(!f0||f0(x))):f0);if(e){const grp=(!e.imp&&e.og)?ownGroup(e):(cmd.group&&e.g)?groupOf(e):[e];const on=!selSet.has(e);for(const x of grp)on?selSet.add(x):selSet.delete(x);}refreshCmd();return;}
-    case'pickObj':{const e=pickEnt(w,cmd.filter);if(e)cmd.onPick(e,w);else toast('那裡沒有物件');refreshCmd();return;}
+    case'pickObj':{const e=pickEnt(w,cmd.filter);if(e&&blkLocked(e)&&['trim','extend','brk'].includes(cmd.name)){toast('這是圖塊，裡面的線不能單獨修改',2500);return;}if(e)cmd.onPick(e,w);else toast('那裡沒有物件');refreshCmd();return;}
     case'side':cmd.onSide(w);return;
     default:selE=pickEnt(w);setHint(baseHintText(),!!selE);schedule();
   }
