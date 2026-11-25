@@ -492,7 +492,7 @@ $('txtOk').onclick=()=>{
     saveDraw();closeSheet('textSheet');textCtx=null;setHint(baseHintText(),true,{t:'編輯文字',f:()=>openTextEdit(e)});schedule();toast('已更新文字');return;}
   const h=parseFloat($('txtH').value)||st.textH,a=parseFloat($('txtA').value)||0;st.textH=h;saveSettings();
   snapshot();addEnt({t:'text',p:textCtx.p,h,rot:rad(a),lines:v.split('\n'),ha:0,y0:0,ls:h*1.667,wf:1,font:'txt',big:'chineset'});saveDraw();
-  closeSheet('textSheet');textCtx=null;startCmd(cmdText());
+  const af=textCtx.after;closeSheet('textSheet');textCtx=null;if(af)af();else startCmd(cmdText());
 };
 $('txtAlign').onclick=()=>{
   closeSheet('textSheet');const saved=textCtx;
@@ -500,7 +500,7 @@ $('txtAlign').onclick=()=>{
     onPick(e,w){const a=lineAngleAt(e,w);if(a==null){toast('這個物件取不到方向');return;}
       let d=normA(deg(a));if(d>90&&d<=270)d=normA(d-180);textCtx=saved;cmd=null;$('txtA').value=d.toFixed(2);openTextDlg(null,true);if(saved&&saved.edit)endCmd();else startCmdQuiet(cmdText());}});
 };
-function startPin(w){startCmd(cmdCoord(true,true));setCursorRaw(w);try{navigator.vibrate&&navigator.vibrate(30);}catch(_){}}
+function startPin(w,back){startCmd(cmdCoord(true,true,back));setCursorRaw(w);try{navigator.vibrate&&navigator.vibrate(30);}catch(_){}}
 function startCmdQuiet(c){cmd=c;cur=null;kp.unlockAll();if(c.keypad)kp.show(c.keypad);refreshCmd();updateUI();}
 function lineAngleAt(e,w){
   if(e.t==='line')return Math.atan2(e.b[1]-e.a[1],e.b[0]-e.a[0]);
@@ -527,15 +527,17 @@ function openNav(la,lo){const u=`https://www.google.com/maps/dir/?api=1&destinat
 function openPano(la,lo){const u=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${la.toFixed(7)},${lo.toFixed(7)}`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 // pin（2026-11-25）：選取模式長按圖上任一處叫出來，不開鍵盤，街景放第一顆；拖曳可以微調位置
-function cmdCoord(ll,pin){return pointsCmd({name:pin?'pin':ll?'ll':'xy',live:true,keypad:pin?null:'xy',
+// back＝'pen'：從手寫長按叫出來的，結束後回到手寫
+function cmdCoord(ll,pin,back){return pointsCmd({name:pin?'pin':ll?'ll':'xy',live:true,keypad:pin?null:'xy',back,
   base(){return null;},
   hint(){if(!cur)return[ll?'經緯度：點圖上任一點（可拖曳、可鎖點，或輸入坐標）':'點坐標：點圖上任一點（可拖曳、可鎖點）',false];
     const p=cur.p;if(!ll)return[`X ${fmt(p[0])}\nY ${fmt(p[1])}`,'big'];
     const[la,lo]=tm2ll(p[0],p[1],st.lon0);return[`${dmsLL(la,'N','S')}\n${dmsLL(lo,'E','W')}`,'big'];},
   extraBtns(){return cur?[{t:'複製',f:()=>{const p=cur.p;let t;if(ll){const[la,lo]=tm2ll(p[0],p[1],st.lon0);t=`${dmsLL(la,'N','S')} ${dmsLL(lo,'E','W')}`;}else t=`${fmt(p[0])},${fmt(p[1])}`;
       (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已複製：'+t)).catch(()=>toast(t,4000));}},
-    ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}},{t:'街景',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openPano(la,lo);}}]:[])].sort((a,b)=>pin?(b.t==='街景')-(a.t==='街景'):0):[];},
-  onPoint(){},ok(){endCmd();}
+    ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}},{t:'街景',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openPano(la,lo);}}]:[]),
+    ...(pin?[{t:'文字',f:()=>{openTextDlg(cur.p.slice());textCtx.after=()=>this.done();}}]:[])].sort((a,b)=>pin?(b.t==='街景')-(a.t==='街景'):0):[];},
+  onPoint(){},done(){if(this.back==='pen')startCmd(cmdPen());else endCmd();},ok(){this.done();},cancel(){if(this.back==='pen'){startCmd(cmdPen());return false;}}
 });}
 
 /* ---- 選取物件的共用步驟 ---- */
@@ -1456,7 +1458,9 @@ cv.addEventListener('pointerdown',e=>{
   if(e.pointerType==='mouse'&&e.button!==0){g={type:'pan',last:sp};return;}
   if(cmd&&cmd.kind==='pen'){
     if(eraser){g={type:'erase',last:sp,snap:false};eraseAt(toW(sp),g);}
-    else{ink={pts:[toW(sp)],last:sp,hp:sp,len:0};inkHold();g={type:'ink'};}
+    else{ink={pts:[toW(sp)],last:sp,hp:sp,len:0};inkHold();g={type:'ink'};
+      // 手寫時按住不動 0.55 秒（還沒開始寫）：一樣叫出經緯度／街景／文字，結束後回到手寫（2026-11-26）
+      const I=ink,G0=g;setTimeout(()=>{if(ink===I&&g===G0&&I.len<8&&ptrs.size===1&&!eraser){clearTimeout(I.ht);ink=null;g={type:'dead'};startPin(I.pts[0],'pen');}},550);}
     schedule();return;
   }
   hideGripMenu();
