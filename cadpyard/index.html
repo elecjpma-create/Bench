@@ -46,11 +46,13 @@ button{font-family:inherit;color:var(--text)}
 #penW .pwq button{flex:1;width:auto;height:30px;font-size:12px;padding:0}
 #penbar button.on{background:var(--panel2);outline:2px solid var(--acc)}
 #bottom{background:var(--panel);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom);flex:none}
-#hint{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 10px;font-size:13px;line-height:1.35;color:var(--muted);border-bottom:1px solid var(--line)}
+#hint{display:flex;align-items:center;gap:8px;min-height:30px;padding:4px 10px;font-size:var(--hfs,13px);line-height:1.35;color:var(--muted);border-bottom:1px solid var(--line)}
 #hintT{flex:1;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 #hintT.info{color:var(--text)}
-#hintT.big{font-size:20px;font-weight:600;line-height:1.3;white-space:pre-line;font-variant-numeric:tabular-nums;letter-spacing:.3px}
-#hintC{font-size:11px;font-variant-numeric:tabular-nums;white-space:pre;text-align:right;color:var(--muted)}
+#hintT.full{display:block;-webkit-line-clamp:unset;max-height:45vh;overflow:auto;white-space:pre-line}
+#hintMore{display:none;flex:none;background:none;border:0;color:var(--muted);font-size:var(--hfs,13px);padding:0 4px;cursor:pointer}
+#hintT.big{font-size:calc(var(--hfs,13px)*1.55);font-weight:600;line-height:1.3;white-space:pre-line;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+#hintC{font-size:calc(var(--hfs,13px)*.85);font-variant-numeric:tabular-nums;white-space:pre;text-align:right;color:var(--muted)}
 #hintBtn{display:none;border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:4px 10px;font-size:13px}
 #tabs{display:flex}
 #tabs button{flex:1;border:0;background:none;padding:6px 0 4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;color:var(--muted)}
@@ -159,7 +161,7 @@ button{font-family:inherit;color:var(--text)}
     <div id="penW" class="fl"><div class="pwh"><span>手寫粗細</span><b id="penWv"></b></div><input type="range" id="penWr" min="0.5" max="20" step="0.5"><div class="pwp"><div id="penWp"></div></div><div class="pwq"><button data-w="1">1</button><button data-w="2">2</button><button data-w="3">3</button><button data-w="5">5</button><button data-w="8">8</button><button data-w="12">12</button></div></div>
   </div>
   <div id="bottom">
-    <div id="hint"><div id="hintT"></div><button id="hintBtn"></button><div id="hintC"></div></div>
+    <div id="hint"><div id="hintT"></div><button id="hintMore">▾</button><button id="hintBtn"></button><div id="hintC"></div></div>
     <div id="keypad">
       <div id="kfields"></div>
       <div id="kkeys"></div>
@@ -219,6 +221,7 @@ button{font-family:inherit;color:var(--text)}
     <div><div class="lab">小數位數</div><input id="sPrec" type="number" min="0" max="6" inputmode="numeric"></div>
     <div><div class="lab">文字字高</div><input id="sTh" type="number" step="any" inputmode="decimal"></div>
     <div><div class="lab">手寫粗細(px)</div><input id="sInk" type="number" step="any" inputmode="decimal"></div>
+    <div><div class="lab">狀態列字體(px，9～40)</div><input id="sHfs" type="number" step="any" inputmode="decimal"></div>
   </div>
   <div class="sec"><div class="lab">鎖點模式</div><div id="osnaps"></div></div>
   <div class="sec" id="verSec" style="display:none"><div class="lab">程式版本</div>

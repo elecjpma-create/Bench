@@ -4,7 +4,7 @@
    ========================================================= */
 
 /* ---------- 狀態 ---------- */
-let st={ents:[],view:null,ltscale:1,prec:3,snap:true,ortho:false,bg:'dark',lon0:121,textH:2,inkW:3,
+let st={ents:[],view:null,ltscale:1,prec:3,snap:true,ortho:false,bg:'dark',lon0:121,textH:2,inkW:3,hfs:13,
   osm:Object.assign({},OSM_DEF),
   layers:[{name:'補繪',ci:1,lt:'CONTINUOUS',on:true}],cur:'補繪',penCi:1,penSlots:[1,7,5],penSlot:0};
 let lts=[];
@@ -293,7 +293,12 @@ const kp={
 })();
 
 /* ---------- 指令系統 ---------- */
-function setHint(t,info,btn){$('hintT').textContent=t||'';$('hintT').className=info==='big'?'info big':info?'info':'';const b=$('hintBtn');if(btn){b.style.display='block';b.textContent=btn.t;b.onclick=btn.f;}else b.style.display='none';}
+// 狀態列（2026-11-25）：字太多被切掉時右邊出現 ▾，點文字或 ▾ 展開全部（再點收起）；字體大小在設定裡改
+let hintFull=false;
+function hintMoreUpd(){const t=$('hintT'),m=$('hintMore');requestAnimationFrame(()=>{const over=t.scrollHeight>t.clientHeight+1;m.style.display=over||hintFull?'block':'none';m.textContent=hintFull?'▴':'▾';});}
+function hintToggle(){if(!hintFull&&$('hintT').scrollHeight<=$('hintT').clientHeight+1)return;hintFull=!hintFull;$('hintT').classList.toggle('full',hintFull);hintMoreUpd();}
+function applyHfs(){document.documentElement.style.setProperty('--hfs',(st.hfs>0?st.hfs:13)+'px');}
+function setHint(t,info,btn){$('hintT').textContent=t||'';$('hintT').className=(info==='big'?'info big':info?'info':'')+(hintFull?' full':'');hintMoreUpd();const b=$('hintBtn');if(btn){b.style.display='block';b.textContent=btn.t;b.onclick=btn.f;}else b.style.display='none';}
 function refreshCmd(){if(cmd&&cmd.hint)setHint(...[].concat(cmd.hint()));kp.render();updateCmdBar();schedule();}
 function startCmd(c){
   if(cmd&&cmd.cleanup)cmd.cleanup();
@@ -495,6 +500,7 @@ $('txtAlign').onclick=()=>{
     onPick(e,w){const a=lineAngleAt(e,w);if(a==null){toast('這個物件取不到方向');return;}
       let d=normA(deg(a));if(d>90&&d<=270)d=normA(d-180);textCtx=saved;cmd=null;$('txtA').value=d.toFixed(2);openTextDlg(null,true);if(saved&&saved.edit)endCmd();else startCmdQuiet(cmdText());}});
 };
+function startPin(w){startCmd(cmdCoord(true,true));setCursorRaw(w);try{navigator.vibrate&&navigator.vibrate(30);}catch(_){}}
 function startCmdQuiet(c){cmd=c;cur=null;kp.unlockAll();if(c.keypad)kp.show(c.keypad);refreshCmd();updateUI();}
 function lineAngleAt(e,w){
   if(e.t==='line')return Math.atan2(e.b[1]-e.a[1],e.b[0]-e.a[0]);
@@ -520,14 +526,15 @@ function openNav(la,lo){const u=`https://www.google.com/maps/dir/?api=1&destinat
 // 街景：Google 地圖的街景畫面（不用金鑰）；附近沒有街景時由 Google 地圖自己處理
 function openPano(la,lo){const u=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${la.toFixed(7)},${lo.toFixed(7)}`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
-function cmdCoord(ll){return pointsCmd({name:ll?'ll':'xy',live:true,keypad:'xy',
+// pin（2026-11-25）：選取模式長按圖上任一處叫出來，不開鍵盤，街景放第一顆；拖曳可以微調位置
+function cmdCoord(ll,pin){return pointsCmd({name:pin?'pin':ll?'ll':'xy',live:true,keypad:pin?null:'xy',
   base(){return null;},
   hint(){if(!cur)return[ll?'經緯度：點圖上任一點（可拖曳、可鎖點，或輸入坐標）':'點坐標：點圖上任一點（可拖曳、可鎖點）',false];
     const p=cur.p;if(!ll)return[`X ${fmt(p[0])}\nY ${fmt(p[1])}`,'big'];
     const[la,lo]=tm2ll(p[0],p[1],st.lon0);return[`${dmsLL(la,'N','S')}\n${dmsLL(lo,'E','W')}`,'big'];},
   extraBtns(){return cur?[{t:'複製',f:()=>{const p=cur.p;let t;if(ll){const[la,lo]=tm2ll(p[0],p[1],st.lon0);t=`${dmsLL(la,'N','S')} ${dmsLL(lo,'E','W')}`;}else t=`${fmt(p[0])},${fmt(p[1])}`;
       (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已複製：'+t)).catch(()=>toast(t,4000));}},
-    ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}},{t:'街景',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openPano(la,lo);}}]:[])]:[];},
+    ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}},{t:'街景',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openPano(la,lo);}}]:[])].sort((a,b)=>pin?(b.t==='街景')-(a.t==='街景'):0):[];},
   onPoint(){},ok(){endCmd();}
 });}
 
@@ -1456,6 +1463,8 @@ cv.addEventListener('pointerdown',e=>{
   if(!cmd){const gr=hitGrip(sp);if(gr){const e0=selE;selE0=e0;gripHit0=gr;startCmd(gripCmd(e0,gr));cur={raw:gr.p.slice(),p:gr.p.slice(),snap:null};refreshCmd();g={type:'pending',start:sp,last:sp,moved:false,grip:true};return;}}
   if((!cmd||cmd.kind==='select')&&boxArm){g={type:'box',start:sp};boxNow=[sp,sp];return;}
   g={type:'pending',start:sp,last:sp,moved:false};
+  // 選取模式長按（0.55 秒、手指沒動）：在那一點叫出經緯度／街景（2026-11-25）
+  if(!cmd&&!efPick&&!sheetPick){const G0=g;G0.lp=setTimeout(()=>{if(g===G0&&!G0.moved&&ptrs.size===1){g={type:'dead'};startPin(toW(sp));}},550);}
 });
 cv.addEventListener('pointermove',e=>{
   const sp=evPt(e);if(ptrs.has(e.pointerId))ptrs.set(e.pointerId,sp);
@@ -1465,7 +1474,7 @@ cv.addEventListener('pointermove',e=>{
     if(dist(sp,ink.hp)>6){ink.hp=sp;inkHold();}return;}
   if(g.type==='erase'){eraseAt(toW(sp),g);return;}
   if(g.type==='box'){boxNow=[g.start,sp];schedule();return;}
-  if(g.type==='pending'&&dist(sp,g.start)>8){g.moved=true;g.type=(cmd&&cmd.kind==='points'&&cur)?'cursor':'pan';}
+  if(g.type==='pending'&&dist(sp,g.start)>8){g.moved=true;clearTimeout(g.lp);g.type=(cmd&&cmd.kind==='points'&&cur)?'cursor':'pan';}
   if(g.type==='pan'){const cs=carrying()?toS(cur.raw):null;st.view.ox+=sp[0]-g.last[0];st.view.oy+=sp[1]-g.last[1];g.last=sp;if(cs){const w=toW(cs);cur={raw:w,p:w.slice(),snap:null};}schedule();return;}
   if(g.type==='cursor'){const s=st.view.s,raw=[cur.raw[0]+(sp[0]-g.last[0])/s,cur.raw[1]-(sp[1]-g.last[1])/s];g.last=sp;setCursorRaw(raw);return;}
 });
@@ -1473,7 +1482,7 @@ function endPtr(e,cancel){
   ptrs.delete(e.pointerId);if(!g)return;
   if(g.type==='pinch'){if(g.cs&&cur)setCursorRaw(cur.raw);if(ptrs.size<2)g=ptrs.size?{type:'dead'}:null;saveSettings();return;}
   if(g.type==='dead'){if(!ptrs.size)g=null;return;}
-  const G=g;g=null;if(ink)clearTimeout(ink.ht);if(cancel){ink=null;boxNow=null;schedule();return;}
+  const G=g;g=null;clearTimeout(G.lp);if(ink)clearTimeout(ink.ht);if(cancel){ink=null;boxNow=null;schedule();return;}
   if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
   if(G.type==='ink'){const P=ink.pts,sh=ink.shape;ink=null;if(sh&&cmd&&cmd.hint)setHint(...[].concat(cmd.hint()));if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
   if(G.type==='erase'){if(G.did)saveDraw();return;}
@@ -2190,14 +2199,16 @@ function fillOsnaps(os){os.innerHTML='';for(const[k,n]of OSN){const l=document.c
 const OSN_MINE=['end','app','ext','ins','int','per','nea'];
 function setOsnaps(keys){for(const[k]of OSN)st.osm[k]=keys.includes(k);if(!st.snap)st.snap=true;saveSettings();updateUI();fillOsnaps($('osnapsQ'));}
 function fillSettings(){
-  $('sLt').value=st.ltscale;$('sLon').value=st.lon0;$('sPrec').value=st.prec;$('sTh').value=st.textH;$('sInk').value=st.inkW;
+  $('sLt').value=st.ltscale;$('sLon').value=st.lon0;$('sPrec').value=st.prec;$('sTh').value=st.textH;$('sHfs').value=st.hfs||13;$('sInk').value=st.inkW;
   $('bgDark').style.outline=st.bg!=='white'?'2px solid var(--acc)':'';$('bgWhite').style.outline=st.bg==='white'?'2px solid var(--acc)':'';
   fillOsnaps($('osnaps'));
   const sf=NP().SupportFolder;$('supPick').style.display=sf?'block':'none';$('supScan').style.display=sf&&localStorage.getItem('simplecad.supUri')?'block':'none';
   $('supMsg').textContent=supportStatus();
 }
 const numSet=(id,k,min)=>$(id).onchange=e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>(min??-Infinity)){st[k]=v;saveSettings();for(const x of imp)if(x._sg)delete x._sg;schedule();}else e.target.value=st[k];};
-numSet('sLt','ltscale',0);numSet('sLon','lon0');numSet('sTh','textH',0);numSet('sInk','inkW',0);
+numSet('sLt','ltscale',0);$('sHfs').onchange=e=>{const v=parseFloat(e.target.value);if(v>=9&&v<=40){st.hfs=v;saveSettings();applyHfs();hintMoreUpd();}else e.target.value=st.hfs||13;};
+$('hintT').onclick=hintToggle;$('hintMore').onclick=hintToggle;
+numSet('sLon','lon0');numSet('sTh','textH',0);numSet('sInk','inkW',0);
 $('sPrec').onchange=e=>{st.prec=Math.max(0,Math.min(6,parseInt(e.target.value)||0));e.target.value=st.prec;saveSettings();refreshCmd();};
 $('bgDark').onclick=()=>{st.bg='dark';saveSettings();fillSettings();schedule();};
 $('bgWhite').onclick=()=>{st.bg='white';saveSettings();fillSettings();schedule();};
@@ -2482,6 +2493,7 @@ function loadAll(){
     else{const v1=JSON.parse(localStorage.getItem('simplecad.v1')||'null');if(v1&&v1.st){if(v1.st.ents&&v1.st.ents.length)localStorage.setItem('simplecad.draw:(無底圖)',JSON.stringify(v1.st.ents.map(e=>Object.assign(e,{ly:e.ly||'補繪'}))));if(Array.isArray(v1.lts))mergeLT(v1.lts.filter(x=>x&&x.name&&Array.isArray(x.els)).map(finishLT));}}
     const sl=JSON.parse(localStorage.getItem('simplecad.lts')||'null');if(Array.isArray(sl))mergeLT(sl.filter(x=>x&&x.name&&Array.isArray(x.els)).map(finishLT));
   }catch(_){}
+  applyHfs();
   if(!st.layers||!st.layers.length)st.layers=[{name:'補繪',ci:1,lt:'CONTINUOUS',on:true}];
   if(!st.layers.some(l=>l.name===st.cur))st.cur=st.layers[0].name;
   st.view=null;loadDraw('(無底圖)');
