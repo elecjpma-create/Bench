@@ -218,7 +218,7 @@ function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('
 const kp={
   mode:'la',act:null,vals:{},lock:{},shown:false,hidden:false,
   fields(){return this.mode==='la'?[['L','長度'],['A','角度']]:this.mode==='xy'?[['X','X 坐標'],['Y','Y 坐標']]:this.mode==='d'?[['D','距離']]:this.mode==='k'?[['K','比例']]:[['A','角度']];},
-  unlockAll(){this.lock={};this.vals={};this.ref=null;this.cur0=null;},
+  unlockAll(){this.lock={};this.vals={};this.ref=null;this.cur0=null;this.fresh=null;},
   // AC（2026-11-25）：一次清掉所有欄位，回到跟著游標；游標回到打數字之前的位置
   clearAll(){const c0=this.cur0;if(Object.keys(this.lock).length)cur=c0?c0:(cur&&cur.typed?null:cur);this.unlockAll();this.act=this.fields()[0][0];this.render();refreshCmd();schedule();},
   keep0(){if(!Object.keys(this.lock).length&&!this.cur0)this.cur0=cur&&!cur.typed?{raw:cur.raw.slice(),p:cur.p.slice(),snap:cur.snap}:null;},
@@ -254,6 +254,7 @@ const kp={
     const k=this.act;if(!k)return;
     this.keep0();
     let v=this.lock[k]?this.vals[k]:'';
+    if(this.fresh===k){this.fresh=null;if(c!=='⌫'&&c!=='-')v='';}// 預填的值（上次的偏移距離）：直接打數字＝換掉，不接在後面
     // ⌫（2026-11-20）：欄位是跟著游標的數字時，按 ⌫ 先清空讓你打；已經空了再按 ⌫ 才回到跟著游標
     if(c==='⌫'){if(!this.lock[k]){this.clearFor(k);return;}if(this.vals[k]===''){delete this.lock[k];delete this.vals[k];this.apply();return;}v=this.vals[k].slice(0,-1);}
     else if(c==='-'){v=v.startsWith('-')?v.slice(1):'-'+v;}
@@ -264,7 +265,7 @@ const kp={
   },
   toggleMode(){if(this.mode==='la')this.setMode('xy');else if(this.mode==='xy'){this.setMode('la');if(cmd&&cmd.kind==='points'&&cmd.keypad==='la')kp.keepXY=false;}refreshCmd();},
   setRef(){if(this.ref==null){const b=cmdBase();this.ref=(b&&cur&&dist(b,cur.p)>1e-12)?Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]):0;}},
-  clearFor(k){this.keep0();this.setRef();this.act=k;this.vals[k]='';this.lock[k]=true;this.apply();},
+  clearFor(k){this.fresh=null;this.keep0();this.setRef();this.act=k;this.vals[k]='';this.lock[k]=true;this.apply();},
   num(k){const v=parseFloat(this.vals[k]);return this.lock[k]&&isFinite(v)?v:null;},
   apply(){
     if(this.mode==='d'){this.render();refreshCmd();return;}
@@ -752,61 +753,44 @@ function cmdChLayer(){return selectStage({title:'改圖層',verb:'改圖層',nex
 
 /* 偏移（2026-11-25 改）：鍵盤一直開著，距離隨時可改。
    「多重」＝選一次線，連續偏移多條，每條自己打距離（都從原線量）；打完距離按 ✓＝偏移到上一次那一側，或直接點要的那一側。
-   「參考」＝在圖上取：點一點按 ✓＝偏移通過那一點（多重時可以接著點下一點）；點兩點＝兩點距離；「點線」＝點一條線取它的長度（多段線取點到的那一段）。 */
-function cmdOffset(){return{kind:'pickObj',name:'offset',keypad:'d',src:null,multi:false,side:null,n:0,ref:null,pts:[],_skip:false,
-  init(){kp.setMode('d');if(st.lastOff){kp.vals.D=String(st.lastOff);kp.lock.D=true;}kp.render();},
-  base(){return this.ref&&this.pts.length?this.pts[this.pts.length-1]:null;},
+   「通過」（同 AutoCAD OFFSET 的 T）＝選線後點一點，平行線通過那一點；配合多重可以一直點下去。開關會記住，下次偏移照用。 */
+function cmdOffset(){return{kind:'pickObj',name:'offset',keypad:'d',src:null,multi:false,thru:!!st.offThru,side:null,n:0,dsave:null,_skip:false,
+  init(){kp.setMode('d');if(st.lastOff){kp.vals.D=String(st.lastOff);kp.lock.D=true;kp.fresh='D';}this.stage();},
+  stage(){const k=this.src?(this.thru?'points':'side'):'pickObj';if(k!==this.kind)cur=null;this.kind=k;const km=k==='points'?'xy':'d';
+    if(kp.mode!==km){if(km==='xy'){this.dsave={v:kp.vals.D,l:!!kp.lock.D};kp.setMode('xy');}
+      else{kp.setMode('d');if(this.dsave&&this.dsave.l){kp.vals.D=this.dsave.v;kp.lock.D=true;kp.fresh='D';}this.dsave=null;}}
+    kp.render();},
+  base(){return null;},
   dist(){const d=kp.num('D');return d>0?d:null;},
-  hint(){
-    if(this.ref){if(this.ref.line)return['參考：點一條線，用它的長度當偏移距離（多段線取點到的那一段）',true];
-      if(this.pts.length)return['參考：點第二點，兩點的距離當偏移距離',true];
-      return[this.src?'參考：點一點（可鎖點）按 ✓＝偏移通過這一點；或點兩點量距離':'參考：點兩點量距離（要偏移通過某一點，先點要偏移的線再按參考）',true];}
-    const d=this.dist(),ds=d?fmt(d):'（先輸入距離）';
-    if(!this.src)return[`偏移 ${ds}：點要偏移的線（底圖的線也可以）`+(this.n?'，或按 ✓ 結束':''),true];
+  hint(){const d=this.dist(),ds=d?fmt(d):'（先輸入距離）',end=this.n?`；已 ${this.n} 條，按 ✓ 結束`:'';
+    if(!this.src)return[(this.thru?'偏移（通過）：點要偏移的線':`偏移 ${ds}：點要偏移的線（底圖的線也可以）`)+end,true];
+    if(this.thru)return[`${this.multi?'多重偏移（通過）':'偏移（通過）'}：點新線要通過的點（可鎖點），再點一下或按 ✓ 確定`+(this.multi?end:''),true];
     if(this.multi&&this.side)return[`多重偏移（已 ${this.n} 條，距離都從原線量）：打下一個距離按 ✓＝同一側，或點要的那一側；不打數字按 ✓ 結束`,true];
     return[`${this.multi?'多重偏移':'偏移'} ${ds}：點要偏移的那一側`,true];},
-  onPick(e,w){
-    if(this.ref&&this.ref.line){const L=segLenAt(e,w);if(!(L>1e-9)){toast('這種物件取不到長度（直線、多段線才可以）');return;}this.endRef(L);return;}
-    if(!['line','pline','circle','arc'].includes(e.t)){toast('這種物件不能偏移');return;}
-    this.src=e;this.side=null;this.kind='side';selSet=new Set([e]);refreshCmd();},
-  make(d,w){const r=offsetEnt(this.src,d,w);if(!r)return false;snapshot();r.ly=st.cur;delete r.imp;st.ents.push(r);saveDraw();st.lastOff=+d.toFixed(4);saveSettings();this.n++;return true;},
-  done1(w){if(this.multi){this.side=w.slice();kp.clearFor('D');refreshCmd();return;}
-    selSet.clear();this.src=null;this.side=null;this.kind='pickObj';refreshCmd();},
-  onSide(w){const d=this.dist();if(!d){toast('先輸入距離，或按「參考」在圖上取');return;}if(this.make(d,w))this.done1(w);},
-  onPoint(p){this.pts.push(p);if(this.pts.length>=2){const L=dist(this.pts[0],this.pts[1]);if(!(L>1e-9)){toast('兩點太近');this.pts=[];return;}this.endRef(L);}},
-  enterRef(){this.ref={d0:kp.vals.D,l0:!!kp.lock.D,line:false};this.pts=[];this.kind='points';cur=null;kp.setMode('xy');refreshCmd();},
-  exitRef(keepD){const r=this.ref;this.ref=null;this.pts=[];cur=null;this.kind=this.src?'side':'pickObj';kp.setMode('d');
-    if(!keepD&&r&&r.l0){kp.vals.D=r.d0;kp.lock.D=true;}kp.render();},
-  endRef(L){this.exitRef(true);kp.vals.D=String(+L.toFixed(4));kp.lock.D=true;
-    toast(`參考距離 ${fmt(L)}`+(this.src?(this.multi&&this.side?'，按 ✓ 偏移到同一側，或點要的那一側':'，點要偏移的那一側'):'，再點要偏移的線'),3000);
-    this._skip=true;setTimeout(()=>{this._skip=false;},0);refreshCmd();},
+  onPick(e){if(!['line','pline','circle','arc'].includes(e.t)){toast('這種物件不能偏移');return;}
+    this.src=e;this.side=null;selSet=new Set([e]);this.stage();refreshCmd();},
+  make(d,w,thr){const r=offsetEnt(this.src,d,w);if(!r)return false;snapshot();r.ly=st.cur;delete r.imp;st.ents.push(r);saveDraw();if(!thr){st.lastOff=+d.toFixed(4);saveSettings();}this.n++;return true;},
+  done1(w){if(this.multi){this.side=w.slice();if(!this.thru)kp.clearFor('D');refreshCmd();return;}
+    selSet.clear();this.src=null;this.side=null;this.stage();refreshCmd();},
+  onSide(w){const d=this.dist();if(!d){toast('先輸入距離，或按「通過」改成點圖上的點');return;}if(this.make(d,w))this.done1(w);},
+  onPoint(p){this._skip=true;setTimeout(()=>{this._skip=false;},0);// 通過：放下這一點就偏移（✓ 不再另外結束）
+    const t=offsetThrough(this.src,p);cur=null;if(t&&this.make(t.d,p,true)){toast(`已偏移 ${fmt(t.d)}`,1500);this.done1(p);}},
   ok(){if(this._skip){this._skip=false;return;}
-    if(this.ref){if(this.ref.line||this.pts.length!==1){this.exitRef();refreshCmd();return;}
-      const P=this.pts[0];if(!this.src){toast('要偏移通過一點，先點要偏移的線');this.pts=[];refreshCmd();return;}
-      const t=offsetThrough(this.src,P);if(!t||!this.make(t.d,P)){this.pts=[];refreshCmd();return;}
-      toast(`已偏移 ${fmt(t.d)} 通過這一點`+(this.multi?'，可以接著點下一點':''),2500);
-      if(this.multi){this.pts=[];cur=null;this.side=P.slice();refreshCmd();return;}
-      this.exitRef(true);this.done1(P);return;}
-    if(this.src&&this.multi&&this.side&&this.dist()){if(this.make(this.dist(),this.side))this.done1(this.side);return;}
-    if(!this.src&&!this.n&&this.dist()){st.lastOff=this.dist();saveSettings();toast('點要偏移的線');return;}
+    if(this.src&&!this.thru&&this.multi&&this.side&&this.dist()){if(this.make(this.dist(),this.side))this.done1(this.side);return;}
+    if(!this.src&&!this.n&&!this.thru&&this.dist()){st.lastOff=this.dist();saveSettings();toast('點要偏移的線');return;}
     const n=this.n;endCmd();if(n)toast(`已偏移 ${n} 條`);},
-  cancel(){if(this.ref){this.exitRef();return false;}if(this.n)toast(`已偏移 ${this.n} 條`);},
-  extraBtns(){
-    if(this.ref)return[{t:this.ref.line?'點兩點':'點線',c:'mode',f:()=>{this.ref.line=!this.ref.line;this.pts=[];cur=null;this.kind=this.ref.line?'pickObj':'points';refreshCmd();}},
-      {t:'參考中',c:'mode on',f:()=>{this.exitRef();refreshCmd();}}];
-    return[{t:this.multi?'多重中':'多重',c:'mode'+(this.multi?' on':''),f:()=>{this.multi=!this.multi;
-        if(!this.multi&&this.side){selSet.clear();this.src=null;this.side=null;this.kind='pickObj';}else if(this.multi&&this.n&&!this.src)toast('點要偏移的線，之後可以連續偏移',2000);refreshCmd();}},
-      {t:'參考',c:'mode',f:()=>this.enterRef()}];},
-  preview(){
-    if(this.ref&&!this.ref.line){if(this.pts.length===1&&cur)previewPath([this.pts[0]],cur.p,false,true);
-      else if(!this.pts.length&&cur&&this.src){const t=offsetThrough(this.src,cur.p,true);if(t){ctx.globalAlpha=.6;drawTemp(t.e);ctx.globalAlpha=1;}}return;}
-    if(!this.ref&&this.src&&this.multi&&this.side&&this.dist()){const r=offsetEnt(this.src,this.dist(),this.side,true);if(r){ctx.globalAlpha=.5;drawTemp(r);ctx.globalAlpha=1;}}}
+  cancel(){if(this.n)toast(`已偏移 ${this.n} 條`);},
+  extraBtns(){return[
+    {t:this.multi?'多重中':'多重',c:'mode'+(this.multi?' on':''),f:()=>{this.multi=!this.multi;
+      if(!this.multi&&this.side){selSet.clear();this.src=null;this.side=null;this.stage();}else if(this.multi&&this.n&&!this.src)toast('點要偏移的線，之後可以連續偏移',2000);refreshCmd();}},
+    {t:this.thru?'通過中':'通過',c:'mode'+(this.thru?' on':''),f:()=>{this.thru=!this.thru;st.offThru=this.thru;saveSettings();this.side=null;this.stage();refreshCmd();}}];},
+  preview(){if(!this.src)return;
+    if(this.thru){if(cur){const t=offsetThrough(this.src,cur.p,true);if(t){ctx.globalAlpha=.6;drawTemp(t.e);ctx.globalAlpha=1;}}return;}
+    if(this.multi&&this.side&&this.dist()){const r=offsetEnt(this.src,this.dist(),this.side,true);if(r){ctx.globalAlpha=.5;drawTemp(r);ctx.globalAlpha=1;}}}
 };}
 /* 多段線上離 w 最近的那一段 */
 function plineSegNear(e,w){const P=e.pts.filter((p,i,a)=>i===0||dist(p,a[i-1])>1e-9),n=P.length;if(n<2)return null;const segs=e.closed?n:n-1;let bi=0,bd=Infinity;
   for(let i=0;i<segs;i++){const dd=dist(closestOnSeg(w,P[i],P[(i+1)%n]),w);if(dd<bd){bd=dd;bi=i;}}return[P[bi],P[(bi+1)%n]];}
-/* 參考取長度：直線＝全長，多段線＝點到的那一段 */
-function segLenAt(e,w){if(e.t==='line')return dist(e.a,e.b);if(e.t==='pline'){const s=plineSegNear(e,w);return s?dist(s[0],s[1]):null;}return null;}
 /* 偏移通過一點：算出距離（直線、多段線那一段的垂直距離；圓、弧＝到圓心距離和半徑的差） */
 function offsetThrough(e,P,quiet){let d;
   const perp=(a,b)=>{const L=dist(a,b);return L?Math.abs((P[0]-a[0])*(b[1]-a[1])-(P[1]-a[1])*(b[0]-a[0]))/L:null;};
