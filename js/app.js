@@ -218,7 +218,10 @@ function loadDraw(key){drawKey=key;try{st.ents=JSON.parse(localStorage.getItem('
 const kp={
   mode:'la',act:null,vals:{},lock:{},shown:false,hidden:false,
   fields(){return this.mode==='la'?[['L','長度'],['A','角度']]:this.mode==='xy'?[['X','X 坐標'],['Y','Y 坐標']]:this.mode==='d'?[['D','距離']]:this.mode==='k'?[['K','比例']]:[['A','角度']];},
-  unlockAll(){this.lock={};this.vals={};this.ref=null;},
+  unlockAll(){this.lock={};this.vals={};this.ref=null;this.cur0=null;},
+  // AC（2026-11-25）：一次清掉所有欄位，回到跟著游標；游標回到打數字之前的位置
+  clearAll(){const c0=this.cur0;if(Object.keys(this.lock).length)cur=c0?c0:(cur&&cur.typed?null:cur);this.unlockAll();this.act=this.fields()[0][0];this.render();refreshCmd();schedule();},
+  keep0(){if(!Object.keys(this.lock).length&&!this.cur0)this.cur0=cur&&!cur.typed?{raw:cur.raw.slice(),p:cur.p.slice(),snap:cur.snap}:null;},
   setMode(m){this.mode=m;this.unlockAll();this.act=this.fields()[0][0];this.render();},
   show(m){this.shown=true;if(m)this.setMode(m);$('keypad').style.display=this.hidden?'none':'block';this.render();},
   hide(){this.shown=false;$('keypad').style.display='none';},
@@ -245,9 +248,11 @@ const kp={
     const hb=document.createElement('button');hb.id='kswap';hb.textContent='⌄';hb.title='收起鍵盤';hb.onclick=()=>{this.hidden=true;$('keypad').style.display='none';updateCmdBar();};$('kfields').appendChild(hb);
   },
   key(c){
+    if(c==='AC'){this.clearAll();return;}// AC 不能觸發「自動當第一點」
     // 長度模式還沒有第一點：游標已經放好就自動當第一點（中心、基準點），打的數字＝長度／半徑（2026-11-23）
     if(this.mode==='la'&&!cmdBase()&&cmd&&cmd.kind==='points'){if(!cur){toast('先在圖上點一下位置',2000);return;}commitPoint();if(!cmdBase())return;this.setMode('la');}
     const k=this.act;if(!k)return;
+    this.keep0();
     let v=this.lock[k]?this.vals[k]:'';
     // ⌫（2026-11-20）：欄位是跟著游標的數字時，按 ⌫ 先清空讓你打；已經空了再按 ⌫ 才回到跟著游標
     if(c==='⌫'){if(!this.lock[k]){this.clearFor(k);return;}if(this.vals[k]===''){delete this.lock[k];delete this.vals[k];this.apply();return;}v=this.vals[k].slice(0,-1);}
@@ -259,7 +264,7 @@ const kp={
   },
   toggleMode(){if(this.mode==='la')this.setMode('xy');else if(this.mode==='xy'){this.setMode('la');if(cmd&&cmd.kind==='points'&&cmd.keypad==='la')kp.keepXY=false;}refreshCmd();},
   setRef(){if(this.ref==null){const b=cmdBase();this.ref=(b&&cur&&dist(b,cur.p)>1e-12)?Math.atan2(cur.p[1]-b[1],cur.p[0]-b[0]):0;}},
-  clearFor(k){this.setRef();this.act=k;this.vals[k]='';this.lock[k]=true;this.apply();},
+  clearFor(k){this.keep0();this.setRef();this.act=k;this.vals[k]='';this.lock[k]=true;this.apply();},
   num(k){const v=parseFloat(this.vals[k]);return this.lock[k]&&isFinite(v)?v:null;},
   apply(){
     if(this.mode==='d'){this.render();refreshCmd();return;}
@@ -277,6 +282,12 @@ const kp={
   const keys=['7','8','9','MODE','4','5','6','⌫','1','2','3','✗','0','-','.','✓'];// 2026-11-23：拿掉＋，右上改成「座標／長度」切換
   for(const k of keys){const b=document.createElement('button');b.textContent=k;if(k==='✗')b.className='x';if(k==='✓')b.className='ok';
     if(k==='MODE'){b.id='kmode';b.className='md';b.onclick=()=>kp.toggleMode();$('kkeys').appendChild(b);continue;}
+    if(k==='⌫'){// 長按 ⌫＝AC，一次清掉所有欄位（2026-11-25）
+      let t=0,lp=false;const stop=()=>{clearTimeout(t);t=0;};
+      b.addEventListener('pointerdown',()=>{lp=false;stop();t=setTimeout(()=>{t=0;lp=true;kp.key('AC');try{navigator.vibrate&&navigator.vibrate(30);}catch(_){}toast('已清掉所有欄位',1200);},500);});
+      for(const ev of['pointerup','pointercancel','pointerleave'])b.addEventListener(ev,stop);
+      b.addEventListener('contextmenu',e=>e.preventDefault());
+      b.onclick=()=>{if(lp){lp=false;return;}kp.key('⌫');};$('kkeys').appendChild(b);continue;}
     b.onclick=()=>{if(k==='✗')cancelCmd();else if(k==='✓')cmdOk();else kp.key(k);};$('kkeys').appendChild(b);}
 })();
 
@@ -739,23 +750,75 @@ function cmdChLayer(){return selectStage({title:'改圖層',verb:'改圖層',nex
   openSheet('pickLySheet');
 },extra:{name:'chly',filter:ownOnly}});}
 
-/* 偏移 */
-function cmdOffset(){return{kind:'dist',name:'offset',keypad:'d',
+/* 偏移（2026-11-25 改）：鍵盤一直開著，距離隨時可改。
+   「多重」＝選一次線，連續偏移多條，每條自己打距離（都從原線量）；打完距離按 ✓＝偏移到上一次那一側，或直接點要的那一側。
+   「參考」＝在圖上取：點一點按 ✓＝偏移通過那一點（多重時可以接著點下一點）；點兩點＝兩點距離；「點線」＝點一條線取它的長度（多段線取點到的那一段）。 */
+function cmdOffset(){return{kind:'pickObj',name:'offset',keypad:'d',src:null,multi:false,side:null,n:0,ref:null,pts:[],_skip:false,
   init(){kp.setMode('d');if(st.lastOff){kp.vals.D=String(st.lastOff);kp.lock.D=true;}kp.render();},
-  hint(){return['偏移：輸入距離後按 ✓',false];},
-  ok(){const d=kp.num('D');if(!(d>0)){toast('請輸入大於 0 的距離');return;}st.lastOff=d;saveSettings();startCmd(offsetPick(d));}
+  base(){return this.ref&&this.pts.length?this.pts[this.pts.length-1]:null;},
+  dist(){const d=kp.num('D');return d>0?d:null;},
+  hint(){
+    if(this.ref){if(this.ref.line)return['參考：點一條線，用它的長度當偏移距離（多段線取點到的那一段）',true];
+      if(this.pts.length)return['參考：點第二點，兩點的距離當偏移距離',true];
+      return[this.src?'參考：點一點（可鎖點）按 ✓＝偏移通過這一點；或點兩點量距離':'參考：點兩點量距離（要偏移通過某一點，先點要偏移的線再按參考）',true];}
+    const d=this.dist(),ds=d?fmt(d):'（先輸入距離）';
+    if(!this.src)return[`偏移 ${ds}：點要偏移的線（底圖的線也可以）`+(this.n?'，或按 ✓ 結束':''),true];
+    if(this.multi&&this.side)return[`多重偏移（已 ${this.n} 條，距離都從原線量）：打下一個距離按 ✓＝同一側，或點要的那一側；不打數字按 ✓ 結束`,true];
+    return[`${this.multi?'多重偏移':'偏移'} ${ds}：點要偏移的那一側`,true];},
+  onPick(e,w){
+    if(this.ref&&this.ref.line){const L=segLenAt(e,w);if(!(L>1e-9)){toast('這種物件取不到長度（直線、多段線才可以）');return;}this.endRef(L);return;}
+    if(!['line','pline','circle','arc'].includes(e.t)){toast('這種物件不能偏移');return;}
+    this.src=e;this.side=null;this.kind='side';selSet=new Set([e]);refreshCmd();},
+  make(d,w){const r=offsetEnt(this.src,d,w);if(!r)return false;snapshot();r.ly=st.cur;delete r.imp;st.ents.push(r);saveDraw();st.lastOff=+d.toFixed(4);saveSettings();this.n++;return true;},
+  done1(w){if(this.multi){this.side=w.slice();kp.clearFor('D');refreshCmd();return;}
+    selSet.clear();this.src=null;this.side=null;this.kind='pickObj';refreshCmd();},
+  onSide(w){const d=this.dist();if(!d){toast('先輸入距離，或按「參考」在圖上取');return;}if(this.make(d,w))this.done1(w);},
+  onPoint(p){this.pts.push(p);if(this.pts.length>=2){const L=dist(this.pts[0],this.pts[1]);if(!(L>1e-9)){toast('兩點太近');this.pts=[];return;}this.endRef(L);}},
+  enterRef(){this.ref={d0:kp.vals.D,l0:!!kp.lock.D,line:false};this.pts=[];this.kind='points';cur=null;kp.setMode('xy');refreshCmd();},
+  exitRef(keepD){const r=this.ref;this.ref=null;this.pts=[];cur=null;this.kind=this.src?'side':'pickObj';kp.setMode('d');
+    if(!keepD&&r&&r.l0){kp.vals.D=r.d0;kp.lock.D=true;}kp.render();},
+  endRef(L){this.exitRef(true);kp.vals.D=String(+L.toFixed(4));kp.lock.D=true;
+    toast(`參考距離 ${fmt(L)}`+(this.src?(this.multi&&this.side?'，按 ✓ 偏移到同一側，或點要的那一側':'，點要偏移的那一側'):'，再點要偏移的線'),3000);
+    this._skip=true;setTimeout(()=>{this._skip=false;},0);refreshCmd();},
+  ok(){if(this._skip){this._skip=false;return;}
+    if(this.ref){if(this.ref.line||this.pts.length!==1){this.exitRef();refreshCmd();return;}
+      const P=this.pts[0];if(!this.src){toast('要偏移通過一點，先點要偏移的線');this.pts=[];refreshCmd();return;}
+      const t=offsetThrough(this.src,P);if(!t||!this.make(t.d,P)){this.pts=[];refreshCmd();return;}
+      toast(`已偏移 ${fmt(t.d)} 通過這一點`+(this.multi?'，可以接著點下一點':''),2500);
+      if(this.multi){this.pts=[];cur=null;this.side=P.slice();refreshCmd();return;}
+      this.exitRef(true);this.done1(P);return;}
+    if(this.src&&this.multi&&this.side&&this.dist()){if(this.make(this.dist(),this.side))this.done1(this.side);return;}
+    if(!this.src&&!this.n&&this.dist()){st.lastOff=this.dist();saveSettings();toast('點要偏移的線');return;}
+    const n=this.n;endCmd();if(n)toast(`已偏移 ${n} 條`);},
+  cancel(){if(this.ref){this.exitRef();return false;}if(this.n)toast(`已偏移 ${this.n} 條`);},
+  extraBtns(){
+    if(this.ref)return[{t:this.ref.line?'點兩點':'點線',c:'mode',f:()=>{this.ref.line=!this.ref.line;this.pts=[];cur=null;this.kind=this.ref.line?'pickObj':'points';refreshCmd();}},
+      {t:'參考中',c:'mode on',f:()=>{this.exitRef();refreshCmd();}}];
+    return[{t:this.multi?'多重中':'多重',c:'mode'+(this.multi?' on':''),f:()=>{this.multi=!this.multi;
+        if(!this.multi&&this.side){selSet.clear();this.src=null;this.side=null;this.kind='pickObj';}else if(this.multi&&this.n&&!this.src)toast('點要偏移的線，之後可以連續偏移',2000);refreshCmd();}},
+      {t:'參考',c:'mode',f:()=>this.enterRef()}];},
+  preview(){
+    if(this.ref&&!this.ref.line){if(this.pts.length===1&&cur)previewPath([this.pts[0]],cur.p,false,true);
+      else if(!this.pts.length&&cur&&this.src){const t=offsetThrough(this.src,cur.p,true);if(t){ctx.globalAlpha=.6;drawTemp(t.e);ctx.globalAlpha=1;}}return;}
+    if(!this.ref&&this.src&&this.multi&&this.side&&this.dist()){const r=offsetEnt(this.src,this.dist(),this.side,true);if(r){ctx.globalAlpha=.5;drawTemp(r);ctx.globalAlpha=1;}}}
 };}
-function offsetPick(d){return{kind:'pickObj',name:'offset',
-  hint(){return[`偏移 ${fmt(d)}：點要偏移的線（底圖的線也可以）`,true];},
-  onPick(e){if(!['line','pline','circle','arc'].includes(e.t)){toast('這種物件不能偏移');return;}this.src=e;this.kind='side';selSet=new Set([e]);refreshCmd();},
-  onSide(w){const r=offsetEnt(this.src,d,w);if(r){snapshot();r.ly=st.cur;delete r.imp;st.ents.push(r);saveDraw();}selSet.clear();this.kind='pickObj';this.src=null;this.hint=()=>[`偏移 ${fmt(d)}：再點下一條線，或按 ✓ 結束`,true];refreshCmd();},
-  ok(){endCmd();}
-};}
+/* 多段線上離 w 最近的那一段 */
+function plineSegNear(e,w){const P=e.pts.filter((p,i,a)=>i===0||dist(p,a[i-1])>1e-9),n=P.length;if(n<2)return null;const segs=e.closed?n:n-1;let bi=0,bd=Infinity;
+  for(let i=0;i<segs;i++){const dd=dist(closestOnSeg(w,P[i],P[(i+1)%n]),w);if(dd<bd){bd=dd;bi=i;}}return[P[bi],P[(bi+1)%n]];}
+/* 參考取長度：直線＝全長，多段線＝點到的那一段 */
+function segLenAt(e,w){if(e.t==='line')return dist(e.a,e.b);if(e.t==='pline'){const s=plineSegNear(e,w);return s?dist(s[0],s[1]):null;}return null;}
+/* 偏移通過一點：算出距離（直線、多段線那一段的垂直距離；圓、弧＝到圓心距離和半徑的差） */
+function offsetThrough(e,P,quiet){let d;
+  const perp=(a,b)=>{const L=dist(a,b);return L?Math.abs((P[0]-a[0])*(b[1]-a[1])-(P[1]-a[1])*(b[0]-a[0]))/L:null;};
+  if(e.t==='line')d=perp(e.a,e.b);else if(e.t==='circle'||e.t==='arc')d=Math.abs(dist(P,e.o)-e.r);
+  else if(e.t==='pline'){const s=plineSegNear(e,P);d=s?perp(s[0],s[1]):null;}
+  if(d==null)return null;if(!(d>1e-6)){if(!quiet)toast('這一點就在線上，不用偏移');return null;}
+  const r=offsetEnt(e,d,P,quiet);return r?{d,e:r}:null;}
 function cleanEnt(e){const o={t:e.t};for(const k of['a','b','o','r','a0','a1','pts','closed'])if(e[k]!==undefined)o[k]=JSON.parse(JSON.stringify(e[k]));return o;}
-function offsetEnt(e,d,w){
+function offsetEnt(e,d,w,quiet){
   if(e.t==='line'){const dx=e.b[0]-e.a[0],dy=e.b[1]-e.a[1],L=Math.hypot(dx,dy);if(!L)return null;const nx=-dy/L,ny=dx/L,sg=((w[0]-e.a[0])*nx+(w[1]-e.a[1])*ny)>=0?1:-1;
     return{t:'line',a:[e.a[0]+nx*d*sg,e.a[1]+ny*d*sg],b:[e.b[0]+nx*d*sg,e.b[1]+ny*d*sg]};}
-  if(e.t==='circle'||e.t==='arc'){const inside=dist(w,e.o)<e.r,r=e.r+(inside?-d:d);if(r<=0){toast('偏移後半徑小於 0');return null;}const o=cleanEnt(e);o.r=r;return o;}
+  if(e.t==='circle'||e.t==='arc'){const inside=dist(w,e.o)<e.r,r=e.r+(inside?-d:d);if(r<=0){if(!quiet)toast('偏移後半徑小於 0');return null;}const o=cleanEnt(e);o.r=r;return o;}
   if(e.t==='pline'){
     const P=e.pts.filter((p,i,a)=>i===0||dist(p,a[i-1])>1e-9);const n=P.length;if(n<2)return null;const closed=!!e.closed;
     let bi=0,bd=Infinity;const segs=closed?n:n-1;for(let i=0;i<segs;i++){const a=P[i],b=P[(i+1)%n];const dd=dist(closestOnSeg(w,a,b),w);if(dd<bd){bd=dd;bi=i;}}
@@ -1627,7 +1690,7 @@ $('tSet').onclick=()=>{fillSettings();openSheet('setSheet');};
 $('tFile').onclick=()=>{fillRecent();$('drawInfo').textContent=impName?`目前底圖：${impName}（${imp.length} 個物件）　我畫的：${st.ents.length} 個`:`尚未開啟底圖　我畫的：${st.ents.length} 個`;openSheet('fileSheet');};
 window.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
   if(e.key==='Escape')cancelCmd();else if(e.key==='Enter')cmdOk();else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();doUndo();}
-  else if(cmd&&kp.shown&&/^[0-9.\-]$/.test(e.key))kp.key(e.key);else if(cmd&&kp.shown&&e.key==='Backspace')kp.key('⌫');});
+  else if(cmd&&kp.shown&&/^[0-9.\-]$/.test(e.key))kp.key(e.key);else if(cmd&&kp.shown&&e.key==='Backspace')kp.key('⌫');else if(cmd&&kp.shown&&e.key==='Delete')kp.clearAll();});
 
 /* ---------- 圖層面板 ---------- */
 /** 線型選單顯示「編號　說明」：133　鐵欄（說明取 .lin 定義第一段文字，後面的圖樣示意不要） */
