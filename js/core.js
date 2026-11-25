@@ -31,10 +31,10 @@ A,.5,-.2,["GAS",STANDARD,S=.1,R=0.0,X=-0.1,Y=-.05],-.25
 A,.5,-.2,["HW",STANDARD,S=.1,R=0.0,X=-0.1,Y=-.05],-.2`;
 
 const COLORS=['#ffffff','#ff5252','#ffd54a','#5cff8a','#4fe0ff','#4f7dff','#ff5cff','#ff9f40','#9aa1ab'];
-const OSN=[['end','端點'],['mid','中點'],['cen','圓心'],['qua','象限點'],['int','交點'],['app','外觀交點'],['per','垂足'],['ins','插入點'],['nod','節點'],['nea','最近點']];
-const SNAPNAME=Object.fromEntries(OSN);
+const OSN=[['end','端點'],['mid','中點'],['cen','圓心'],['qua','象限點'],['int','交點'],['app','外觀交點'],['ext','延伸'],['per','垂足'],['ins','插入點'],['nod','節點'],['nea','最近點']];
+const SNAPNAME=Object.fromEntries(OSN);SNAPNAME.exti='延伸交點';
 // 沒存過設定時的預設鎖點
-const OSM_DEF={end:true,mid:true,cen:true,qua:true,int:true,app:false,per:true,ins:true,nod:true,nea:true};
+const OSM_DEF={end:true,mid:true,cen:true,qua:true,int:true,app:false,ext:true,per:true,ins:true,nod:true,nea:true};
 
 
 /* ---------- 線型檔解析 ---------- */
@@ -402,7 +402,8 @@ function drawSnapMark(s){
     case'qua':ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y);ctx.lineTo(x,y+r+1);ctx.lineTo(x-r-1,y);ctx.closePath();break;
     case'nod':ctx.arc(x,y,r,0,Math.PI*2);ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
     case'ins':ctx.rect(x-r,y-r,2*r,2*r);ctx.moveTo(x-r,y);ctx.lineTo(x+r,y);ctx.moveTo(x,y-r);ctx.lineTo(x,y+r);break;
-    case'int':ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
+    case'ext':ctx.moveTo(x-r,y);ctx.lineTo(x+r,y);break;
+    case'exti':case'int':ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
     case'app':ctx.rect(x-r,y-r,2*r,2*r);ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
     case'per':ctx.moveTo(x-r,y-r);ctx.lineTo(x-r,y+r);ctx.lineTo(x+r,y+r);ctx.moveTo(x-r,y);ctx.lineTo(x,y);ctx.lineTo(x,y+r);break;
     default:ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y-r);ctx.lineTo(x-r,y+r);ctx.lineTo(x+r,y+r);ctx.closePath();
@@ -424,23 +425,33 @@ function entInfo(e){
 }
 /* ---------- 鎖點 ---------- */
 const near=(e,w,tol)=>{const b=e.bb||entBox(e);return w[0]>=b[0]-tol&&w[0]<=b[2]+tol&&w[1]>=b[1]-tol&&w[1]<=b[3]+tol;};
+let extAcq=[];// 延伸鎖點：游標碰過的端點 {p,dirs}，最多記 2 個，放下一點就清掉
+function extTouch(s){if(!s||s.kind!=='end'||!s.dirs||!s.dirs.length||!st.osm.ext)return;
+  if(extAcq.some(a=>dist(a.p,s.p)<1e-9))return;extAcq.push({p:s.p.slice(),dirs:s.dirs});if(extAcq.length>2)extAcq.shift();}
+function drawExt(s){if(!st.osm.ext)return;ctx.save();ctx.strokeStyle='#ffcc00';ctx.lineWidth=1.5;
+  for(const a of extAcq){const[x,y]=toS(a.p);ctx.beginPath();ctx.moveTo(x-5,y);ctx.lineTo(x+5,y);ctx.moveTo(x,y-5);ctx.lineTo(x,y+5);ctx.stroke();}
+  if(s&&s.from){ctx.strokeStyle='#ff4d4d';ctx.setLineDash([6,5]);ctx.beginPath();const q=toS(s.p);for(const f of s.from){const a=toS(f);ctx.moveTo(a[0],a[1]);ctx.lineTo(q[0],q[1]);}ctx.stroke();}
+  ctx.restore();}
 function findSnap(w,tol,base){
   const O=st.osm;let best=null,bd=tol,nr=null,nd=tol;const prims=[];
-  const cand=(p,kind)=>{const d=dist(p,w);if(d<bd){bd=d;best={p,kind};}};
+  const cand=(p,kind,x)=>{const d=dist(p,w);if(d<bd){bd=d;best=Object.assign({p,kind},x||null);}};
+  // 端點帶「往外延伸的方向」，游標碰過這個端點後就能沿著延伸線鎖（延伸鎖點，2026-11-25）
+  const U=(a,b)=>{const dx=a[0]-b[0],dy=a[1]-b[1],L=Math.hypot(dx,dy);return L>1e-12?[dx/L,dy/L]:null;};
+  const endX=(...u)=>({dirs:u.filter(Boolean)});
   const segTest=(a,b)=>{const q=closestOnSeg(w,a,b),d=dist(q,w);if(d<tol){prims.push({t:'line',a,b,d});if(O.nea&&d<nd){nd=d;nr={p:q,kind:'nea'};}}};
   const circTest=(e,arc)=>{const d0=dist(w,e.o),d=Math.abs(d0-e.r);if(d<tol&&d0>0){const ang=Math.atan2(w[1]-e.o[1],w[0]-e.o[0]);if(arc&&!inRange(ang,e.a0,e.a1))return;prims.push({t:'circle',o:e.o,r:e.r,arc:arc?[e.a0,e.a1]:null,d});if(O.nea&&d<nd){nd=d;nr={p:[e.o[0]+(w[0]-e.o[0])/d0*e.r,e.o[1]+(w[1]-e.o[1])/d0*e.r],kind:'nea'};}}};
   for(const e of snapEnts(w,tol)){
     if(e.t==='ink'||e.t==='fill')continue;
     if(e.t!=='circle'&&e.t!=='arc'&&!near(e,w,tol))continue;
     switch(e.t){
-      case'line':if(O.end){cand(e.a,'end');cand(e.b,'end');}if(O.mid)cand(midp(e.a,e.b),'mid');segTest(e.a,e.b);break;
+      case'line':if(O.end){cand(e.a,'end',endX(U(e.a,e.b)));cand(e.b,'end',endX(U(e.b,e.a)));}if(O.mid)cand(midp(e.a,e.b),'mid');segTest(e.a,e.b);break;
       case'circle':if(O.cen)cand(e.o,'cen');if(!near(e,w,tol))break;if(O.qua)for(const[a,b]of[[1,0],[0,1],[-1,0],[0,-1]])cand([e.o[0]+a*e.r,e.o[1]+b*e.r],'qua');circTest(e,false);break;
       case'arc':{if(O.cen)cand(e.o,'cen');if(!near(e,w,tol))break;const[p0,p1]=arcEnds(e);if(O.end){cand(p0,'end');cand(p1,'end');}
         if(O.mid){const m=e.a0+sweepOf(e.a0,e.a1)/2;cand([e.o[0]+e.r*Math.cos(m),e.o[1]+e.r*Math.sin(m)],'mid');}
         if(O.qua)for(let q=0;q<4;q++){const a=q*Math.PI/2;if(inRange(a,e.a0,e.a1))cand([e.o[0]+e.r*Math.cos(a),e.o[1]+e.r*Math.sin(a)],'qua');}
         circTest(e,true);break;}
       case'pline':{const P=e.pts,n=P.length,kv=e.kv;
-        if(O.end){if(!kv)P.forEach(p=>cand(p,'end'));else if(kv.length)kv.forEach(i=>cand(P[i],'end'));else if(!e.closed){cand(P[0],'end');cand(P[n-1],'end');}}
+        if(O.end){if(!kv)P.forEach((p,i)=>cand(p,'end',endX(i>0||e.closed?U(p,P[(i-1+n)%n]):null,i<n-1||e.closed?U(p,P[(i+1)%n]):null)));else if(kv.length)kv.forEach(i=>cand(P[i],'end'));else if(!e.closed){cand(P[0],'end');cand(P[n-1],'end');}}
         if(O.mid&&kv&&kv.length){for(let j=0;j<kv.length;j++){const i=kv[j],i2=j+1<kv.length?kv[j+1]:(e.closed?n:-1);if(i2===i+1)cand(midp(P[i],P[i2%n]),'mid');}}
         else if(O.mid&&!kv)for(let i=0;i+1<n+(e.closed?1:0);i++)cand(midp(P[i],P[(i+1)%n]),'mid');
         for(let i=0;i+1<n;i++)segTest(P[i],P[i+1]);if(e.closed&&n>2)segTest(P[n-1],P[0]);break;}
@@ -467,8 +478,20 @@ function findSnap(w,tol,base){
       // 游標在線上但離垂足遠：沒開最近點時仍然鎖垂足
       const k=q.d+dist(p,w)*1e-6;if(k<pd){pd=k;pr={p,kind:'per'};}}
   }
+  // 延伸：沿著碰過的端點往外的延長線鎖；延長線碰到游標下的線、或兩條延長線相交，鎖交點
+  let ex=null,exd=tol;
+  if(O.ext&&extAcq.length){const R=[];for(const A of extAcq)for(const u of A.dirs)R.push({p:A.p,u});
+    const fwd=(r,x)=>(x[0]-r.p[0])*r.u[0]+(x[1]-r.p[1])*r.u[1];
+    for(const r of R){const t=fwd(r,w);if(t<=tol)continue;const q=[r.p[0]+r.u[0]*t,r.p[1]+r.u[1]*t],d=dist(q,w);if(d<exd){exd=d;ex={p:q,kind:'ext',from:[r.p]};}
+      const far=[r.p[0]+r.u[0]*(t+1),r.p[1]+r.u[1]*(t+1)];
+      for(const g of prims){const X=g.t==='line'?lineLine(r.p,far,g.a,g.b):lineCircFull(r.p,far,g.o,g.r);
+        for(const x of X){if(fwd(r,x)<=1e-9)continue;if(g.t==='line'&&dist(closestOnSeg(x,g.a,g.b),x)>1e-6)continue;
+          if(g.arc&&!inRange(Math.atan2(x[1]-g.o[1],x[0]-g.o[0]),...g.arc))continue;cand(x,'exti',{from:[r.p]});}}}
+    for(let i=0;i<R.length;i++)for(let j=i+1;j<R.length;j++){if(R[i].p===R[j].p)continue;
+      for(const x of lineLine(R[i].p,[R[i].p[0]+R[i].u[0],R[i].p[1]+R[i].u[1]],R[j].p,[R[j].p[0]+R[j].u[0],R[j].p[1]+R[j].u[1]]))
+        if(fwd(R[i],x)>1e-9&&fwd(R[j],x)>1e-9)cand(x,'exti',{from:[R[i].p,R[j].p]});}}
   // 有開最近點：離垂足近才鎖垂足，其他地方鎖最近點（同 AutoCAD）
-  return best||nr||pr;
+  return best||ex||nr||pr;
 }
 function lineLine(a,b,c,d){const r=[b[0]-a[0],b[1]-a[1]],s=[d[0]-c[0],d[1]-c[1]],den=r[0]*s[1]-r[1]*s[0];if(Math.abs(den)<1e-12*Math.hypot(...r)*Math.hypot(...s))return[];const t=((c[0]-a[0])*s[1]-(c[1]-a[1])*s[0])/den;return[[a[0]+t*r[0],a[1]+t*r[1]]];}
 function lineCircFull(a,b,o,R){const dx=b[0]-a[0],dy=b[1]-a[1],fx=a[0]-o[0],fy=a[1]-o[1],A=dx*dx+dy*dy,B=2*(fx*dx+fy*dy),C=fx*fx+fy*fy-R*R,D=B*B-4*A*C;if(D<0||!A)return[];const q=Math.sqrt(D);return[(-B-q)/(2*A),(-B+q)/(2*A)].map(t=>[a[0]+t*dx,a[1]+t*dy]);}

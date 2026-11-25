@@ -165,7 +165,7 @@ function snapAt(w,base){
   return{p:w.slice(),snap:null};
 }
 function cmdBase(){return cmd&&cmd.base?cmd.base():null;}
-function setCursorRaw(w){const r=snapAt(w,cmdBase());cur={raw:w.slice(),p:r.p,snap:r.snap};if(cmd&&cmd.cons){const q=cmd.cons(cur.p);if(q)cur.p=q;}kp.unlockAll();refreshCmd();}
+function setCursorRaw(w){const r=snapAt(w,cmdBase());extTouch(r.snap);cur={raw:w.slice(),p:r.p,snap:r.snap};if(cmd&&cmd.cons){const q=cmd.cons(cur.p);if(q)cur.p=q;}kp.unlockAll();refreshCmd();}
 /* 反向垂足（2026-11-23）：從邊上一點開始畫，下一點只能沿著跟那條邊垂直的方向。perCands＝那一點所在的邊（轉角有兩條，按「垂直」輪流換） */
 function perCands(b){const tol=Math.max(4/st.view.s,1e-3),A=[];const add=a=>{if(a!=null&&!A.some(x=>Math.abs(Math.sin(x-a))<0.02))A.push(a);};
   for(const e of snapEnts(b,tol)){if(!near(e,b,tol)||hitDist(e,b)>tol)continue;
@@ -300,19 +300,19 @@ function startCmd(c){
   // 先選後按指令：選物件那一步直接用先選的（修剪、延伸要依序點邊界，不套用）
   const pre=!cmd&&selSet.size&&c.kind==='select'&&!/^(trim|extend)$/.test(c.name)?[...selSet]:null;if(!cmd)selSet.clear();
   let skip=0;if(pre){for(const e of pre){if(c.filter&&!c.filter(e)){skip++;continue;}selSet.add(e);}}
-  boxArm=false;cmd=c;cur=null;selE=null;kp.unlockAll();kp.hidden=false;kp.keepXY=false;eraser=false;
+  boxArm=false;cmd=c;cur=null;selE=null;extAcq=[];kp.unlockAll();kp.hidden=false;kp.keepXY=false;eraser=false;
   if(c.keypad)kp.show(c.keypad);else kp.hide();
   closePanel();if(c.init)c.init();
   $('penbar').style.display=c.kind==='pen'?'flex':'none';if(c.kind==='pen')buildPenBar();
   refreshCmd();updateUI();
   if(pre){if(skip)toast(`略過底圖或不適用的 ${skip} 個`,2000);if(selSet.size&&cmd===c)c.ok();}
 }
-function endCmd(){if(cmd&&cmd.cleanup)cmd.cleanup();cmd=null;cur=null;selSet.clear();kp.hide();$('penbar').style.display='none';$('penW').style.display='none';$('cmdbar').style.display='none';setHint(baseHintText());updateUI();schedule();}
+function endCmd(){if(cmd&&cmd.cleanup)cmd.cleanup();cmd=null;extAcq=[];cur=null;selSet.clear();kp.hide();$('penbar').style.display='none';$('penW').style.display='none';$('cmdbar').style.display='none';setHint(baseHintText());updateUI();schedule();}
 function cancelCmd(){if(cmd&&cmd.cancel&&cmd.cancel()===false){refreshCmd();return;}endCmd();}
 function cmdPlus(){if(!cmd)return;if(cmd.kind==='points'){if(cur)commitPoint();}else if(cmd.plus)cmd.plus();}
 function cmdOk(){if(!cmd)return;if(cmd.kind==='points'&&cur&&cur.typed&&Object.keys(kp.lock).length&&!cmd.live){const last=cmdBase();if(!last||dist(last,cur.p)>1e-9){commitPoint();return;}}// 有打數字：✓＝放這一點、繼續（取代原本的＋）
   if(cmd.kind==='points'&&cur&&!cmd.live){const last=cmdBase();if(!last||dist(last,cur.p)>1e-9)commitPoint();}if(cmd&&cmd.ok)cmd.ok();refreshCmd();}
-function commitPoint(){if(!cmd||!cur)return;const p=cur.p.slice();kp.unlockAll();
+function commitPoint(){if(!cmd||!cur)return;const p=cur.p.slice();kp.unlockAll();extAcq=[];
   cmd.onPoint(p);if(cmd&&cmd.kind==='points'&&cmd.keypad==='la'&&cmdBase()&&kp.mode==='xy'&&!kp.keepXY)kp.setMode('la');kp.keepXY=false;refreshCmd();}
 function cmdUndoPt(){if(cmd&&cmd.pts&&cmd.pts.length){cmd.pts.pop();if(cmd.onUndoPt)cmd.onUndoPt();refreshCmd();}}
 /** 點到底圖圖塊裡的一段線：整個圖塊一起亮、顯示插入點（像 CAD） */
@@ -1388,7 +1388,7 @@ function render(){
     const[x,y]=toS(cur.p);const c=st.bg==='white'?'#0a7d92':'#7fe3f5';
     ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,13,0,TAU);ctx.moveTo(x-26,y);ctx.lineTo(x-7,y);ctx.moveTo(x+7,y);ctx.lineTo(x+26,y);ctx.moveTo(x,y-26);ctx.lineTo(x,y-7);ctx.moveTo(x,y+7);ctx.lineTo(x,y+26);ctx.stroke();
     ctx.fillStyle=c;ctx.fillRect(x-1.5,y-1.5,3,3);
-    if(cur.snap)drawSnapMark(cur.snap);
+    drawExt(cur.snap);if(cur.snap)drawSnapMark(cur.snap);
   }
   const p=cur?cur.p:null;$('hintC').textContent=p?`X ${fmt(p[0])}\nY ${fmt(p[1])}`:'';
   placeSmallBar();
@@ -2187,7 +2187,7 @@ $('aciOk').onclick=()=>{closeSheet('aciSheet');if(aciCb)aciCb(aciSel);aciCb=null
 
 /* ---------- 設定 ---------- */
 function fillOsnaps(os){os.innerHTML='';for(const[k,n]of OSN){const l=document.createElement('label'),c=document.createElement('input');c.type='checkbox';c.checked=!!st.osm[k];c.onchange=()=>{st.osm[k]=c.checked;saveSettings();};l.append(c,n);os.appendChild(l);}}
-const OSN_MINE=['end','app','ins','int','per','nea'];
+const OSN_MINE=['end','app','ext','ins','int','per','nea'];
 function setOsnaps(keys){for(const[k]of OSN)st.osm[k]=keys.includes(k);if(!st.snap)st.snap=true;saveSettings();updateUI();fillOsnaps($('osnapsQ'));}
 function fillSettings(){
   $('sLt').value=st.ltscale;$('sLon').value=st.lon0;$('sPrec').value=st.prec;$('sTh').value=st.textH;$('sInk').value=st.inkW;
