@@ -524,6 +524,9 @@ function cmdMeasure(){return pointsCmd({name:'mlen',
 function openNav(la,lo){const u=`https://www.google.com/maps/dir/?api=1&destination=${la.toFixed(7)},${lo.toFixed(7)}&travelmode=driving`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 // 街景：Google 地圖的街景畫面（不用金鑰）；附近沒有街景時由 Google 地圖自己處理
+// Google Earth（2026-11-26）：手機裝了 Earth App 通常直接開 App，沒裝或在電腦上開網頁版；search＝在那一點插針
+function openEarth(la,lo){const a=la.toFixed(7),o=lo.toFixed(7),u=`https://earth.google.com/web/search/${a},${o}/@${a},${o},0a,600d,35y,0h,0t,0r`;
+  if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 function openPano(la,lo){const u=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${la.toFixed(7)},${lo.toFixed(7)}`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 // pin（2026-11-25）：選取模式長按圖上任一處叫出來，不開鍵盤，街景放第一顆；拖曳可以微調位置
@@ -536,7 +539,7 @@ function cmdCoord(ll,pin,back){return pointsCmd({name:pin?'pin':ll?'ll':'xy',liv
   extraBtns(){return cur?[{t:'複製',f:()=>{const p=cur.p;let t;if(ll){const[la,lo]=tm2ll(p[0],p[1],st.lon0);t=`${dmsLL(la,'N','S')} ${dmsLL(lo,'E','W')}`;}else t=`${fmt(p[0])},${fmt(p[1])}`;
       (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('已複製：'+t)).catch(()=>toast(t,4000));}},
     ...(ll?[{t:'導航',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openNav(la,lo);}},{t:'街景',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openPano(la,lo);}}]:[]),
-    ...(pin?[{t:'文字',f:()=>{openTextDlg(cur.p.slice());textCtx.after=()=>this.done();}}]:[])].sort((a,b)=>pin?(b.t==='街景')-(a.t==='街景'):0):[];},
+    ...(pin?[{t:'地球',f:()=>{const[la,lo]=tm2ll(cur.p[0],cur.p[1],st.lon0);openEarth(la,lo);}},{t:'文字',f:()=>{openTextDlg(cur.p.slice());textCtx.after=()=>this.done();}}]:[])].sort((a,b)=>{if(!pin)return 0;const r=t=>({街景:0,地球:1})[t]??2;return r(a.t)-r(b.t);}):[];},
   onPoint(){},done(){if(this.back==='pen')startCmd(cmdPen());else endCmd();},ok(){this.done();},cancel(){if(this.back==='pen'){startCmd(cmdPen());return false;}}
 });}
 
