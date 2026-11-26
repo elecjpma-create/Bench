@@ -16,6 +16,7 @@ button{font-family:inherit;color:var(--text)}
 .fl button{width:42px;height:40px;border:0;background:none;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0;font-size:12px}
 .fl button svg{width:24px;height:24px}
 .fl button.on{background:var(--acc2)}
+#baseSec .row2 button.on{outline:2px solid var(--acc);outline-offset:-2px}
 .fl button:active{background:var(--panel2)}
 .fl button:disabled{opacity:.35}
 #topbar{top:8px;left:8px}
@@ -241,6 +242,7 @@ button{font-family:inherit;color:var(--text)}
   </div>
   <div class="sec" id="baseSec">
     <div class="lab">底圖圖層</div>
+    <div class="row2 eq" style="margin-bottom:6px"><button id="lyPCat" title="依七碼類別上色：房屋白、增建橘、道路黃、水藍、植被綠…">依類別上色</button><button id="lyPStd" title="七碼作業圖的標準顏色，找不到的白色">七碼標準色</button><button id="lyPOrig" title="照圖檔原本的顏色">原圖顏色</button></div>
     <div class="row2 eq" style="margin-bottom:6px"><button id="lyAll">全開</button><button id="lyNone">全關</button><button id="lyOld" title="a 開頭的舊圖層">關舊圖</button></div>
     <div class="row2 eq" style="margin-bottom:6px"><button id="lyArea">區域檢查</button><button id="chkBtn">⚙ 檢查設定</button></div>
     <div class="row2 eq" style="margin-bottom:6px"><button id="addrBtn">門牌</button><button id="parkBtn">停車場</button></div>

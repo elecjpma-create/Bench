@@ -1190,7 +1190,7 @@ let baseFront=null,baseBack=null,baseJob=null,lastViewKey='',viewChangedAt=0;
 const BM=0.18;// 每邊多畫的比例
 function baseMargin(){return[Math.round(W*BM),Math.round(H*BM)];}
 function newBaseCanvas(){const[mx,my]=baseMargin();const c=document.createElement('canvas');c.width=Math.round((W+2*mx)*DPR);c.height=Math.round((H+2*my)*DPR);return{c,ctx:c.getContext('2d'),view:null,key:'',mx,my};}
-function baseKey(){return[cv.width,cv.height,st.bg,st.ltscale,hidSig,imp.length,Object.keys(shxFiles).length,lts.length,impEpoch].join(';');}
+function baseKey(){return[cv.width,cv.height,st.bg,st.ltscale,hidSig,lyColSig,imp.length,Object.keys(shxFiles).length,lts.length,impEpoch].join(';');}
 let impEpoch=0;function invalidateBase(){impEpoch++;schedule();}
 function startBaseJob(){
   const[mx,my]=baseMargin();
@@ -1205,7 +1205,7 @@ function runBaseJob(budget){
   const J=baseJob,B=baseBack,t0=performance.now();
   const keep=st.view;st.view=J.view;ctx=B.ctx;// 用工作開始時的視圖畫，畫到一半手指還在動也不會錯位
   try{ctx.setTransform(DPR,0,0,DPR,DPR*B.mx,DPR*B.my);const L=J.list;let i=J.i;
-    while(i<L.length){const e=L[i++];drawEnt(e,colorFor(e.c));if((i&31)===0&&performance.now()-t0>budget)break;}J.i=i;}
+    while(i<L.length){const e=L[i++];drawEnt(e,colorFor(lyColOf(e.ly)||e.c));if((i&31)===0&&performance.now()-t0>budget)break;}J.i=i;}
   finally{ctx=mainCtx;st.view=keep;}
   if(J.i>=J.list.length){B.view=J.view;B.key=J.key;const t=baseFront;baseFront=B;baseBack=t;baseJob=null;return true;}
   return false;
@@ -1743,11 +1743,39 @@ function fillLayerSheet(){
       fz.innerHTML=lyIcon('sun',!frzLy.has(L.name));fz.title=frzLy.has(L.name)?'凍結中（點一下解凍）':'解凍';t.style.opacity=hidLy.has(L.name)?.45:1;};
     on.onclick=()=>{offLy.has(L.name)?offLy.delete(L.name):offLy.add(L.name);syncHid();paint();schedule();};
     fz.onclick=()=>{frzLy.has(L.name)?frzLy.delete(L.name):frzLy.add(L.name);syncHid();paint();schedule();};
-    const d=document.createElement('span');d.style.cssText=`width:14px;height:14px;border-radius:3px;background:${colorFor(L.c)};flex:none;border:1px solid #fff4`;
+    // 色塊：點一下選顏色（只改畫面）；手動設過的旁邊有 ↺ 可以改回預設
+    const d=document.createElement('button');const man=!!(st.lyCol&&st.lyCol[L.name]);
+    d.style.cssText=`width:20px;height:20px;border-radius:4px;background:${colorFor(lyColOf(L.name)||L.c)};flex:none;border:1px solid #fff6;padding:0;${man?'outline:2px solid #ffd24a;':''}`;
+    d.title='點一下改顯示顏色（只改畫面，不動圖檔）';d.onclick=ev=>{ev.stopPropagation();openAci(hexAci(lyColOf(L.name)||L.c),v=>lyColSet(()=>{st.lyCol=st.lyCol||{};st.lyCol[L.name]=aciHex(v);}));};
+    const rs=document.createElement('button');rs.className='lyb';rs.textContent='↺';rs.title='改回預設顏色';rs.style.display=man?'':'none';
+    rs.onclick=ev=>{ev.stopPropagation();lyColSet(()=>{delete st.lyCol[L.name];});};
     const t=document.createElement('span');t.className='lyn';t.textContent=`${L.name}（${L.n}）`;
-    paint();r.append(on,fz,d,t);bb.appendChild(r);});
+    paint();r.append(on,fz,d,t,rs);bb.appendChild(r);});
+  for(const[id,v]of[['lyPStd','std'],['lyPCat','cat'],['lyPOrig','']])$(id).classList.toggle('on',(st.lyPreset||'')===v);
 }
-function syncHid(){hidLy=new Set([...offLy,...frzLy]);hidSig=[...hidLy].sort().join('|');if(nativeOn)try{CadNative.setHidden(JSON.stringify([...hidLy]));}catch(_){}}
+function syncHid(){hidLy=new Set([...offLy,...frzLy]);hidSig=[...hidLy].sort().join('|');if(nativeOn)try{CadNative.setHidden(JSON.stringify([...hidLy]));}catch(_){}lyColSync();}
+/* ---------- 底圖圖層顯示顏色（2026-11-27）：只改畫面、不動圖檔 ----------
+   st.lyCol＝手動設的 {圖層名:#色}（照圖層名稱記住，七碼圖層名稱統一，設一次每張圖都套用）；
+   st.lyPreset＝''（原圖）｜'std'（七碼標準色：從三張七碼作業圖整理，找不到的白色）｜'cat'（依七碼類別上色）。
+   a 開頭的舊圖層套色時調暗，和新圖分得出來；不是七碼的圖層（0、圖框…）不動。 */
+const STD7={"9010101":"#ffffff","9010102":"#ffffff","9010201":"#ffffff","9010202":"#ffffff","9020000":"#ffffff","9020101":"#ffffff","9020102":"#ffffff","9020201":"#ffffff","9020202":"#ffffff","9020203":"#ffffff","9020205":"#ffffff","9020301":"#ffffff","9020401":"#ffffff","9020402":"#ffffff","9020403":"#ffffff","9020404":"#ffffff","9030300":"#ffffff","9040000":"#ffffff","9240000":"#ffffff","9250000":"#ffffff","9310100":"#ffffff","9310101":"#0000ff","9310102":"#00bfff","9310200":"#ffffff","9310300":"#ffffff","9320101":"#ffffff","9320102":"#ffffff","9320103":"#ffffff","9320104":"#ffffff","9320200":"#ffffff","9320300":"#ffffff","9320400":"#ffffff","9320500":"#00ff00","9320700":"#ffffff","9350200":"#ffffff","9350204":"#ffffff","9350902":"#ffffff","9350903":"#0000ff","9350904":"#0000ff","9350906":"#ffffff","9350909":"#ffffff","9370201":"#ffffff","9370206":"#ffffff","9370901":"#ffffff","9370902":"#ffffff","9370906":"#ffffff","9380901":"#ffffff","9390002":"#ffffff","9390004":"#ffffff","9390007":"#ffffff","9390009":"#ffffff","9410000":"#ffffff","9410100":"#ffffff","9420000":"#ff0000","9420102":"#ff0000","9420201":"#ffffff","9420202":"#ffffff","9420400":"#ffffff","9420500":"#ffffff","9420600":"#ffffff","9420801":"#ff0000","9420901":"#ffffff","9420902":"#ffffff","9420903":"#ffffff","9420905":"#ffffff","9420908":"#ffffff","9420909":"#ffffff","9421001":"#ffffff","9421003":"#ffffff","9421004":"#ffffff","9421006":"#ffffff","9421007":"#ff0000","9440200":"#ffffff","9440202":"#ffffff","9440207":"#ffffff","9440209":"#ffffff","9440301":"#ffffff","9440302":"#ffffff","9440303":"#806000","9440306":"#806000","9490005":"#ffffff","9510101":"#0000ff","9510106":"#0000ff","9510110":"#0000ff","9510201":"#0000ff","9510206":"#ffffff","9510207":"#ffffff","9510304":"#806000","9510503":"#0000ff","9520700":"#0000ff","9540202":"#ffffff","9610101":"#ffffff","9620100":"#ffffff","9690101":"#ffffff","9690102":"#ffffff","9690103":"#ffffff","9690104":"#ffffff","9690201":"#ffffff","9690202":"#ffffff","9690203":"#ffffff","9690204":"#ffffff","9690205":"#ffffff","9690209":"#ffffff","9690301":"#ffffff","9690302":"#ffffff","9710100":"#00ff00","9710200":"#00ff00","9710300":"#00ff00","9710500":"#00ff00","9710800":"#00ff00","9720000":"#00ff00","9730101":"#00ff00","9730102":"#00ff00","9730301":"#00ff00","9730306":"#00ff00","9730307":"#00ff00","9740100":"#0000ff","9790103":"#ffffff","9790201":"#00ff00","9790202":"#ffff00","9810101":"#806000","9810102":"#806000","9810201":"#806000","9810202":"#806000","9910300":"#ffffff","9910301":"#ffffff","9910403":"#ffffff","9910505":"#ffffff","9910601":"#ffffff","9910602":"#ffffff","9910603":"#ffffff","9910604":"#ffffff","9910609":"#ffffff","9910800":"#ffffff","9920102":"#ffffff","9920103":"#ffffff","9920104":"#ffffff","9920105":"#ffffff","9920201":"#ffffff","9920203":"#ffffff","9920205":"#ffffff","9920206":"#ffffff","9930101":"#ffffff","9930102":"#ffffff","9930203":"#ffffff","9930301":"#ffffff","9930302":"#ffffff","9930304":"#ffffff","9940101":"#ffffff","9940103":"#ffffff","9940105":"#ffffff","9940112":"#ffffff","9940113":"#ffffff","9940201":"#ffffff","9940202":"#ffffff","9940203":"#0000ff","9940205":"#ffffff","9940301":"#ffffff","9940401":"#ffffff","9940403":"#ffffff","9940405":"#ffffff","9950101":"#ffffff","9950103":"#ffffff","9950104":"#ffffff","9950201":"#ffffff","9950202":"#ffffff","9950203":"#ffffff","9950204":"#ffffff","9950300":"#ffffff","9950403":"#ffffff","9950501":"#ffffff","9960101":"#ffffff","9960102":"#ffffff","9960203":"#ffffff","9960204":"#ffffff","9970102":"#ffffff","9980100":"#ffffff","9980400":"#ffffff","9990000":"#00ff00"};
+const CAT7=[// 依前幾碼配色，長的先比
+  ['9310102','#ff9a3c'],['9310300','#ffd27a'],['9310101','#9aa3ad'],['9310200','#ffd27a'],['931','#ffffff'],
+  ['9320700','#ff5c5c'],['932','#d9925a'],['935','#b48cff'],['937','#b48cff'],['938','#b48cff'],['939','#b48cff'],
+  ['9421006','#d8c25a'],['941','#ff6b6b'],['942','#ffe24a'],['943','#ffb347'],['944','#ffb347'],['945','#ffb347'],['946','#ffb347'],['949','#ffb347'],
+  ['95','#3fa9ff'],['96','#ff5ccf'],['971','#2fcf6a'],['972','#7dff7d'],['973','#b5e35a'],['974','#5fd6b8'],['9790201','#8fbf3f'],['979','#c6d98a'],
+  ['9810201','#b0b0b0'],['981','#c08a5a'],['98','#a07a5a'],['99','#ffb3d1'],['91','#ff7dff'],['92','#c38cff'],['903','#e6e6e6'],['904','#e6e6e6'],['90','#9aa3ad']];
+function lyCode7(n){const m=/^(a?)(\d{7})/.exec(n||'');return m?{old:!!m[1],code:m[2]}:null;}
+function lyDim(c){const v=parseInt(c.slice(1),16),f=.6,r=Math.round((v>>16&255)*f),g=Math.round((v>>8&255)*f),b=Math.round((v&255)*f);return'#'+((r<<16)|(g<<8)|b).toString(16).padStart(6,'0');}
+function lyPresetCol(n){const p=st.lyPreset;if(!p)return null;const k=lyCode7(n);if(!k)return null;
+  let c=null;if(p==='std')c=STD7[k.code]||'#ffffff';else{const x=CAT7.find(([pre])=>k.code.startsWith(pre));c=x?x[1]:'#ffffff';}
+  return k.old?lyDim(c):c;}
+function lyColOf(n){return(st.lyCol&&st.lyCol[n])||lyPresetCol(n);}
+let lyColSig='';
+function lyColSync(){const m={};for(const L of impLayers){const c=lyColOf(L.name);if(c)m[L.name]=c;}const sig=JSON.stringify(m);
+  if(sig===lyColSig)return;lyColSig=sig;
+  if(nativeOn){if(typeof CadNative.setLayerColors==='function'){try{CadNative.setLayerColors(sig);}catch(_){}}else if(Object.keys(m).length)toast('要裝新版 APK，底圖才會換顏色',2500);}}
+function lyColSet(fn){fn();saveSettings();lyColSync();schedule();fillLayerSheet();}
 let hidSig='';
 function lyIcon(k,act){
   if(k==='bulb')return act?'<svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z" fill="#ffd54a" stroke="#c9a227"/><rect x="9" y="17" width="6" height="3" rx="1" fill="#9aa1ab"/></svg>'
@@ -1756,6 +1784,8 @@ function lyIcon(k,act){
     :'<svg viewBox="0 0 24 24" width="22" height="22"><g stroke="#7fd3ff" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v19M3.8 7.2l16.4 9.6M3.8 16.8l16.4-9.6M9.5 4l2.5 2.5L14.5 4M9.5 20l2.5-2.5 2.5 2.5"/></g></svg>';
 }
 $('addLy').onclick=()=>{const v=$('newLy').value.trim();if(!v)return;if(st.layers.some(l=>l.name===v)){toast('已經有這個圖層');return;}st.layers.push({name:v,ci:7,lt:'CONTINUOUS',on:true});st.cur=v;$('newLy').value='';saveSettings();fillLayerSheet();};
+$('lyPStd').onclick=()=>lyColSet(()=>{st.lyPreset='std';});$('lyPCat').onclick=()=>lyColSet(()=>{st.lyPreset='cat';});
+$('lyPOrig').onclick=()=>{if(st.lyCol&&Object.keys(st.lyCol).length&&!confirm('也清掉一層一層手動設的顏色？\n（取消＝只關掉套色，手動設的保留）'))lyColSet(()=>{st.lyPreset='';});else lyColSet(()=>{st.lyPreset='';st.lyCol={};});};
 $('lyAll').onclick=()=>{offLy.clear();syncHid();fillLayerSheet();schedule();};// 全開不解除凍結
 $('lyNone').onclick=()=>{impLayers.forEach(l=>offLy.add(l.name));syncHid();fillLayerSheet();schedule();};
 
