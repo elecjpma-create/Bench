@@ -1935,8 +1935,9 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
       for(const P of entPolys(e)){const a=[];for(const q of P)a.push(q[0]-ox,q[1]-oy);pushLine(a,r,e.ly);}}
     for(const g of grp.values())grpPt((g.gi?g.gi[0]:(g.b[0]+g.b[2])/2)-ox,(g.gi?g.gi[1]:(g.b[1]+g.b[3])/2)-oy,roles.get(g.ly),g.ly);
   }
-  const notes=[];for(const e of imp){if(e.t!=='text')continue;const r=roles.get(e.ly);if(r)textPt(e,r);else if(/註記/.test(e.ly)&&e.p)notes.push([e.p[0]-ox,e.p[1]-oy]);}// 中文註記（候車亭、警衛室…）：有寫名稱的房子不算沒有註記
-  return{lines,points,gates,withHouse,bigKinds,veg,ditch,odd,notes,ox,oy,range:areaPickRange(ranges,lines)};
+  const notes=[],rnames=[];for(const e of imp){if(e.t!=='text')continue;if(e.p&&/^a?94[24]|道路|路名/.test(e.ly))rnames.push([e.p[0]-ox,e.p[1]-oy]);// 路名：門裡面有路名＝門內也是道路（2026-11-26）
+    const r=roles.get(e.ly);if(r)textPt(e,r);else if(/註記/.test(e.ly)&&e.p)notes.push([e.p[0]-ox,e.p[1]-oy]);}// 中文註記（候車亭、警衛室…）：有寫名稱的房子不算沒有註記
+  return{lines,points,gates,withHouse,bigKinds,veg,ditch,odd,notes,rnames,ox,oy,range:areaPickRange(ranges,lines)};
 }
 /** 作業範圍：沒有編碼的圖層上最能框住新畫線的封閉線；回傳 {ring, inside:新畫的在裡面還是外面} */
 function areaPickRange(ranges,lines){
@@ -1963,7 +1964,7 @@ function areaHoles(k){if(areaHoleC.has(k))return areaHoleC.get(k);const T=areaTo
   areaHoleC.set(k,H);return H;}
 function areaRun(D){
   const keep=areaKeep(D);
-  const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),edgeTol:edgeTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,odd:D.odd,notes:D.notes,keep});
+  const kt={};const R=areaCheck(D.lines,D.points,{keepTopo:kt,tol:areaTolV(),edgeTol:edgeTolV(),gates:D.gates,withHouse:D.withHouse,bigKinds:D.bigKinds,veg:D.veg,ditch:D.ditch,odd:D.odd,notes:D.notes,rnames:D.rnames,keep});
   areaTopo=kt.T?{F:kt.T.F,locate:kt.T.locate,ox:D.ox,oy:D.oy}:null;areaFills=new Map();areaHoleC.clear();
   if(keep){const n0=R.marks.length;R.marks=R.marks.filter(m=>keep(m.kx??m.x,m.ky??m.y));/* 接邊屬性問題：圓圈畫在區裡，要不要留看框上的點 */R.st.outRange=n0-R.marks.length;}
   const c={};for(const m of R.marks)c[m.type]=(c[m.type]||0)+1;R.st.cnt=c;return R;

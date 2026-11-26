@@ -571,15 +571,21 @@ function areaCheck(lines,points,opt){
       put({x:p.x,y:p.y,type:'addout',msg:'增建註記不在房屋／增建範圍裡'+(f.kinds.size?'（和'+[...f.kinds.keys()][0]+'同區）':''),ring:f.ring});continue;}
     if(f.kinds.size||f.add.length||f.fac.length)continue;
     if(f.area<opt.minArea||f.area>opt.maxArea||2*f.area/f.per<opt.thin)continue;
-    if(rl(AR_ADD)>0||rl(AR_TEMP)>=f.per*0.5||rl(AR_GATE)>0||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
+    // 門內（2026-11-26 使用者）：門和門之間當作有一條看不見的範圍線，門內圍起來的區（圍牆、柵欄、房屋、門…）沒有地物也要報；
+    // 門內有路名＝門內也是道路的一部分，道路不用放地物，不報
+    const gateIn=rl(AR_GATE)>0;
+    if(gateIn){if((opt.rnames||[]).some(q=>q[0]>=f.bb[0]&&q[0]<=f.bb[2]&&q[1]>=f.bb[1]&&q[1]<=f.bb[3]&&arInRing(f.ring,q[0],q[1])))continue;
+      if(f.area<3||rl(AR_GATE)>f.per*0.5||2*f.area/f.per<0.5)continue;// 門的圖例自己圍出來的小格、雙線圍牆中間的細縫不算
+      if(rl(AR_ADD)>0||rl(AR_TEMP)>=f.per*0.5||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2)continue;}
+    else if(rl(AR_ADD)>0||rl(AR_TEMP)>=f.per*0.5||rl(AR_STAIR)>0||rl(AR_WALK)+rl(AR_ROAD)>=f.per*0.2||rl(AR_HOUSE)<f.per*0.5)continue;
     {// 區裡面浮著的島（沒接到外圈的封閉線，例如增建圈）也是這區的邊界，一起算
       let per=f.per;const rr={};const ri=b=>(f.rl[b]||0)+(rr[b]||0);
       for(const g of F){if(g===f||g.area>=f.area||g.bb[0]<f.bb[0]||g.bb[2]>f.bb[2]||g.bb[1]<f.bb[1]||g.bb[3]>f.bb[3])continue;
         if(!arInRing(f.ring,g.ring[0],g.ring[1]))continue;
         per+=g.per;for(const k in g.rl)rr[k]=(rr[k]||0)+g.rl[k];}
-      if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>=per*0.5||ri(AR_GATE)>0||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||ri(AR_HOUSE)<per*0.5))continue;}
+      if(per>f.per&&(ri(AR_ADD)>0||ri(AR_TEMP)>=per*0.5||ri(AR_STAIR)>0||ri(AR_WALK)+ri(AR_ROAD)>=per*0.2||(!gateIn&&(ri(AR_GATE)>0||ri(AR_HOUSE)<per*0.5))))continue;}
     if(stairIn(f))continue;// 裡面有樓梯方向線（箭頭、樓梯線）＝樓梯
-    const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`,ring:f.ring});}
+    const c=arInner(f);put({x:c[0],y:c[1],type:'empty',msg:(gateIn?'門內':'')+`沒有屬性的區域（${f.area<10?f.area.toFixed(1):Math.round(f.area)} m²）`+(gateIn?'：門和門之間視為有範圍線，門內要放地物（空地、花圃…）':''),ring:f.ring});}
 
   /* ---- 5. 接邊：圖框切開的區域，兩側都要有屬性且一致（E09，不看距離，以拓樸為準）
      永久和增建分開比（2026-11-19）：五碼交圖時增建線會關掉，
