@@ -1879,8 +1879,8 @@ function drawGridWeb(){ctx.save();ctx.strokeStyle=GRID_COL;ctx.lineWidth=1;ctx.b
   for(let i=0;i<S.length;i+=4){const a=toS([S[i],S[i+1]]),b=toS([S[i+2],S[i+3]]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}ctx.stroke();ctx.restore();}
 /* ---------- 勾選確認（2026-11-27）：檢查時一個一個勾，亮的＝還沒勾 ----------
    範圍：區域檢查選的圖幅（沒選＝全部圖框；沒有圖框＝整張圖）。舊圖（a 開頭編號層、a增建）一律不算。
-   兩種都不用勾：98 開頭（等高線、標高點和數字）、分棟線、臨時性房屋、建築中、廢墟（線和註記）、圖框／圖廓／方格線。
-   多維度（圖裡沒有舊圖層）：永久性房屋線不用勾，其他線、圖例（一個圖塊算一個，門也是一個）、文字（房屋／增建註記、路名、地名、中文註記）都要。
+   兩種都不用勾：98 開頭（等高線、標高點和數字）、圖框／圖廓／方格線。
+   多維度（圖裡沒有舊圖層）：房屋的範圍線（永久、臨時、建築中、廢墟、分棟線）不用勾；其他線（含增建線）、圖例（一個圖塊算一個，門也是一個）、文字（所有房屋註記含臨時／建築中／廢墟、增建註記、路名、地名、中文註記）都要。
    修正測繪（有舊圖層）：新畫的全部都要，房屋線也要。
    畫法：還沒勾的線疊亮黃色、圖例畫黃圈、文字黃框；勾過的恢復原樣（圖例、文字旁邊小 ✓）。只畫畫面裡的，太多就先不畫（放大才出現）。
    每張圖各自記在 localStorage（simplecad.tick:drawKey）。 */
@@ -1893,8 +1893,8 @@ function tickMode(){const m=st.tickMode||'';return m||(tickIsRev()?'rev':'multi'
 function tickLyOk(ly,kind,mode){ly=ly||'';if(tickOldLy(ly))return false;if(FRAME_RE.test(ly)||/圖廓|方格|圖號|接合表/.test(ly))return false;
   const m=/^(\d{5,7})([A-Za-z]*)/.exec(ly);
   if(m){const c=m[1];if(c.startsWith('98'))return false;
-    if(c.startsWith('931')){if(AR_TEMPC.has(c)||c==='9310101'||/臨時|建築中|廢墟|分棟|分戶/.test(ly))return false;
-      const txt=/TXT|X$/i.test(m[2]);if(kind==='line'&&mode==='multi'&&!txt&&!(m[2].toUpperCase()==='ADD'||c==='9310102'||/增建/.test(ly)))return false;}// 多維度：永久性房屋線不用勾（增建線要）
+    if(c.startsWith('931')){// 2026-11-27 使用者：房屋（含臨時、建築中、廢墟）的註記都要勾；多維度不用勾的只有房屋的範圍線（含臨時、建築中、廢墟、分棟線），增建線要勾
+      const txt=/TXT|X$/i.test(m[2]);if(kind==='line'&&mode==='multi'&&!txt&&!(m[2].toUpperCase()==='ADD'||c==='9310102'||/增建/.test(ly)))return false;}
     return true;}
   if(/增建/.test(ly))return true;
   if(kind==='txt'&&/註記|地名|路名/.test(ly))return true;
