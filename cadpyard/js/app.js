@@ -1254,7 +1254,7 @@ let baseFront=null,baseBack=null,baseJob=null,lastViewKey='',viewChangedAt=0;
 const BM=0.18;// 每邊多畫的比例
 function baseMargin(){return[Math.round(W*BM),Math.round(H*BM)];}
 function newBaseCanvas(){const[mx,my]=baseMargin();const c=document.createElement('canvas');c.width=Math.round((W+2*mx)*DPR);c.height=Math.round((H+2*my)*DPR);return{c,ctx:c.getContext('2d'),view:null,key:'',mx,my};}
-function baseKey(){return[cv.width,cv.height,st.bg,st.ltscale,hidSig,lyColSig,imp.length,Object.keys(shxFiles).length,lts.length,impEpoch].join(';');}
+function baseKey(){return[cv.width,cv.height,st.bg,st.ltscale,hidSig,lyColSig,gridSig,imp.length,Object.keys(shxFiles).length,lts.length,impEpoch].join(';');}
 let impEpoch=0;function invalidateBase(){impEpoch++;schedule();}
 function startBaseJob(){
   const[mx,my]=baseMargin();
@@ -1269,6 +1269,7 @@ function runBaseJob(budget){
   const J=baseJob,B=baseBack,t0=performance.now();
   const keep=st.view;st.view=J.view;ctx=B.ctx;// 用工作開始時的視圖畫，畫到一半手指還在動也不會錯位
   try{ctx.setTransform(DPR,0,0,DPR,DPR*B.mx,DPR*B.my);const L=J.list;let i=J.i;
+    if(i===0&&gridSegs.length)drawGridWeb();// 方格線先畫，在底圖最下面
     while(i<L.length){const e=L[i++];drawEnt(e,colorFor(lyColOf(e.ly)||e.c));if((i&31)===0&&performance.now()-t0>budget)break;}J.i=i;}
   finally{ctx=mainCtx;st.view=keep;}
   if(J.i>=J.list.length){B.view=J.view;B.key=J.key;const t=baseFront;baseFront=B;baseBack=t;baseJob=null;return true;}
@@ -1817,7 +1818,7 @@ function fillLayerSheet(){
     paint();r.append(on,fz,d,t,rs);bb.appendChild(r);});
   for(const[id,v]of[['lyPStd','std'],['lyPCat','cat'],['lyPOrig','']])$(id).classList.toggle('on',(st.lyPreset||'')===v);
 }
-function syncHid(){hidLy=new Set([...offLy,...frzLy]);hidSig=[...hidLy].sort().join('|');if(nativeOn)try{CadNative.setHidden(JSON.stringify([...hidLy]));}catch(_){}lyColSync();viewSave();}
+function syncHid(){hidLy=new Set([...offLy,...frzLy]);hidSig=[...hidLy].sort().join('|');if(nativeOn)try{CadNative.setHidden(JSON.stringify([...hidLy]));}catch(_){}lyColSync();viewSave();gridSync();}
 /* 每個檔記住上次看的位置和底圖圖層開關（2026-11-27）：依 drawKey（檔名｜大小）存，打開時回到那裡；沒記錄才縮放到全圖 */
 let viewSaveT=0;
 function viewSave(){const k=drawKey;if(!k||k==='(無底圖)'||(!imp.length&&!nativeOn))return;clearTimeout(viewSaveT);
@@ -1847,6 +1848,23 @@ let lyColSig='';
 function lyColSync(){const m={};for(const L of impLayers){const c=lyColOf(L.name);if(c)m[L.name]=c;}const sig=JSON.stringify(m);
   if(sig===lyColSig)return;lyColSig=sig;
   if(nativeOn){if(typeof CadNative.setLayerColors==='function'){try{CadNative.setLayerColors(sig);}catch(_){}}else if(Object.keys(m).length)toast('要裝新版 APK，底圖才會換顏色',2500);}}
+// 圖框圖層：五碼「圖框」、七碼「9010101_圖廓」（2026-11-27：七碼的圖原本抓不到圖幅）
+const FRAME_RE=/圖框|^a?9010101/;
+/* ---------- 方格線（2026-11-27）：只畫區域檢查選的圖幅；st.gridMode＝''（關）｜'100'（100×100 方格）｜'q'（1/4 圖幅線）
+   畫在底圖最下層：App 交給原生（CadNative.setGrid），網頁版在底圖快取一開始先畫。只有選的圖幅的幾十條線，不會卡。 */
+let gridSegs=[],gridSig='';const GRID_COL='#6b7078';
+function gridBuild(){const S=[];if(!st.gridMode)return S;
+  for(const f of sheetBoxes()){const[x0,y0,x1,y1]=f.b;
+    if(st.gridMode==='q'){const cx=(x0+x1)/2,cy=(y0+y1)/2;S.push(cx,y0,cx,y1,x0,cy,x1,cy);continue;}
+    for(let x=Math.ceil((x0+0.01)/100)*100;x<x1-0.01;x+=100)S.push(x,y0,x,y1);
+    for(let y=Math.ceil((y0+0.01)/100)*100;y<y1-0.01;y+=100)S.push(x0,y,x1,y);}
+  return S;}
+function gridSync(){let S=[];try{S=gridBuild();}catch(_){}const sig=drawKey+'|'+st.gridMode+'|'+S.join(',');if(sig===gridSig)return;gridSig=sig;gridSegs=S;
+  if(nativeOn&&typeof CadNative.setGrid==='function'){try{CadNative.setGrid(JSON.stringify(S),GRID_COL);}catch(_){}}
+  else if(nativeOn&&S.length)toast('要裝新版 APK 才會畫方格線',2500);
+  schedule();}
+function drawGridWeb(){ctx.save();ctx.strokeStyle=GRID_COL;ctx.lineWidth=1;ctx.beginPath();const S=gridSegs;
+  for(let i=0;i<S.length;i+=4){const a=toS([S[i],S[i+1]]),b=toS([S[i+2],S[i+3]]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}ctx.stroke();ctx.restore();}
 function lyColSet(fn){fn();saveSettings();lyColSync();schedule();fillLayerSheet();}
 let hidSig='';
 function lyIcon(k,act){
@@ -2001,7 +2019,7 @@ function areaCollect(){/* 讀出區域檢查要用的線和點 */
   const oddPush=(a,ly)=>{const r=roles.get(ly);odd.push({p:a,ly,nm:lnm(ly),h:r&&(r.t==='house'||r.t==='temp')});};
   // 作業範圍線候選：沒有編碼的圖層上的封閉線（例如 bon）
   const rangeLy=new Set(impLayers.map(l=>l.name).filter(n=>!roles.has(n)&&!/^a?\d/.test(n)&&!/^Q/i.test(n)&&!/圖框|圖號/.test(n)));
-  const frameLy=new Set(impLayers.map(l=>l.name).filter(n=>/圖框/.test(n)));// 每一幅的圖框：當邊界，也拿來做接邊檢查
+  const frameLy=new Set(impLayers.map(l=>l.name).filter(n=>FRAME_RE.test(n)));// 每一幅的圖框：當邊界，也拿來做接邊檢查
   const lines=[],points=[],ranges=[],gates=[];let ox=0,oy=0;
   const noAdd=false;// 交業主前：增建圖層關掉後，房屋線要自己封得起來
   const pushLine=(a,r,ly)=>{if(noAdd&&(r.b&AR_ADD)&&!/^a?\d{7}/.test(ly))return;/* 七碼的屋頂增建編輯當永久建物，不關 */if(r.wing&&a.length<=6){const n=a.length/2;let L=0;for(let i=2;i<a.length;i+=2)L+=Math.hypot(a[i]-a[i-2],a[i+1]-a[i-1]);if(L<3&&Math.hypot(a[0]-a[a.length-2],a[1]-a[a.length-1])>0.01)return;}lines.push({p:a,r:r.b,ly,k7:/^a?\d{7}/.test(ly),nm:lnm(ly),nw:/^\d/.test(ly)});};// 橋、涵的小翅膀不算
@@ -2082,7 +2100,7 @@ const SG={
 const sheetSel=SG.area.set;let sheetPick=null,sheetFr=null;
 const SHEET_PAD=150;// 選定圖幅外多拿 150m 的線一起算，接邊另一側的區域才算得出來
 function sheetFrames(){const key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLayers.length;if(sheetFr&&sheetFr.key===key)return sheetFr.list;
-  const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
+  const fly=impLayers.map(l=>l.name).filter(n=>FRAME_RE.test(n));const FB=[];
   const box=(P,ox,oy,st2)=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<P.length;i+=st2){const x=st2===2?P[i]:P[i][0],y=st2===2?P[i+1]:P[i][1];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
     if(x1-x0>50&&y1-y0>50)FB.push([x0+ox,y0+oy,x1+ox,y1+oy]);};
   if(fly.length){
@@ -2110,7 +2128,7 @@ function sheetApply(D){const S=sheetBoxes();if(!S.length){if(sheetSel.size)toast
 function areaKeep(D){return D.keep||(D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null);}
 function sheetAt(w){return sheetFrames().filter(f=>w[0]>=f.b[0]&&w[0]<=f.b[2]&&w[1]>=f.b[1]&&w[1]<=f.b[3]).sort((a,b)=>(a.b[2]-a.b[0])*(a.b[3]-a.b[1])-(b.b[2]-b.b[0])*(b.b[3]-b.b[1]))[0]||null;}
 function sgLoad(g){if(g.for===impName)return;g.for=impName;g.set.clear();try{for(const x of JSON.parse(localStorage.getItem(g.key+':'+impName)||'[]'))g.set.add(x);}catch(_){}}
-function sgSave(g){try{localStorage.setItem(g.key+':'+impName,JSON.stringify([...g.set]));}catch(_){}sgInfo(g);}
+function sgSave(g){try{localStorage.setItem(g.key+':'+impName,JSON.stringify([...g.set]));}catch(_){}sgInfo(g);gridSync();}
 function sgBoxes(g){sgLoad(g);return sheetFrames().filter(f=>g.set.has(f.id));}
 function sgInfo(g){const el=$(g.info);if(!el)return;sgLoad(g);const S=sgBoxes(g);
   el.textContent=!imp.length?'還沒開底圖':!sheetFrames().length?'這張圖沒有圖框圖層':S.length?`${g.has(S.length)}：${S.map(f=>f.num||f.id).join('、')}`:g.none;
@@ -2210,7 +2228,7 @@ function addrFrames(){const D=addrDots(),SB=sgBoxes(SG.addr),key=impName+'|'+imp
   if(SB.length){// 門牌面板選了圖幅：只畫選的圖幅往外 50m 內的門牌
     const m=new Uint8Array(D.X.length);for(const f of SB){const K=addrDotsIn(f.b[0]-ADDR_PAD,f.b[1]-ADDR_PAD,f.b[2]+ADDR_PAD,f.b[3]+ADDR_PAD,Infinity);for(const k of K)m[k]=1;}
     const list=[];for(let k=0;k<m.length;k++)if(m[k])list.push(k);addrFr={key,D,list};return list;}
-  const fly=impLayers.map(l=>l.name).filter(n=>/圖框/.test(n));const FB=[];
+  const fly=impLayers.map(l=>l.name).filter(n=>FRAME_RE.test(n));const FB=[];
   const box=(P,ox,oy,st2)=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(let i=0;i<P.length;i+=st2){const x=st2===2?P[i]:P[i][0],y=st2===2?P[i+1]:P[i][1];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;}
     if(x1-x0>50&&y1-y0>50)FB.push([x0+ox,y0+oy,x1+ox,y1+oy]);};
   if(fly.length){
@@ -2309,7 +2327,7 @@ function fillOsnaps(os){os.innerHTML='';for(const[k,n]of OSN){const l=document.c
 const OSN_MINE=['end','app','ext','ins','int','per','nea'];
 function setOsnaps(keys){for(const[k]of OSN)st.osm[k]=keys.includes(k);if(!st.snap)st.snap=true;saveSettings();updateUI();fillOsnaps($('osnapsQ'));}
 function fillSettings(){
-  $('sLt').value=st.ltscale;$('sLon').value=st.lon0;$('sPrec').value=st.prec;$('sTh').value=st.textH;$('sHfs').value=st.hfs||13;$('sInk').value=st.inkW;
+  $('sLt').value=st.ltscale;$('sLon').value=st.lon0;$('sPrec').value=st.prec;$('sTh').value=st.textH;$('sGrid').value=st.gridMode||'';$('sHfs').value=st.hfs||13;$('sInk').value=st.inkW;
   $('bgDark').style.outline=st.bg!=='white'?'2px solid var(--acc)':'';$('bgWhite').style.outline=st.bg==='white'?'2px solid var(--acc)':'';
   fillOsnaps($('osnaps'));
   const sf=NP().SupportFolder;$('supPick').style.display=sf?'block':'none';$('supScan').style.display=sf&&localStorage.getItem('simplecad.supUri')?'block':'none';
@@ -2317,6 +2335,7 @@ function fillSettings(){
 }
 const numSet=(id,k,min)=>$(id).onchange=e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>(min??-Infinity)){st[k]=v;saveSettings();for(const x of imp)if(x._sg)delete x._sg;schedule();}else e.target.value=st[k];};
 numSet('sLt','ltscale',0);$('sHfs').onchange=e=>{const v=parseFloat(e.target.value);if(v>=9&&v<=40){st.hfs=v;saveSettings();applyHfs();hintMoreUpd();}else e.target.value=st.hfs||13;};
+$('sGrid').onchange=e=>{st.gridMode=e.target.value;saveSettings();gridSync();if(st.gridMode&&!sheetBoxes().length)toast('方格線只畫區域檢查選的圖幅：先到 ⚙ 檢查設定選圖幅',3500);};
 $('hintT').onclick=hintToggle;$('hintMore').onclick=hintToggle;
 numSet('sLon','lon0');numSet('sTh','textH',0);numSet('sInk','inkW',0);
 $('sPrec').onchange=e=>{st.prec=Math.max(0,Math.min(6,parseInt(e.target.value)||0));e.target.value=st.prec;saveSettings();refreshCmd();};
