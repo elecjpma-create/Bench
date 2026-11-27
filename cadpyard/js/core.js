@@ -32,7 +32,7 @@ A,.5,-.2,["HW",STANDARD,S=.1,R=0.0,X=-0.1,Y=-.05],-.2`;
 
 const COLORS=['#ffffff','#ff5252','#ffd54a','#5cff8a','#4fe0ff','#4f7dff','#ff5cff','#ff9f40','#9aa1ab'];
 const OSN=[['end','端點'],['mid','中點'],['cen','圓心'],['qua','象限點'],['int','交點'],['app','外觀交點'],['ext','延伸'],['per','垂足'],['ins','插入點'],['nod','節點'],['nea','最近點']];
-const SNAPNAME=Object.fromEntries(OSN);SNAPNAME.exti='延伸交點';
+const SNAPNAME=Object.fromEntries(OSN);SNAPNAME.exti='延伸交點';SNAPNAME.stk='放樣點';
 // 沒存過設定時的預設鎖點
 const OSM_DEF={end:true,mid:true,cen:true,qua:true,int:true,app:false,ext:true,per:true,ins:true,nod:true,nea:true};
 
@@ -400,7 +400,7 @@ function drawSnapMark(s){
     case'mid':ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y+r);ctx.lineTo(x-r-1,y+r);ctx.closePath();break;
     case'cen':ctx.arc(x,y,r,0,Math.PI*2);break;
     case'qua':ctx.moveTo(x,y-r-1);ctx.lineTo(x+r+1,y);ctx.lineTo(x,y+r+1);ctx.lineTo(x-r-1,y);ctx.closePath();break;
-    case'nod':ctx.arc(x,y,r,0,Math.PI*2);ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
+    case'stk':case'nod':ctx.arc(x,y,r,0,Math.PI*2);ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
     case'ins':ctx.rect(x-r,y-r,2*r,2*r);ctx.moveTo(x-r,y);ctx.lineTo(x+r,y);ctx.moveTo(x,y-r);ctx.lineTo(x,y+r);break;
     case'ext':ctx.moveTo(x-r,y);ctx.lineTo(x+r,y);break;
     case'exti':case'int':ctx.moveTo(x-r,y-r);ctx.lineTo(x+r,y+r);ctx.moveTo(x+r,y-r);ctx.lineTo(x-r,y+r);break;
@@ -438,6 +438,8 @@ function findSnap(w,tol,base){
   // 端點帶「往外延伸的方向」，游標碰過這個端點後就能沿著延伸線鎖（延伸鎖點，2026-11-25）
   const U=(a,b)=>{const dx=a[0]-b[0],dy=a[1]-b[1],L=Math.hypot(dx,dy);return L>1e-12?[dx/L,dy/L]:null;};
   const endX=(...u)=>({dirs:u.filter(Boolean)});
+  // 放樣匯入的點（2026-11-27）：放樣時可以鎖
+  let stkB=null,stkD=tol;if(typeof snapExtra==='function')for(const q of snapExtra()){const d=dist(q.p,w);if(d<stkD){stkD=d;stkB={p:q.p,kind:'stk',nm:q.n};}}
   const segTest=(a,b)=>{const q=closestOnSeg(w,a,b),d=dist(q,w);if(d<tol){prims.push({t:'line',a,b,d});if(O.nea&&d<nd){nd=d;nr={p:q,kind:'nea'};}}};
   const circTest=(e,arc)=>{const d0=dist(w,e.o),d=Math.abs(d0-e.r);if(d<tol&&d0>0){const ang=Math.atan2(w[1]-e.o[1],w[0]-e.o[0]);if(arc&&!inRange(ang,e.a0,e.a1))return;prims.push({t:'circle',o:e.o,r:e.r,arc:arc?[e.a0,e.a1]:null,d});if(O.nea&&d<nd){nd=d;nr={p:[e.o[0]+(w[0]-e.o[0])/d0*e.r,e.o[1]+(w[1]-e.o[1])/d0*e.r],kind:'nea'};}}};
   for(const e of snapEnts(w,tol)){
@@ -491,6 +493,8 @@ function findSnap(w,tol,base){
       for(const x of lineLine(R[i].p,[R[i].p[0]+R[i].u[0],R[i].p[1]+R[i].u[1]],R[j].p,[R[j].p[0]+R[j].u[0],R[j].p[1]+R[j].u[1]]))
         if(fwd(R[i],x)>1e-9&&fwd(R[j],x)>1e-9)cand(x,'exti',{from:[R[i].p,R[j].p]});}}
   // 有開最近點：離垂足近才鎖垂足，其他地方鎖最近點（同 AutoCAD）
+  // 放樣點和屋角幾乎重疊（匯入的坐標只到 mm）：放樣點優先，才顯示點名
+  if(stkB&&(!best||stkD<=bd+tol*0.2))return stkB;
   return best||ex||nr||pr;
 }
 function lineLine(a,b,c,d){const r=[b[0]-a[0],b[1]-a[1]],s=[d[0]-c[0],d[1]-c[1]],den=r[0]*s[1]-r[1]*s[0];if(Math.abs(den)<1e-12*Math.hypot(...r)*Math.hypot(...s))return[];const t=((c[0]-a[0])*s[1]-(c[1]-a[1])*s[0])/den;return[[a[0]+t*r[0],a[1]+t*r[1]]];}

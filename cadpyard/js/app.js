@@ -500,6 +500,70 @@ $('txtAlign').onclick=()=>{
     onPick(e,w){const a=lineAngleAt(e,w);if(a==null){toast('這個物件取不到方向');return;}
       let d=normA(deg(a));if(d>90&&d<=270)d=normA(d-180);textCtx=saved;cmd=null;$('txtA').value=d.toFixed(2);openTextDlg(null,true);if(saved&&saved.edit)endCmd();else startCmdQuiet(cmdText());}});
 };
+/* ---------- 放樣（2026-11-27）：測站、後視（後視歸零），點圖上任一處顯示順時針水平角（度分秒）和水平距離 ----------
+   測站、後視記在 st.stake，下次沿用；可匯入放樣點（Excel／CSV／TXT，不靠標頭，整數 7 位＝N、6 位＝E），放樣時可以鎖。
+   線只在放樣指令進行中畫。 */
+function stakeAz(a,b){return(Math.atan2(b[0]-a[0],b[1]-a[1])*180/Math.PI+360)%360;}// 方位角：由北順時針
+function stakeDms(x){let t=Math.round(((x%360)+360)%360*3600);if(t>=1296000)t-=1296000;const d=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;return`${d}°${String(m).padStart(2,'0')}'${String(s).padStart(2,'0')}"`;}
+function stakePts(){return Array.isArray(st.stakePts)?st.stakePts:[];}
+function snapExtra(){return cmd&&cmd.name==='stake'?stakePts():[];}
+function cmdStake(){const S=st.stake||{};return pointsCmd({name:'stake',live:true,keypad:'xy',
+  stage:S.S&&S.B?'P':'S',
+  init(){if(this.stage==='P')toast('沿用上次的測站、後視；要換站按「換測站」',2500);},
+  hint(){const k=st.stake||{},nm=cur&&cur.snap&&cur.snap.nm?`${cur.snap.nm}　`:'';
+    if(this.stage==='S')return[cur?`測站：${nm}這一點，按 ✓ 確定`:'放樣：點測站（可鎖點，也可以輸入坐標），按 ✓ 確定',true];
+    if(this.stage==='B')return[cur?`後視：${nm}這一點，按 ✓ 確定（後視歸零）`:'放樣：點後視，按 ✓ 確定',true];
+    if(!cur)return['放樣：點圖上任一處（可鎖點），顯示順時針水平角和距離；✓ 結束',true];
+    const p=cur.p,d=Math.hypot(p[0]-k.S[0],p[1]-k.S[1]);if(d<1e-6)return['這一點就是測站',true];
+    const h=(stakeAz(k.S,p)-stakeAz(k.S,k.B)+360)%360;return[`${nm}水平角 ${stakeDms(h)}\n距離 ${d.toFixed(3)} m`,'big'];},
+  ok(){if(this.stage==='P'||!cur){if(this.stage!=='P'&&!cur){endCmd();return;}endCmd();return;}
+    const p=cur.p.slice(),nm=cur.snap&&cur.snap.nm||'';st.stake=st.stake||{};
+    if(this.stage==='S'){st.stake={S:p,Sn:nm};this.stage='B';cur=null;kp.unlockAll();saveSettings();refreshCmd();schedule();return;}
+    if(Math.hypot(p[0]-st.stake.S[0],p[1]-st.stake.S[1])<1e-6){toast('後視不能跟測站同一點');return;}
+    st.stake.B=p;st.stake.Bn=nm;this.stage='P';cur=null;kp.unlockAll();saveSettings();
+    toast(`後視距離 ${Math.hypot(p[0]-st.stake.S[0],p[1]-st.stake.S[1]).toFixed(3)} m，後視歸零`,2500);refreshCmd();schedule();},
+  onPoint(){},
+  extraBtns(){const B=[{t:'匯入點',f:()=>stakeImport()}];if(this.stage==='P'||this.stage==='B')B.unshift({t:'換測站',f:()=>{this.stage='S';cur=null;refreshCmd();schedule();}});
+    if(stakePts().length)B.push({t:`清除點（${stakePts().length}）`,f:()=>{if(confirm(`清除匯入的 ${stakePts().length} 個放樣點？`)){st.stakePts=[];saveSettings();refreshCmd();schedule();}}});return B;},
+  preview(){const k=st.stake||{};ctx.save();
+    for(const q of stakePts()){const s=toS(q.p);ctx.strokeStyle='#ff6b6b';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s[0],s[1],5,0,TAU);ctx.moveTo(s[0]-8,s[1]);ctx.lineTo(s[0]+8,s[1]);ctx.moveTo(s[0],s[1]-8);ctx.lineTo(s[0],s[1]+8);ctx.stroke();
+      if(q.n){ctx.font='12px sans-serif';ctx.fillStyle='#ff8f8f';ctx.fillText(q.n,s[0]+7,s[1]-7);}}
+    const mark=(p,sq,lab)=>{const s=toS(p);ctx.fillStyle='#3d9bff';ctx.beginPath();if(sq)ctx.rect(s[0]-6,s[1]-6,12,12);else{ctx.moveTo(s[0],s[1]-9);ctx.lineTo(s[0]+8,s[1]+6);ctx.lineTo(s[0]-8,s[1]+6);ctx.closePath();}ctx.fill();
+      ctx.font='bold 13px sans-serif';ctx.fillText(lab,s[0]+9,s[1]-6);};
+    if(this.stage!=='S'&&k.S){if(k.B&&this.stage==='P'){const a=toS(k.S),b=toS(k.B);ctx.strokeStyle='#3d9bff';ctx.lineWidth=1.5;ctx.setLineDash([8,6]);ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();ctx.setLineDash([]);mark(k.B,true,'後視');}
+      if(this.stage==='P'&&cur){const a=toS(k.S),b=toS(cur.p);ctx.strokeStyle='#ff4d4d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);ctx.stroke();}
+      mark(k.S,false,'測站');}
+    ctx.restore();}});}
+/** 匯入放樣點：Excel（.xlsx 第一張工作表）／CSV／TXT；不靠標頭，每列自己判斷：整數 7 位＝N、6 位＝E，其他數字當高程，文字當點名 */
+function stakeImport(){const f=document.createElement('input');f.type='file';f.accept='.xlsx,.csv,.txt,.xls';
+  f.onchange=async()=>{const file=f.files&&f.files[0];if(!file)return;try{
+    let rows;if(/\.xlsx$/i.test(file.name))rows=await xlsxRows(await file.arrayBuffer());else if(/\.xls$/i.test(file.name)){toast('舊版 .xls 讀不了，請另存成 .xlsx 或 CSV',3500);return;}
+    else rows=(await file.text()).split(/\r?\n/).map(l=>l.split(/[,\t;]|\s{2,}|\s+(?=-?\d)/).map(x=>x.trim()).filter(x=>x!==''));
+    const P=[];let auto=0;
+    for(const r of rows){let E=null,N=null,Z=null,nm='';
+      for(const c of r){const v=String(c).trim();if(/^-?\d+(\.\d+)?$/.test(v)){const ip=String(Math.abs(Math.trunc(+v))).length;
+          if(ip===7&&N==null)N=+v;else if(ip===6&&E==null)E=+v;else if(Z==null&&nm)Z=+v;else if(!nm)nm=v;else if(Z==null)Z=+v;}
+        else if(!nm)nm=v;}
+      if(E==null||N==null)continue;if(!nm)nm='P'+(++auto);P.push({n:nm,p:[E,N],z:Z});}
+    if(!P.length){toast('沒讀到點：要有整數 7 位（N）和 6 位（E）的坐標',3500);return;}
+    st.stakePts=P;saveSettings();refreshCmd();schedule();toast(`匯入 ${P.length} 個放樣點（依位數判斷：7 位＝N、6 位＝E）`,3000);
+  }catch(err){toast('讀檔失敗：'+(err&&err.message||err),3500);}};f.click();}
+/** 讀 .xlsx 第一張工作表成二維陣列（不用外部函式庫：自己解 zip，用 DecompressionStream） */
+async function xlsxRows(buf){const u=new Uint8Array(buf),dv=new DataView(buf);
+  let e=u.length-22;while(e>=0&&dv.getUint32(e,true)!==0x06054b50)e--;if(e<0)throw new Error('不是 xlsx');
+  const n=dv.getUint16(e+10,true);let o=dv.getUint32(e+16,true);const files={};
+  for(let i=0;i<n;i++){const meth=dv.getUint16(o+10,true),csz=dv.getUint32(o+20,true),nl=dv.getUint16(o+28,true),xl=dv.getUint16(o+30,true),cl=dv.getUint16(o+32,true),lo=dv.getUint32(o+42,true);
+    const name=new TextDecoder().decode(u.subarray(o+46,o+46+nl));files[name]={meth,csz,lo};o+=46+nl+xl+cl;}
+  const read=async nm=>{const f=files[nm];if(!f)return null;const ln=dv.getUint16(f.lo+26,true),lx=dv.getUint16(f.lo+28,true),st0=f.lo+30+ln+lx,data=u.subarray(st0,st0+f.csz);
+    if(f.meth===0)return new TextDecoder().decode(data);
+    const ds=new DecompressionStream('deflate-raw');const out=await new Response(new Blob([data]).stream().pipeThrough(ds)).arrayBuffer();return new TextDecoder().decode(out);};
+  const P=new DOMParser(),ss=[];const sx=await read('xl/sharedStrings.xml');
+  if(sx){const d=P.parseFromString(sx,'application/xml');for(const si of d.getElementsByTagName('si'))ss.push([...si.getElementsByTagName('t')].map(t=>t.textContent).join(''));}
+  let sheet=Object.keys(files).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a,b)=>parseInt(a.match(/\d+/))-parseInt(b.match(/\d+/)))[0];
+  const d=P.parseFromString(await read(sheet),'application/xml'),rows=[];
+  for(const r of d.getElementsByTagName('row')){const row=[];for(const c of r.getElementsByTagName('c')){const t=c.getAttribute('t'),v=c.getElementsByTagName('v')[0],is=c.getElementsByTagName('is')[0];
+      let x=v?v.textContent:is?is.textContent:'';if(t==='s')x=ss[+x]??'';if(x!=='')row.push(x);}if(row.length)rows.push(row);}
+  return rows;}
 function startPin(w,back){startCmd(cmdCoord(true,true,back));setCursorRaw(w);try{navigator.vibrate&&navigator.vibrate(30);}catch(_){}}
 function startCmdQuiet(c){cmd=c;cur=null;kp.unlockAll();if(c.keypad)kp.show(c.keypad);refreshCmd();updateUI();}
 function lineAngleAt(e,w){
@@ -1546,7 +1610,7 @@ const TABS=[
   ['sel','選取',()=>{endCmd();closePanel();}],
   ['draw','繪製',[['pline','多段線',cmdPline],['line','直線',cmdLine],['circle','圓',cmdCircle],['arc','弧',cmdArc],['spline','雲形線',cmdSpline],['polygon','多邊形',cmdPolygon],['text','文字',cmdText],['dim','標註',cmdDim],['ins','插入圖塊',cmdInsert]]],
   ['edit','編輯',[['move','移動',()=>cmdMove(false)],['copy','複製',()=>cmdMove(true)],['rot','旋轉',cmdRotate],['scale','縮放',cmdScale],['offset','偏移',cmdOffset],['trim','修剪',()=>cmdTrimExt(false)],['extend','延伸',()=>cmdTrimExt(true)],['join','接合',cmdJoin],['brk','打斷',cmdBreak],['del','刪除',cmdDelete],['chly','改圖層',cmdChLayer],['cclip','複製到剪貼簿',cmdCopyClip],['pclip','原座標貼上',cmdPasteOrig]]],
-  ['meas','測量',[['len','量長度',cmdMeasure],['xy','點坐標',()=>cmdCoord(false)],['ll','經緯度',()=>cmdCoord(true)]]],
+  ['meas','測量',[['len','量長度',cmdMeasure],['xy','點坐標',()=>cmdCoord(false)],['ll','經緯度',()=>cmdCoord(true)],['stake','放樣',cmdStake]]],
   ['layers','圖層',()=>{closePanel();fillLayerSheet();openSheet('layerSheet');}],
   ['pen','手寫',()=>{closePanel();startCmd(cmdPen());}]
 ];
