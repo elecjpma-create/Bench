@@ -329,7 +329,7 @@ function selBlock(){
   if(selGrpKey!==selE){selGrpKey=selE;selGrp=groupOf(selE);selIns=selE.gi||selGrp.find(x=>x.gi)?.gi||null;
     if(!selIns&&nativeOn){try{selIns=JSON.parse(CadNative.groupIns(selE.g));}catch(_){selIns=null;}}}
   return selGrp;}
-function baseHintText(){if(selE&&selBlock()&&selGrp.length>1){const ly=`［${selE.ly}］`,nm=selE.gn||(selGrp.find(x=>x.gn)||{}).gn||(selGrp.find(x=>x.gb&&x.gb.n)||{gb:{}}).gb.n;
+function baseHintText(){if(tickOn&&!selE)return tickHint();if(selE&&selBlock()&&selGrp.length>1){const ly=`［${selE.ly}］`,nm=selE.gn||(selGrp.find(x=>x.gn)||{}).gn||(selGrp.find(x=>x.gb&&x.gb.n)||{gb:{}}).gb.n;
     return`${ly}圖塊${nm?'「'+nm+'」':''}（${selGrp.length} 個物件）`+(selIns?`　插入點 X ${fmt(selIns[0])}　Y ${fmt(selIns[1])}`:'');}
   return selE?entInfo(selE):'單指拖曳平移、雙指縮放；點物件看資訊。下方選工具開始畫。';}
 function updateCmdBar(){
@@ -1455,7 +1455,7 @@ function render(){
     ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.restore();}
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
-  drawSmall();
+  drawSmall();drawTick();
   drawAddr();drawPark();drawSheets();drawEf();
   drawLoc();drawFind();
   if(cmd&&cmd.preview)cmd.preview();
@@ -1578,6 +1578,7 @@ function onTap(sp){
   if(!cmd&&fillMode&&areaTopo&&smallMode==='area'&&smallMarks){const T=areaTopo,k=T.locate(w[0]-T.ox,w[1]-T.oy);
     if(k<0){toast('那裡不在任何封閉區裡');return;}if(areaFills.has(k))areaFills.delete(k);else{const P=['#ff5a5a','#4fb3ff','#5ad16a','#ffb13d','#c77dff','#3de0d0'];areaFills.set(k,P[fillCi++%P.length]);}
     const f=T.F[k];setHint(`區域面積 ${f.area<10?f.area.toFixed(2):f.area.toFixed(1)} m²　地物：${[...f.kinds.keys()].map(x=>x==='H'?'房屋':x).join('、')||'（無）'}`,true);schedule();return;}
+  if(!cmd&&tickOn&&tickTap(sp))return;// 勾選確認：點到註記就勾／取消
   // 區域檢查標記優先（30px 內有標記就處理標記），沒有標記才看門牌點
   if(!cmd&&smallMarks){const V=smallVis();let bi=-1,bd=30;for(const m of V){const q=toS(m.p);const d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d<bd){bd=d;bi=smallMarks.indexOf(m);}}
     if(bi<0&&(parkTap(sp)||addrTap(sp)))return;
@@ -1865,6 +1866,43 @@ function gridSync(){let S=[];try{S=gridBuild();}catch(_){}const sig=drawKey+'|'+
   schedule();}
 function drawGridWeb(){ctx.save();ctx.strokeStyle=GRID_COL;ctx.lineWidth=1;ctx.beginPath();const S=gridSegs;
   for(let i=0;i<S.length;i+=4){const a=toS([S[i],S[i+1]]),b=toS([S[i+2],S[i+3]]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}ctx.stroke();ctx.restore();}
+/* ---------- 勾選確認（2026-11-27）：檢查時一個一個勾，亮的＝還沒勾 ----------
+   多維度：只勾房屋註記（永久性房屋的樓層註記）和增建註記；分棟線、臨時性房屋、建築中、廢墟的註記不用勾，線也不用勾。
+   範圍：區域檢查選的圖幅（沒選＝全部圖框；沒有圖框＝整張圖）；舊圖（a 開頭）不算。
+   畫法：還沒勾的註記外面黃框，勾過的灰色 ✓；只畫畫面裡的，不用動原生。每張圖各自記在 localStorage。
+   修正測繪（新畫的線、圖例、註記全部要確認）之後再做。 */
+let tickOn=false,tickList=null,tickDone=new Set(),tickFor='';
+function tickKey(e){return e.ly+'|'+e.lines.join('')+'|'+e.p[0].toFixed(2)+'|'+e.p[1].toFixed(2);}
+function tickIsTarget(e){if(e.t!=='text'||!e.p||!e.lines)return false;const ly=e.ly||'';if(/^a(\d|增建)/i.test(ly))return false;// 舊圖：a 開頭的編號層和 a增建
+  const m=/^(\d{5,7})([A-Za-z]*)/.exec(ly);
+  if(m){if(!m[1].startsWith('931'))return false;if(AR_TEMPC.has(m[1])||m[1]==='9310101'||/臨時|建築中|廢墟|分棟|分戶/.test(ly))return false;}
+  else if(!/增建/.test(ly))return false;
+  const s=e.lines.join('').replace(/\s/g,'');return /^(\d+[A-Za-z]|[A-Za-z]+\d*)$/.test(s);}// 1R、12B、M1、T、t、B1
+function tickBuild(){let S=sheetBoxes();if(!S.length)S=sheetFrames();const inS=p=>!S.length||S.some(f=>p[0]>=f.b[0]&&p[0]<=f.b[2]&&p[1]>=f.b[1]&&p[1]<=f.b[3]);
+  tickList=imp.filter(e=>tickIsTarget(e)&&inS(e.p));tickList.forEach(e=>{e._tk=tickKey(e);});
+  if(tickFor!==drawKey){tickFor=drawKey;tickDone=new Set();try{for(const k of JSON.parse(localStorage.getItem('simplecad.tick:'+drawKey)||'[]'))tickDone.add(k);}catch(_){}}}
+function tickSave(){try{localStorage.setItem('simplecad.tick:'+drawKey,JSON.stringify([...tickDone]));}catch(_){}}
+function tickCount(){let n=0;for(const e of tickList)if(tickDone.has(e._tk))n++;return n;}
+function tickHint(){const n=tickList?tickList.length:0;return n?`勾選確認：已勾 ${tickCount()}／${n}（點註記勾選，再點取消）`:'勾選確認：選的範圍裡沒有房屋、增建註記';}
+function tickToggleMode(){tickOn=!tickOn;if(tickOn){tickBuild();if(!tickList.length)toast('選的範圍裡沒有房屋、增建註記',2500);}
+  $('tickBtn').classList.toggle('on',tickOn);$('tickBtn').textContent=tickOn?'結束勾選確認':'勾選確認（房屋、增建註記）';
+  tickHintShow();schedule();}
+function tickHintShow(){if(!tickOn){setHint(baseHintText(),false);return;}setHint(tickHint(),true,{t:'下一個',f:tickNext});}
+function tickNext(){if(!tickList)return;const c=toW([W/2,H/2]);let b=null,bd=Infinity;
+  for(const e of tickList){if(tickDone.has(e._tk))continue;const d=Math.hypot(e.p[0]-c[0],e.p[1]-c[1]);if(d<bd){bd=d;b=e;}}
+  if(!b){toast('全部勾完了',2000);return;}const s=Math.max(st.view.s,clampS(40));st.view={s,ox:W/2-b.p[0]*s,oy:H/2+b.p[1]*s};schedule();}
+function tickBox(e){const b=e.bb||entBox(e),a=toS([b[0],b[3]]),c=toS([b[2],b[1]]);return[Math.min(a[0],c[0]),Math.min(a[1],c[1]),Math.max(a[0],c[0]),Math.max(a[1],c[1])];}
+function tickTap(sp){if(!tickList)return false;let best=null,bd=Infinity;
+  for(const e of tickList){const r=tickBox(e);const pad=10;if(sp[0]<r[0]-pad||sp[0]>r[2]+pad||sp[1]<r[1]-pad||sp[1]>r[3]+pad)continue;
+    const d=Math.hypot(sp[0]-(r[0]+r[2])/2,sp[1]-(r[1]+r[3])/2);if(d<bd){bd=d;best=e;}}
+  if(!best)return false;if(tickDone.has(best._tk))tickDone.delete(best._tk);else tickDone.add(best._tk);tickSave();
+  try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}tickHintShow();schedule();return true;}
+function drawTick(){if(!tickOn||!tickList||tickFor!==drawKey)return;const a=toW([-20,H+20]),b=toW([W+20,-20]);ctx.save();ctx.lineWidth=2;
+  for(const e of tickList){if(e.p[0]<a[0]-20||e.p[0]>b[0]+20||e.p[1]<a[1]-20||e.p[1]>b[1]+20)continue;const r=tickBox(e);
+    if(r[2]-r[0]<2&&r[3]-r[1]<2)continue;
+    if(tickDone.has(e._tk)){const x=r[2]+3,y=r[1]+(r[3]-r[1])/2;ctx.strokeStyle='#8a929c';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+4,y+4);ctx.lineTo(x+11,y-5);ctx.stroke();}
+    else{ctx.strokeStyle='#ffd21f';ctx.strokeRect(r[0]-4,r[1]-3,r[2]-r[0]+8,r[3]-r[1]+6);}}
+  ctx.restore();}
 function lyColSet(fn){fn();saveSettings();lyColSync();schedule();fillLayerSheet();}
 let hidSig='';
 function lyIcon(k,act){
@@ -2338,6 +2376,7 @@ function fillSettings(){
 const numSet=(id,k,min)=>$(id).onchange=e=>{const v=parseFloat(e.target.value);if(isFinite(v)&&v>(min??-Infinity)){st[k]=v;saveSettings();for(const x of imp)if(x._sg)delete x._sg;schedule();}else e.target.value=st[k];};
 numSet('sLt','ltscale',0);$('sHfs').onchange=e=>{const v=parseFloat(e.target.value);if(v>=9&&v<=40){st.hfs=v;saveSettings();applyHfs();hintMoreUpd();}else e.target.value=st.hfs||13;};
 $('sGrid').onchange=e=>{st.gridMode=e.target.value;saveSettings();gridSync();if(st.gridMode&&!sheetBoxes().length)toast('方格線只畫區域檢查選的圖幅：先到 ⚙ 檢查設定選圖幅',3500);};
+$('tickBtn').onclick=()=>{closeSheet('chkSheet');tickToggleMode();};
 $('hintT').onclick=hintToggle;$('hintMore').onclick=hintToggle;
 numSet('sLon','lon0');numSet('sTh','textH',0);numSet('sInk','inkW',0);
 $('sPrec').onchange=e=>{st.prec=Math.max(0,Math.min(6,parseInt(e.target.value)||0));e.target.value=st.prec;saveSettings();refreshCmd();};
