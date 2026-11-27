@@ -609,7 +609,7 @@ function cmdCoord(ll,pin,back){return pointsCmd({name:pin?'pin':ll?'ll':'xy',liv
 
 /* ---- 選取物件的共用步驟 ---- */
 function selectStage(o){const x=o.extra||{};boxArm=false;return{kind:'select',name:x.name||o.name,filter:x.filter||o.filter,group:!!x.group,
-  extraBtns(){return[{t:boxArm?'框選：拖曳畫框':'框選',c:'mode'+(boxArm?' on':''),f:()=>{boxArm=!boxArm;refreshCmd();}},{t:st.lockBase?'底圖已鎖':'鎖定底圖',c:'mode'+(st.lockBase?' on':''),f:()=>{lockBaseToggle();refreshCmd();}}];},
+  extraBtns(){return[{t:boxArm?(st.boxLasso?'框選：圈範圍':'框選：拖曳畫框'):'框選',c:'mode'+(boxArm?' on':''),f:()=>{boxArm=!boxArm;refreshCmd();}},...(boxArm?[{t:st.boxLasso?'套索':'矩形',c:'mode'+(st.boxLasso?' on':''),f:()=>{st.boxLasso=!st.boxLasso;saveSettings();refreshCmd();}}]:[]),{t:st.lockBase?'底圖已鎖':'鎖定底圖',c:'mode'+(st.lockBase?' on':''),f:()=>{lockBaseToggle();refreshCmd();}}];},
   hint:o.hint||function(){return[`${o.title}：點選要${o.verb}的物件${x.group?'（底圖也可以，圖塊會整個選起來）':''}（再點一次取消；按「框選」再拖曳可一次選一片：往右拉選框內的、往左拉碰到就選），選好按 ✓　已選 ${selCount()}`,selSet.size>0];},
   ok:o.ok||function(){if(!selSet.size){toast('還沒選物件');return;}o.next();}};}
 const ownOnly=e=>!e.imp;
@@ -641,7 +641,12 @@ function ownCopy(e,gm){const c=JSON.parse(JSON.stringify(e));delete c.bb;const o
   if(og)c.og=og;else delete c.og;return c;}
 
 /* ---------- 框選：往右拉＝框內的（window），往左拉＝碰到就選（crossing） ---------- */
-let boxArm=false,boxNow=null;
+let boxArm=false,boxNow=null,boxPath=null;// boxPath：套索（st.boxLasso）時手指拖過的螢幕座標
+/** 點在多邊形（[[x,y]…]）裡 */
+function inPoly(P,x,y){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++){const a=P[i],b=P[j];if((a[1]>y)!==(b[1]>y)&&x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0])c=!c;}return c;}
+/** 物件整個在多邊形裡（套索＝窗選）：線看每個頂點，文字看外框四角 */
+function entInPoly(e,P){if(e.t==='text'){const b=e.bb||entBox(e);return inPoly(P,b[0],b[1])&&inPoly(P,b[2],b[1])&&inPoly(P,b[0],b[3])&&inPoly(P,b[2],b[3]);}
+  if(e.t==='point'&&e.p)return inPoly(P,e.p[0],e.p[1]);const Q=entPolys(e);if(!Q.length)return false;for(const q of Q)for(const p of q)if(!inPoly(P,p[0],p[1]))return false;return true;}
 function entPolys(e){
   switch(e.t){
     case'line':case'dim':return[[e.a,e.b]];
@@ -667,16 +672,17 @@ function boxHit(e,R,cross){
   for(const P of entPolys(e))for(let i=0;i+1<P.length;i++)if(segHitsRect(P[i],P[i+1],R))return true;
   return false;
 }
-function boxSelect(s0,s1){
-  const a=toW(s0),b=toW(s1),R=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])],cross=s1[0]<s0[0];
-  const f=cmd&&cmd.filter;let n=0;const ok=e=>(!f||f(e))&&!(st.lockBase&&e.imp)&&boxHit(e,R,cross);
+function boxSelect(s0,s1,poly){// poly：套索的世界座標多邊形（有的話用套索、整個在裡面才算）
+  let R,cross=false;if(poly){R=[1e18,1e18,-1e18,-1e18];for(const p of poly){R[0]=Math.min(R[0],p[0]);R[1]=Math.min(R[1],p[1]);R[2]=Math.max(R[2],p[0]);R[3]=Math.max(R[3],p[1]);}}
+  else{const a=toW(s0),b=toW(s1);R=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];cross=s1[0]<s0[0];}
+  const f=cmd&&cmd.filter;let n=0;const ok=e=>(!f||f(e))&&!(st.lockBase&&e.imp)&&(poly?entInPoly(e,poly):boxHit(e,R,cross));
   for(const e of st.ents)if(ownShown(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
   if(!st.lockBase&&(!f||f({imp:1,t:'line',a:[0,0],b:[0,0]}))){
     const L=grid?queryImp(R[0],R[1],R[2],R[3]):imp;for(const e of L)if(pickable(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
     if(nativeOn)for(const e of nativeNear(R[0],R[1],R[2],R[3],200000))if(pickable(e)&&ok(e)&&!selSet.has(e)){selSet.add(e);n++;}
   }
   for(const e of [...selSet])if(!e.imp&&e.og)for(const x of ownGroup(e))selSet.add(x);// 自己的圖塊碰到一部分就整組
-  toast(`${cross?'碰到框':'框內'}選到 ${n} 個`,1200);
+  toast(`${poly?'套索內':cross?'碰到框':'框內'}選到 ${n} 個`,1200);
 }
 
 /* ---------- 剪貼簿：複製到剪貼簿（含底圖，保留圖層、顏色、線型）、原座標貼上 ---------- */
@@ -1451,7 +1457,8 @@ function render(){
       ctx.beginPath();ctx.moveTo(q[0]-r-5,q[1]);ctx.lineTo(q[0]+r+5,q[1]);ctx.moveTo(q[0],q[1]-r-5);ctx.lineTo(q[0],q[1]+r+5);ctx.stroke();ctx.restore();}}
   if(!cmd&&selE&&!selE.imp&&selSet.size<=1&&!(selE.og&&selE.gb))drawGrips(selE);// 複製來的圖塊不給夾點，免得改到單一條線、圖塊對不起來
   {let n=0;for(const e of selSet){if(selSet.size>500&&!visible(e))continue;drawEnt(e,'rgba(255,170,40,.6)',6,true);if(++n>4000)break;}}
-  if(boxNow){const[a,b]=boxNow,cr=b[0]<a[0];ctx.save();ctx.fillStyle=cr?'rgba(60,200,90,.12)':'rgba(70,130,255,.12)';ctx.strokeStyle=cr?'#3cc85a':'#4682ff';ctx.lineWidth=1.5;if(cr)ctx.setLineDash([6,4]);
+  if(boxNow&&boxPath&&boxPath.length>1){ctx.save();ctx.fillStyle='rgba(70,130,255,.12)';ctx.strokeStyle='#4682ff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(boxPath[0][0],boxPath[0][1]);for(const q of boxPath)ctx.lineTo(q[0],q[1]);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore();}
+  else if(boxNow){const[a,b]=boxNow,cr=b[0]<a[0];ctx.save();ctx.fillStyle=cr?'rgba(60,200,90,.12)':'rgba(70,130,255,.12)';ctx.strokeStyle=cr?'#3cc85a':'#4682ff';ctx.lineWidth=1.5;if(cr)ctx.setLineDash([6,4]);
     ctx.fillRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.strokeRect(Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.abs(b[0]-a[0]),Math.abs(b[1]-a[1]));ctx.restore();}
   drawBase();
   for(const e of st.ents)if(ownShown(e)&&visible(e))drawEnt(e,ownColor(e),undefined,false,ownLt(e));
@@ -1533,7 +1540,7 @@ cv.addEventListener('pointerdown',e=>{
   }
   hideGripMenu();
   if(!cmd){const gr=hitGrip(sp);if(gr){const e0=selE;selE0=e0;gripHit0=gr;startCmd(gripCmd(e0,gr));cur={raw:gr.p.slice(),p:gr.p.slice(),snap:null};refreshCmd();g={type:'pending',start:sp,last:sp,moved:false,grip:true};return;}}
-  if((!cmd||cmd.kind==='select')&&boxArm){g={type:'box',start:sp};boxNow=[sp,sp];return;}
+  if((!cmd||cmd.kind==='select')&&boxArm){g={type:'box',start:sp};boxNow=[sp,sp];boxPath=st.boxLasso?[sp]:null;return;}
   g={type:'pending',start:sp,last:sp,moved:false};
   // 選取模式長按（0.55 秒、手指沒動）：在那一點叫出經緯度／街景（2026-11-25）
   if(!cmd&&!efPick&&!sheetPick){const G0=g;G0.lp=setTimeout(()=>{if(g===G0&&!G0.moved&&ptrs.size===1){g={type:'dead'};startPin(toW(sp));}},550);}
@@ -1545,7 +1552,7 @@ cv.addEventListener('pointermove',e=>{
   if(g.type==='ink'){if(dist(sp,ink.last)>=1.5){ink.len+=dist(sp,ink.last);if(ink.straight)ink.pts[1]=toW(sp);else if(!ink.shape)ink.pts.push(toW(sp));ink.last=sp;schedule();}
     if(dist(sp,ink.hp)>6){ink.hp=sp;inkHold();}return;}
   if(g.type==='erase'){eraseAt(toW(sp),g);return;}
-  if(g.type==='box'){boxNow=[g.start,sp];schedule();return;}
+  if(g.type==='box'){boxNow=[g.start,sp];if(boxPath){const l=boxPath[boxPath.length-1];if(dist(l,sp)>=4)boxPath.push(sp);}schedule();return;}
   if(g.type==='pending'&&dist(sp,g.start)>8){g.moved=true;clearTimeout(g.lp);g.type=(cmd&&cmd.kind==='points'&&cur)?'cursor':'pan';}
   if(g.type==='pan'){const cs=carrying()?toS(cur.raw):null;st.view.ox+=sp[0]-g.last[0];st.view.oy+=sp[1]-g.last[1];g.last=sp;if(cs){const w=toW(cs);cur={raw:w,p:w.slice(),snap:null};}schedule();return;}
   if(g.type==='cursor'){const s=st.view.s,raw=[cur.raw[0]+(sp[0]-g.last[0])/s,cur.raw[1]-(sp[1]-g.last[1])/s];g.last=sp;setCursorRaw(raw);return;}
@@ -1555,7 +1562,10 @@ function endPtr(e,cancel){
   if(g.type==='pinch'){if(g.cs&&cur)setCursorRaw(cur.raw);if(ptrs.size<2)g=ptrs.size?{type:'dead'}:null;saveSettings();return;}
   if(g.type==='dead'){if(!ptrs.size)g=null;return;}
   const G=g;g=null;clearTimeout(G.lp);if(ink)clearTimeout(ink.ht);if(cancel){ink=null;boxNow=null;schedule();return;}
-  if(G.type==='box'){const B=boxNow;boxNow=null;if(B&&dist(B[0],B[1])>8){boxSelect(B[0],B[1]);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
+  if(G.type==='box'){const B=boxNow,BP=boxPath;boxNow=null;boxPath=null;
+    const poly=BP&&BP.length>=3?BP.map(q=>toW(q)):null;let big=false;if(BP){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const q of BP){x0=Math.min(x0,q[0]);x1=Math.max(x1,q[0]);y0=Math.min(y0,q[1]);y1=Math.max(y1,q[1]);}big=x1-x0>8||y1-y0>8;}
+    if(!cmd&&tickOn&&(poly?big:B&&dist(B[0],B[1])>8)){tickRegion(B,poly);boxArm=false;updSelBar();schedule();return;}// 勾選確認中：框起來的一次勾
+    if(poly?big:(B&&dist(B[0],B[1])>8)){boxSelect(B[0],B[1],poly);boxArm=false;}if(cmd)refreshCmd();else{const L=[...selSet];if(!selE&&L.length)selE=L[L.length-1];setHint(baseHintText(),!!selE);updSelBar();}schedule();return;}
   if(G.type==='ink'){const P=ink.pts,sh=ink.shape;ink=null;if(sh&&cmd&&cmd.hint)setHint(...[].concat(cmd.hint()));if(P.length===1)P.push([P[0][0]+0.3/st.view.s,P[0][1]]);snapshot();addEnt({t:'ink',pts:P,w:st.inkW/st.view.s,ci:st.penCi});saveDraw();schedule();return;}
   if(G.type==='erase'){if(G.did)saveDraw();return;}
   if(G.type==='pan'){saveSettings();return;}
@@ -1930,6 +1940,15 @@ function tickNext(){if(!tickList)return;const c=toW([W/2,H/2]);let b=null,bd=Inf
   if(!b){toast('全部勾完了',2000);return;}const s=Math.max(st.view.s,clampS(25));st.view={s,ox:W/2-b[0]*s,oy:H/2+b[1]*s};schedule();}
 function tickBox(e){const b=e.bb||entBox(e),a=toS([b[0],b[3]]),c=toS([b[2],b[1]]);return[Math.min(a[0],c[0]),Math.min(a[1],c[1]),Math.max(a[0],c[0]),Math.max(a[1],c[1])];}
 function tickSegD(sp,P){let best=Infinity;for(let i=2;i<P.length;i+=2){const a=toS([P[i-2],P[i-1]]),b=toS([P[i],P[i+1]]);const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;let t=l2?((sp[0]-a[0])*dx+(sp[1]-a[1])*dy)/l2:0;t=Math.max(0,Math.min(1,t));const d=Math.hypot(a[0]+t*dx-sp[0],a[1]+t*dy-sp[1]);if(d<best)best=d;}return best;}
+/** 框選確認：框（螢幕兩點）或套索（世界多邊形）裡的一次勾；整個在裡面才算；裡面全部勾過就整批取消 */
+function tickRegion(B,poly){if(!tickList)return;let R;if(poly){R=[1e18,1e18,-1e18,-1e18];for(const p of poly){R[0]=Math.min(R[0],p[0]);R[1]=Math.min(R[1],p[1]);R[2]=Math.max(R[2],p[0]);R[3]=Math.max(R[3],p[1]);}}
+  else{const a=toW(B[0]),b=toW(B[1]);R=[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[0],b[0]),Math.max(a[1],b[1])];}
+  const inR=(x,y)=>x>=R[0]&&x<=R[2]&&y>=R[1]&&y<=R[3]&&(!poly||inPoly(poly,x,y));
+  const C=[];for(const it of tickList){const b=it.bb;if(b[0]<R[0]||b[2]>R[2]||b[1]<R[1]||b[3]>R[3])continue;
+    let ok;if(it.kind==='line'){ok=true;for(let i=0;i<it.P.length;i+=2)if(!inR(it.P[i],it.P[i+1])){ok=false;break;}}else ok=inR(it.p[0],it.p[1]);if(ok)C.push(it);}
+  if(!C.length){toast('框裡沒有要勾的東西（整個在框裡才算）',2000);return;}
+  const all=C.every(it=>tickDone.has(it.k));for(const it of C){if(all)tickDone.delete(it.k);else tickDone.add(it.k);}tickSave();
+  toast(all?`取消勾選 ${C.length} 個`:`勾選 ${C.length} 個`,1500);tickHintShow();}
 function tickTap(sp){if(!tickList)return false;const w=toW(sp),r=16/st.view.s,C=tickQuery(w[0]-r,w[1]-r,w[0]+r,w[1]+r);if(!C)return false;let best=null,bd=Infinity;
   for(const i of C){const it=tickList[i];let d;
     if(it.kind==='txt'){const R=tickBox(it.e);if(sp[0]<R[0]-8||sp[0]>R[2]+8||sp[1]<R[1]-8||sp[1]>R[3]+8)continue;d=Math.hypot(sp[0]-(R[0]+R[2])/2,sp[1]-(R[1]+R[3])/2)*0.5;}// 文字、圖例優先於線
@@ -1965,12 +1984,14 @@ $('lyNone').onclick=()=>{impLayers.forEach(l=>offLy.add(l.name));syncHid();fillL
 
 /* ---------- 點到物件時：關閉這個圖層／到圖層列表找它 ---------- */
 function updSelBar(){const b=$('selBar');if(!b)return;const show=!cmd;b.style.display=show?'flex':'none';if(!show)return;
-  $('selBox').textContent=boxArm?'框選：拖曳畫框':'框選';$('selBox').classList.toggle('on',boxArm);$('selLock').textContent=st.lockBase?'底圖已鎖':'鎖定底圖';$('selLock').classList.toggle('on',!!st.lockBase);
+  $('selLasso').style.display=boxArm?'':'none';$('selLasso').textContent=st.boxLasso?'套索':'矩形';$('selLasso').classList.toggle('on',!!st.boxLasso);
+  $('selBox').textContent=boxArm?(st.boxLasso?'框選：拖曳圈範圍':'框選：拖曳畫框'):'框選';$('selBox').classList.toggle('on',boxArm);$('selLock').textContent=st.lockBase?'底圖已鎖':'鎖定底圖';$('selLock').classList.toggle('on',!!st.lockBase);
   $('selClr').style.display=selSet.size?'':'none';$('selClr').textContent=`清除（${selCount()}）`;$('selOff').style.display=$('selList').style.display=selE?'':'none';}
 function lockBaseToggle(){st.lockBase=!st.lockBase;saveSettings();if(st.lockBase){let n=0;for(const e of [...selSet])if(e.imp){selSet.delete(e);n++;}if(selE&&selE.imp)selE=[...selSet].pop()||null;}
   toast(st.lockBase?'底圖已鎖定：選取、框選只會選到自己畫的':'底圖解鎖：可以選到底圖',2200);updSelBar();schedule();}
 $('selLock').onclick=lockBaseToggle;
-$('selBox').onclick=()=>{boxArm=!boxArm;updSelBar();if(boxArm)toast('拖曳畫框：往右拉選框內的、往左拉碰到就選（累加）',2500);};
+$('selBox').onclick=()=>{boxArm=!boxArm;updSelBar();if(boxArm)toast(tickOn?'拖曳框起來：框裡的一次勾選（全部勾過的話整批取消）':st.boxLasso?'套索：按住拖出範圍，放開自動封口，選整個在裡面的（累加）':'拖曳畫框：往右拉選框內的、往左拉碰到就選（累加）',2500);};
+$('selLasso').onclick=()=>{st.boxLasso=!st.boxLasso;saveSettings();updSelBar();toast(st.boxLasso?'套索：按住拖出任意形狀':'矩形框選',1500);};
 $('selClr').onclick=()=>{selSet.clear();selE=null;boxArm=false;setHint(baseHintText(),false);updSelBar();schedule();};
 function closeSelLayer(){if(!selE)return;const n=selE.ly||'0';
   if(selE.imp){offLy.add(n);syncHid();}else{const L=st.layers.find(l=>l.name===n);if(L){L.on=false;saveSettings();}}
