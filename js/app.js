@@ -1585,6 +1585,7 @@ function onTap(sp){
     if(bi>=0){if(bi===smallIdx&&!smallHl){smallHl=true;schedule();return;}if(bi===smallIdx){okToggle();const m2=smallMarks[bi];setHint((m2.ok?'已確認：':'取消確認：')+(m2.msg||''),true);return;}smallIdx=bi;smallHl=true;updSmallBar();const m=smallMarks[bi];setHint(m.msg||`${m.len.toFixed(2)}m　${m.l}`,true);schedule();return;}}
   if(!cmd&&!smallMarks&&(parkTap(sp)||addrTap(sp)))return;
   if(!cmd&&smallMarks&&smallHl&&smallIdx>=0){smallHl=false;schedule();setHint(baseHintText(),false);return;}// 點旁邊空白處：收起目前這筆的範圍標示
+  if(!cmd&&tickOn){tickHintShow();return;}// 勾選確認中：沒點到要勾的東西就什麼都不做，不要選到底圖的線（例：多維度的房屋線）
   if(!cmd){const flt=st.lockBase?ownOnly:null,cy=pickCycle(sp,w,flt,selE);
     if(cy){const[nx,old]=cy;for(const x of grpOf(old))selSet.delete(x);for(const x of grpOf(nx))selSet.add(x);selE=nx;selGrpKey=null;
       setHint(baseHintText(),true,selSet.size===1&&!selE.imp&&selE.t==='text'?{t:'編輯文字',f:()=>openTextEdit(selE)}:null);updSelBar();schedule();return;}

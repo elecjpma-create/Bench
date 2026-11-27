@@ -1,6 +1,6 @@
 {
-"ver": "1.0.9",
-"code": 130,
+"ver": "1.0.10",
+"code": 131,
 "minApk": 75,
 "files": {
 "dwg.js": {
@@ -16,8 +16,8 @@
 "h": "2487775d47178036cf442860d863dc5118182ef5be007f896eec5e2cf66ae8a7"
 },
 "js/app.js": {
-"s": 287715,
-"h": "cb7ea6d5318039769c6f70514afd7131d3099671beece2f212559f8cbbbcf897"
+"s": 287881,
+"h": "db7ea979ee3453bfe84b33ad2ef078b6c5f13df1e81d5f5c700fa3f8b4f30fac"
 },
 "js/area.js": {
 "s": 90069,
