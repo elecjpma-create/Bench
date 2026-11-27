@@ -719,8 +719,12 @@ function areaCheck(lines,points,opt){
         // 對面有線剛好在這個位置（不是停在框邊而是轉彎或本來就穿過）就不算中斷
         const q=P2(a.s);if(!keep(q[0],q[1])||!cellNew(q[0],q[1]))continue;
         if(thru.some(t=>Math.abs(t.s-a.s)<=posTol&&t.li!==a.li))continue;
-        // 增建線的端點落在房屋線的屋角上（2026-11-27 使用者）：是接在屋角、沒有越過圖框，不算中斷
-        if(a.L.r&AR_ADD){let onCorner=false;for(const L of lines){if(!(L.r&(AR_HOUSE|AR_TEMP)))continue;const p=L.p;for(let i=0;i<p.length;i+=2)if(Math.abs(p[i]-a.x)<0.01&&Math.abs(p[i+1]-a.y)<0.01){onCorner=true;break;}if(onCorner)break;}if(onCorner)continue;}
+        // 增建線的端點落在房屋線上（屋角或屋線中間，2026-11-27 使用者）：是接在房屋上、沒有越過圖框，不算中斷
+        // 端點落在房屋線的線段中間也一樣（例：框內 0.15m 接在屋線上）
+        if(a.L.r&AR_ADD){let onH=false;for(const L of lines){if(!(L.r&(AR_HOUSE|AR_TEMP)))continue;const p=L.p;
+            for(let i=0;i<p.length&&!onH;i+=2){if(Math.abs(p[i]-a.x)<0.01&&Math.abs(p[i+1]-a.y)<0.01){onH=true;break;}
+              if(i+3<p.length){const ax=p[i],ay=p[i+1],bx=p[i+2],by=p[i+3],dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy;if(l2<1e-12)continue;
+                const t=((a.x-ax)*dx+(a.y-ay)*dy)/l2;if(t<0||t>1)continue;if(Math.hypot(ax+t*dx-a.x,ay+t*dy-a.y)<0.01)onH=true;}}if(onH)break;}if(onH)continue;}
         let near=false;for(const L of lines){if(L===a.L||(L.r&AR_GATE)||!(L.r&AR_ADD)!==!(a.L.r&AR_ADD))continue;const p=L.p;for(let i=2;i<p.length&&!near;i+=2){const[s0,d0]=U(p[i-2],p[i-1]),[s1,d1]=U(p[i],p[i+1]);
           // 對面那一側、框邊 posTol 內有其他線的端點或線段經過
           const sgn=side?-1:1;for(const[s,d]of[[s0,d0],[s1,d1]])if(Math.abs(s-a.s)<=posTol&&d*sgn>=-over&&d*sgn<=band)near=true;}if(near)break;}
