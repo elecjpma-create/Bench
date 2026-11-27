@@ -1867,41 +1867,86 @@ function gridSync(){let S=[];try{S=gridBuild();}catch(_){}const sig=drawKey+'|'+
 function drawGridWeb(){ctx.save();ctx.strokeStyle=GRID_COL;ctx.lineWidth=1;ctx.beginPath();const S=gridSegs;
   for(let i=0;i<S.length;i+=4){const a=toS([S[i],S[i+1]]),b=toS([S[i+2],S[i+3]]);ctx.moveTo(a[0],a[1]);ctx.lineTo(b[0],b[1]);}ctx.stroke();ctx.restore();}
 /* ---------- 勾選確認（2026-11-27）：檢查時一個一個勾，亮的＝還沒勾 ----------
-   多維度：只勾房屋註記（永久性房屋的樓層註記）和增建註記；分棟線、臨時性房屋、建築中、廢墟的註記不用勾，線也不用勾。
-   範圍：區域檢查選的圖幅（沒選＝全部圖框；沒有圖框＝整張圖）；舊圖（a 開頭）不算。
-   畫法：還沒勾的註記外面黃框，勾過的灰色 ✓；只畫畫面裡的，不用動原生。每張圖各自記在 localStorage。
-   修正測繪（新畫的線、圖例、註記全部要確認）之後再做。 */
-let tickOn=false,tickList=null,tickDone=new Set(),tickFor='';
-function tickKey(e){return e.ly+'|'+e.lines.join('')+'|'+e.p[0].toFixed(2)+'|'+e.p[1].toFixed(2);}
-function tickIsTarget(e){if(e.t!=='text'||!e.p||!e.lines)return false;const ly=e.ly||'';if(/^a(\d|增建)/i.test(ly))return false;// 舊圖：a 開頭的編號層和 a增建
+   範圍：區域檢查選的圖幅（沒選＝全部圖框；沒有圖框＝整張圖）。舊圖（a 開頭編號層、a增建）一律不算。
+   兩種都不用勾：98 開頭（等高線、標高點和數字）、分棟線、臨時性房屋、建築中、廢墟（線和註記）、圖框／圖廓／方格線。
+   多維度（圖裡沒有舊圖層）：永久性房屋線不用勾，其他線、圖例（一個圖塊算一個，門也是一個）、文字（房屋／增建註記、路名、地名、中文註記）都要。
+   修正測繪（有舊圖層）：新畫的全部都要，房屋線也要。
+   畫法：還沒勾的線疊亮黃色、圖例畫黃圈、文字黃框；勾過的恢復原樣（圖例、文字旁邊小 ✓）。只畫畫面裡的，太多就先不畫（放大才出現）。
+   每張圖各自記在 localStorage（simplecad.tick:drawKey）。 */
+let tickOn=false,tickList=null,tickDone=new Set(),tickFor='',tickGrid=null,tickModeNow='';
+const TICK_CELL=40;
+function tickOldLy(ly){return /^a(\d|增建)/i.test(ly||'');}
+function tickIsRev(){return impLayers.some(l=>tickOldLy(l.name)&&!/^a98/i.test(l.name));}// 只有舊等高線（a98…）不算修正測繪
+function tickMode(){const m=st.tickMode||'';return m||(tickIsRev()?'rev':'multi');}
+/** 圖層要不要勾：kind＝'line'|'blk'|'txt' */
+function tickLyOk(ly,kind,mode){ly=ly||'';if(tickOldLy(ly))return false;if(FRAME_RE.test(ly)||/圖廓|方格|圖號|接合表/.test(ly))return false;
   const m=/^(\d{5,7})([A-Za-z]*)/.exec(ly);
-  if(m){if(!m[1].startsWith('931'))return false;if(AR_TEMPC.has(m[1])||m[1]==='9310101'||/臨時|建築中|廢墟|分棟|分戶/.test(ly))return false;}
-  else if(!/增建/.test(ly))return false;
-  const s=e.lines.join('').replace(/\s/g,'');return /^(\d+[A-Za-z]|[A-Za-z]+\d*)$/.test(s);}// 1R、12B、M1、T、t、B1
-function tickBuild(){let S=sheetBoxes();if(!S.length)S=sheetFrames();const inS=p=>!S.length||S.some(f=>p[0]>=f.b[0]&&p[0]<=f.b[2]&&p[1]>=f.b[1]&&p[1]<=f.b[3]);
-  tickList=imp.filter(e=>tickIsTarget(e)&&inS(e.p));tickList.forEach(e=>{e._tk=tickKey(e);});
+  if(m){const c=m[1];if(c.startsWith('98'))return false;
+    if(c.startsWith('931')){if(AR_TEMPC.has(c)||c==='9310101'||/臨時|建築中|廢墟|分棟|分戶/.test(ly))return false;
+      const txt=/TXT|X$/i.test(m[2]);if(kind==='line'&&mode==='multi'&&!txt&&!(m[2].toUpperCase()==='ADD'||c==='9310102'||/增建/.test(ly)))return false;}// 多維度：永久性房屋線不用勾（增建線要）
+    return true;}
+  if(/增建/.test(ly))return true;
+  if(kind==='txt'&&/註記|地名|路名/.test(ly))return true;
+  if(/^Q(-|$)/i.test(ly)&&kind==='line')return true;
+  return false;}
+function tickKey(e){return e.ly+'|'+e.lines.join('')+'|'+e.p[0].toFixed(2)+'|'+e.p[1].toFixed(2);}
+function tickBuild(){const mode=tickMode();tickModeNow=mode;let S=sheetBoxes();if(!S.length)S=sheetFrames();
+  const hit=(x0,y0,x1,y1)=>!S.length||S.some(f=>x1>=f.b[0]&&x0<=f.b[2]&&y1>=f.b[1]&&y0<=f.b[3]);
+  const L=[];const r2=v=>v.toFixed(2);
+  const addLine=(ly,P)=>{if(P.length<4)return;let x0=1e18,y0=1e18,x1=-1e18,y1=-1e18;for(let i=0;i<P.length;i+=2){if(P[i]<x0)x0=P[i];if(P[i]>x1)x1=P[i];if(P[i+1]<y0)y0=P[i+1];if(P[i+1]>y1)y1=P[i+1];}
+    if(!hit(x0,y0,x1,y1))return;const n=P.length;L.push({kind:'line',ly,P,bb:[x0,y0,x1,y1],k:'L|'+ly+'|'+r2(P[0])+','+r2(P[1])+'|'+r2(P[n-2])+','+r2(P[n-1])+'|'+n/2});};
+  const addBlk=(ly,x,y)=>{if(!hit(x,y,x,y))return;L.push({kind:'blk',ly,p:[x,y],bb:[x,y,x,y],k:'B|'+ly+'|'+r2(x)+','+r2(y)});};
+  // 文字（App、網頁都在 imp 裡）
+  for(const e of imp){if(e.t!=='text'||!e.p||!e.lines||!e.lines.join('').trim())continue;if(!tickLyOk(e.ly,'txt',mode))continue;if(!hit(e.p[0],e.p[1],e.p[0],e.p[1]))continue;
+    const b=e.bb||entBox(e);L.push({kind:'txt',ly:e.ly,e,p:e.p,bb:b,k:tickKey(e)});}
+  if(nativeOn){const lyL=impLayers.map(l=>l.name).filter(n=>tickLyOk(n,'line',mode)),lyB=impLayers.map(l=>l.name).filter(n=>tickLyOk(n,'blk',mode));let R=null;
+    try{R=JSON.parse(CadNative.areaData(JSON.stringify({b:lyL,p:lyB,l:[],g:[]}))||'null');}catch(_){}
+    if(R&&!R.err){const ox=R.ox,oy=R.oy;for(const a of R.s){const ly=R.L[a[0]];if(!tickLyOk(ly,'line',mode))continue;const P=new Array(a.length-1);for(let i=1;i<a.length;i+=2){P[i-1]=a[i]+ox;P[i]=a[i+1]+oy;}addLine(ly,P);}
+      for(const q of R.p){const ly=R.L[q[0]];if(tickLyOk(ly,'blk',mode))addBlk(ly,q[1]+ox,q[2]+oy);}}}
+  else{const seen=new Set();
+    for(const e of imp){if(e.t==='text')continue;
+      if(e.g){const key=e.ly+'|'+e.g;if(seen.has(key))continue;seen.add(key);if(!tickLyOk(e.ly,'blk',mode))continue;const ip=e.gi||(e.bb?[(e.bb[0]+e.bb[2])/2,(e.bb[1]+e.bb[3])/2]:null);if(ip)addBlk(e.ly,ip[0],ip[1]);continue;}
+      if(!tickLyOk(e.ly,'line',mode))continue;for(const P of entPolys(e)){const F=[];for(const q of P)F.push(q[0],q[1]);addLine(e.ly,F);}}}
+  tickList=L;tickGrid=new Map();
+  L.forEach((it,i)=>{const b=it.bb;const cx0=Math.floor(b[0]/TICK_CELL),cy0=Math.floor(b[1]/TICK_CELL),cx1=Math.floor(b[2]/TICK_CELL),cy1=Math.floor(b[3]/TICK_CELL);
+    if((cx1-cx0+1)*(cy1-cy0+1)>400){const k='big';(tickGrid.get(k)||tickGrid.set(k,[]).get(k)).push(i);return;}
+    for(let cx=cx0;cx<=cx1;cx++)for(let cy=cy0;cy<=cy1;cy++){const k=cx+','+cy;(tickGrid.get(k)||tickGrid.set(k,[]).get(k)).push(i);}});
   if(tickFor!==drawKey){tickFor=drawKey;tickDone=new Set();try{for(const k of JSON.parse(localStorage.getItem('simplecad.tick:'+drawKey)||'[]'))tickDone.add(k);}catch(_){}}}
+function tickQuery(x0,y0,x1,y1){const out=new Set();if(!tickGrid)return[];const cx0=Math.floor(x0/TICK_CELL),cy0=Math.floor(y0/TICK_CELL),cx1=Math.floor(x1/TICK_CELL),cy1=Math.floor(y1/TICK_CELL);
+  if((cx1-cx0+1)*(cy1-cy0+1)>20000)return null;// 太遠：不查
+  for(let cx=cx0;cx<=cx1;cx++)for(let cy=cy0;cy<=cy1;cy++){const a=tickGrid.get(cx+','+cy);if(a)for(const i of a)out.add(i);}
+  const big=tickGrid.get('big');if(big)for(const i of big)out.add(i);
+  return[...out].filter(i=>{const b=tickList[i].bb;return b[2]>=x0&&b[0]<=x1&&b[3]>=y0&&b[1]<=y1;});}
 function tickSave(){try{localStorage.setItem('simplecad.tick:'+drawKey,JSON.stringify([...tickDone]));}catch(_){}}
-function tickCount(){let n=0;for(const e of tickList)if(tickDone.has(e._tk))n++;return n;}
-function tickHint(){const n=tickList?tickList.length:0;return n?`勾選確認：已勾 ${tickCount()}／${n}（點註記勾選，再點取消）`:'勾選確認：選的範圍裡沒有房屋、增建註記';}
-function tickToggleMode(){tickOn=!tickOn;if(tickOn){tickBuild();if(!tickList.length)toast('選的範圍裡沒有房屋、增建註記',2500);}
-  $('tickBtn').classList.toggle('on',tickOn);$('tickBtn').textContent=tickOn?'結束勾選確認':'勾選確認（房屋、增建註記）';
-  tickHintShow();schedule();}
+function tickCount(){let n=0;for(const e of tickList)if(tickDone.has(e.k))n++;return n;}
+function tickHint(){const n=tickList?tickList.length:0,nm=tickModeNow==='rev'?'修正測繪':'多維度';return n?`勾選確認（${nm}）：已勾 ${tickCount()}／${n}（點線、圖例、文字勾選，再點取消）`:`勾選確認（${nm}）：選的範圍裡沒有要勾的東西`;}
+function tickToggleMode(){tickOn=!tickOn;if(tickOn){busy(true,'整理要勾的東西…');setTimeout(()=>{try{tickBuild();}finally{busy(false);}if(!tickList.length)toast('選的範圍裡沒有要勾的東西',2500);tickUi();},30);return;}
+  tickUi();}
+function tickUi(){$('tickBtn').classList.toggle('on',tickOn);$('tickBtn').textContent=tickOn?'結束勾選確認':'勾選確認';tickHintShow();schedule();}
 function tickHintShow(){if(!tickOn){setHint(baseHintText(),false);return;}setHint(tickHint(),true,{t:'下一個',f:tickNext});}
 function tickNext(){if(!tickList)return;const c=toW([W/2,H/2]);let b=null,bd=Infinity;
-  for(const e of tickList){if(tickDone.has(e._tk))continue;const d=Math.hypot(e.p[0]-c[0],e.p[1]-c[1]);if(d<bd){bd=d;b=e;}}
-  if(!b){toast('全部勾完了',2000);return;}const s=Math.max(st.view.s,clampS(40));st.view={s,ox:W/2-b.p[0]*s,oy:H/2+b.p[1]*s};schedule();}
+  for(const it of tickList){if(tickDone.has(it.k))continue;const p=it.p||[(it.bb[0]+it.bb[2])/2,(it.bb[1]+it.bb[3])/2];const d=Math.hypot(p[0]-c[0],p[1]-c[1]);if(d<bd){bd=d;b=p;}}
+  if(!b){toast('全部勾完了',2000);return;}const s=Math.max(st.view.s,clampS(25));st.view={s,ox:W/2-b[0]*s,oy:H/2+b[1]*s};schedule();}
 function tickBox(e){const b=e.bb||entBox(e),a=toS([b[0],b[3]]),c=toS([b[2],b[1]]);return[Math.min(a[0],c[0]),Math.min(a[1],c[1]),Math.max(a[0],c[0]),Math.max(a[1],c[1])];}
-function tickTap(sp){if(!tickList)return false;let best=null,bd=Infinity;
-  for(const e of tickList){const r=tickBox(e);const pad=10;if(sp[0]<r[0]-pad||sp[0]>r[2]+pad||sp[1]<r[1]-pad||sp[1]>r[3]+pad)continue;
-    const d=Math.hypot(sp[0]-(r[0]+r[2])/2,sp[1]-(r[1]+r[3])/2);if(d<bd){bd=d;best=e;}}
-  if(!best)return false;if(tickDone.has(best._tk))tickDone.delete(best._tk);else tickDone.add(best._tk);tickSave();
+function tickSegD(sp,P){let best=Infinity;for(let i=2;i<P.length;i+=2){const a=toS([P[i-2],P[i-1]]),b=toS([P[i],P[i+1]]);const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;let t=l2?((sp[0]-a[0])*dx+(sp[1]-a[1])*dy)/l2:0;t=Math.max(0,Math.min(1,t));const d=Math.hypot(a[0]+t*dx-sp[0],a[1]+t*dy-sp[1]);if(d<best)best=d;}return best;}
+function tickTap(sp){if(!tickList)return false;const w=toW(sp),r=16/st.view.s,C=tickQuery(w[0]-r,w[1]-r,w[0]+r,w[1]+r);if(!C)return false;let best=null,bd=Infinity;
+  for(const i of C){const it=tickList[i];let d;
+    if(it.kind==='txt'){const R=tickBox(it.e);if(sp[0]<R[0]-8||sp[0]>R[2]+8||sp[1]<R[1]-8||sp[1]>R[3]+8)continue;d=Math.hypot(sp[0]-(R[0]+R[2])/2,sp[1]-(R[1]+R[3])/2)*0.5;}// 文字、圖例優先於線
+    else if(it.kind==='blk'){const q=toS(it.p);d=Math.hypot(q[0]-sp[0],q[1]-sp[1]);if(d>16)continue;d*=0.5;}
+    else{d=tickSegD(sp,it.P);if(d>12)continue;}
+    if(d<bd){bd=d;best=it;}}
+  if(!best)return false;if(tickDone.has(best.k))tickDone.delete(best.k);else tickDone.add(best.k);tickSave();
   try{navigator.vibrate&&navigator.vibrate(15);}catch(_){}tickHintShow();schedule();return true;}
-function drawTick(){if(!tickOn||!tickList||tickFor!==drawKey)return;const a=toW([-20,H+20]),b=toW([W+20,-20]);ctx.save();ctx.lineWidth=2;
-  for(const e of tickList){if(e.p[0]<a[0]-20||e.p[0]>b[0]+20||e.p[1]<a[1]-20||e.p[1]>b[1]+20)continue;const r=tickBox(e);
-    if(r[2]-r[0]<2&&r[3]-r[1]<2)continue;
-    if(tickDone.has(e._tk)){const x=r[2]+3,y=r[1]+(r[3]-r[1])/2;ctx.strokeStyle='#8a929c';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+4,y+4);ctx.lineTo(x+11,y-5);ctx.stroke();}
-    else{ctx.strokeStyle='#ffd21f';ctx.strokeRect(r[0]-4,r[1]-3,r[2]-r[0]+8,r[3]-r[1]+6);}}
+function drawTick(){if(!tickOn||!tickList||tickFor!==drawKey)return;const a=toW([-20,H+20]),b=toW([W+20,-20]);const C=tickQuery(a[0],a[1],b[0],b[1]);
+  if(!C||C.length>6000){ctx.save();ctx.font='13px sans-serif';ctx.fillStyle='#ffd21f';ctx.fillText('勾選確認：放大才顯示',12,90);ctx.restore();return;}
+  ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.strokeStyle='rgba(255,210,31,.55)';ctx.lineWidth=5;ctx.beginPath();
+  for(const i of C){const it=tickList[i];if(it.kind!=='line'||tickDone.has(it.k))continue;const P=it.P;let q=toS([P[0],P[1]]);ctx.moveTo(q[0],q[1]);for(let j=2;j<P.length;j+=2){q=toS([P[j],P[j+1]]);ctx.lineTo(q[0],q[1]);}}
+  ctx.stroke();ctx.lineWidth=2;
+  const chk=(x,y)=>{ctx.strokeStyle='#8a929c';ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+4,y+4);ctx.lineTo(x+11,y-5);ctx.stroke();};
+  for(const i of C){const it=tickList[i];const done=tickDone.has(it.k);
+    if(it.kind==='txt'){const r=tickBox(it.e);if(r[2]-r[0]<2&&r[3]-r[1]<2)continue;if(done)chk(r[2]+3,r[1]+(r[3]-r[1])/2);else{ctx.strokeStyle='#ffd21f';ctx.strokeRect(r[0]-4,r[1]-3,r[2]-r[0]+8,r[3]-r[1]+6);}}
+    else if(it.kind==='blk'){const q=toS(it.p);if(done)chk(q[0]+6,q[1]);else{ctx.strokeStyle='#ffd21f';ctx.beginPath();ctx.arc(q[0],q[1],9,0,TAU);ctx.stroke();}}}
   ctx.restore();}
 function lyColSet(fn){fn();saveSettings();lyColSync();schedule();fillLayerSheet();}
 let hidSig='';
@@ -2377,6 +2422,7 @@ const numSet=(id,k,min)=>$(id).onchange=e=>{const v=parseFloat(e.target.value);i
 numSet('sLt','ltscale',0);$('sHfs').onchange=e=>{const v=parseFloat(e.target.value);if(v>=9&&v<=40){st.hfs=v;saveSettings();applyHfs();hintMoreUpd();}else e.target.value=st.hfs||13;};
 $('sGrid').onchange=e=>{st.gridMode=e.target.value;saveSettings();gridSync();if(st.gridMode&&!sheetBoxes().length)toast('方格線只畫區域檢查選的圖幅：先到 ⚙ 檢查設定選圖幅',3500);};
 $('tickBtn').onclick=()=>{closeSheet('chkSheet');tickToggleMode();};
+$('tickMode').value=st.tickMode||'';$('tickMode').onchange=e=>{st.tickMode=e.target.value;saveSettings();if(tickOn){tickBuild();tickUi();}};
 $('hintT').onclick=hintToggle;$('hintMore').onclick=hintToggle;
 numSet('sLon','lon0');numSet('sTh','textH',0);numSet('sInk','inkW',0);
 $('sPrec').onchange=e=>{st.prec=Math.max(0,Math.min(6,parseInt(e.target.value)||0));e.target.value=st.prec;saveSettings();refreshCmd();};
