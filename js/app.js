@@ -1219,7 +1219,7 @@ function needRefresh(F){const r=st.view.s/F.view.s;if(r>1.5||r<0.7)return true;
 function drawBase(){
   if(!imp.length){baseJob=null;return;}
   const key=baseKey(),vk=st.view.s+','+st.view.ox+','+st.view.oy;
-  if(vk!==lastViewKey){lastViewKey=vk;viewChangedAt=performance.now();}
+  if(vk!==lastViewKey){lastViewKey=vk;viewChangedAt=performance.now();viewSave();}
   let F=baseFront&&baseFront.key===key?baseFront:null;
   const exact=F&&sameView(F.view,st.view);
   const busy=ptrs.size>0||performance.now()-viewChangedAt<90;
@@ -1242,7 +1242,7 @@ function drawBase(){
 /* ---------- 原生引擎（Cadpyard）：底圖線由原生解析、GPU 畫，這裡只負責查詢 ---------- */
 let nativeOn=false,nFit=null;const nCache=new Map();
 let _nv='';
-function nativeSync(){if(!NATIVE)return;nativeLtSync();nativeTxSync();const r=cv.getBoundingClientRect(),ox=st.view.ox+r.left,oy=st.view.oy+r.top,k=st.view.s+','+ox+','+oy+st.bg;if(k===_nv)return;_nv=k;try{CadNative.setView(st.view.s,ox,oy,st.bg==='white');}catch(_){}}
+function nativeSync(){if(!NATIVE)return;nativeLtSync();nativeTxSync();const r=cv.getBoundingClientRect(),ox=st.view.ox+r.left,oy=st.view.oy+r.top,k=st.view.s+','+ox+','+oy+st.bg;if(k===_nv)return;viewSave();_nv=k;try{CadNative.setView(st.view.s,ox,oy,st.bg==='white');}catch(_){}}
 // 線型：把用到的線型（虛線長度＋SHX 符號折線）打包給原生端展開
 let nLtNames=[],nLtSig='',nLtBusy=false,nLtTimer=0;
 function ltFont(){const f=fontFile('txt')||fontFile('simplex')||Object.values(shxFiles).find(x=>x.isFont&&x.type!=='bigfont');return f?f.name:'';}
@@ -1370,7 +1370,7 @@ async function nativeLoaded(m){
   let L=recentList();L=[{key:m.key,name:m.name,size:m.size,t:Date.now(),native:1},...L.filter(x=>x.key!==m.key)];
   for(const x of L.slice(RECENT_MAX))if(!x.native)await idbFile('f:'+x.key,null);
   recentSave(L.slice(0,RECENT_MAX));localStorage.setItem('simplecad.lastKey',m.key);
-  busy(false);zoomFit();
+  busy(false);if(!viewRestore())zoomFit();
   toast(`已開啟「${m.name}」：${m.strips} 條線、${m.texts} 個文字（${m.how}）`+(st.ents.length?`，載回你畫的 ${st.ents.length} 個`:''),4000);
 }
 window.cadBack=()=>{const s=[...document.querySelectorAll('.sheet.show')];if(s.length){s[s.length-1].classList.remove('show');return true;}if(cmd){endCmd();return true;}return false;};
@@ -1753,7 +1753,15 @@ function fillLayerSheet(){
     paint();r.append(on,fz,d,t,rs);bb.appendChild(r);});
   for(const[id,v]of[['lyPStd','std'],['lyPCat','cat'],['lyPOrig','']])$(id).classList.toggle('on',(st.lyPreset||'')===v);
 }
-function syncHid(){hidLy=new Set([...offLy,...frzLy]);hidSig=[...hidLy].sort().join('|');if(nativeOn)try{CadNative.setHidden(JSON.stringify([...hidLy]));}catch(_){}lyColSync();}
+function syncHid(){hidLy=new Set([...offLy,...frzLy]);hidSig=[...hidLy].sort().join('|');if(nativeOn)try{CadNative.setHidden(JSON.stringify([...hidLy]));}catch(_){}lyColSync();viewSave();}
+/* 每個檔記住上次看的位置和底圖圖層開關（2026-11-27）：依 drawKey（檔名｜大小）存，打開時回到那裡；沒記錄才縮放到全圖 */
+let viewSaveT=0;
+function viewSave(){const k=drawKey;if(!k||k==='(無底圖)'||(!imp.length&&!nativeOn))return;clearTimeout(viewSaveT);
+  viewSaveT=setTimeout(()=>{if(drawKey!==k)return;// 開新檔途中（drawKey 還沒換）不要蓋掉上一個檔的記錄
+    try{const c=toW([W/2,H/2]);localStorage.setItem('simplecad.view:'+k,JSON.stringify({c,s:st.view.s,off:[...offLy],frz:[...frzLy]}));}catch(_){}},600);}
+function viewRestore(){try{const v=JSON.parse(localStorage.getItem('simplecad.view:'+drawKey)||'null');if(!v||!Array.isArray(v.c)||!(v.s>0))return false;
+  if(Array.isArray(v.off)){const has=new Set(impLayers.map(l=>l.name));offLy=new Set(v.off.filter(n=>has.has(n)));frzLy=new Set((v.frz||[]).filter(n=>has.has(n)));syncHid();}
+  const s=clampS(v.s);st.view={s,ox:W/2-v.c[0]*s,oy:H/2+v.c[1]*s};schedule();saveSettings();return true;}catch(_){return false;}}
 /* ---------- 底圖圖層顯示顏色（2026-11-27）：只改畫面、不動圖檔 ----------
    st.lyCol＝手動設的 {圖層名:#色}（照圖層名稱記住，七碼圖層名稱統一，設一次每張圖都套用）；
    st.lyPreset＝''（原圖）｜'std'（七碼標準色：從三張七碼作業圖整理，找不到的白色）｜'cat'（依七碼類別上色）。
@@ -2309,7 +2317,7 @@ async function openDrawing(name,bytes,store){
       mergeLT(r.lts.map(finishLT).filter(x=>{const o=lts.find(y=>y.name===x.name);return!(o&&o.src==='support')||usable(x);}));}
     st.ltscale=r.ltscale||1;impName=name;blankName='';loadDraw(name+'|'+bytes.length);endCmd();
     await addRecent(name,bytes);
-    const sk=Object.entries(r.skipped);busy(false);zoomFit();
+    const sk=Object.entries(r.skipped);busy(false);if(!viewRestore())zoomFit();
     toast(`已開啟「${name}」：${imp.length} 個物件`+(st.ents.length?`，載回你畫的 ${st.ents.length} 個`:'')+(sk.length?`（未顯示：${sk.map(([k,v])=>k+' '+v).join('、')}）`:''),4000);
   }catch(err){busy(false);toast('開檔失敗：'+(err&&err.message||err),5000);console.error(err);}
 }
