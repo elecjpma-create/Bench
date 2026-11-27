@@ -2093,8 +2093,8 @@ function areaRun(D){
 const ADDR_PAD=50;// 門牌點：選的圖幅往外多畫 50m
 /* 兩組各自的圖幅選擇：area＝區域檢查只查這些圖幅（⚙ 檢查設定）、addr＝門牌點只畫這些圖幅往外 50m（門牌面板）；每張圖各自記住 */
 const SG={
-  area:{key:'sheets',set:new Set(),for:'',info:'sheetInfo',clear:'sheetClear',inp:'sheetIn',sheet:'chkSheet',none:'沒選：檢查整張圖',has:n=>`只檢查 ${n} 幅`,
-    end:n=>n?`只檢查 ${n} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查整張圖',cleared:'已清除：檢查整張圖'},
+  area:{key:'sheets',set:new Set(),for:'',info:'sheetInfo',clear:'sheetClear',inp:'sheetIn',sheet:'chkSheet',none:'沒選：檢查全部圖框（沒有圖框的圖才查整張）',has:n=>`只檢查 ${n} 幅`,
+    end:n=>n?`只檢查 ${n} 幅，重跑區域檢查才會套用`:'沒選圖幅：檢查全部圖框',cleared:'已清除：檢查全部圖框'},
   addr:{key:'addrSheets',set:new Set(),for:'',info:'addrSheetInfo',clear:'addrSheetClear',inp:'addrSheetIn',sheet:'addrSheet',none:'沒選：畫底圖所有圖框（圖幅）裡的門牌',has:n=>`只畫 ${n} 幅（往外 50m）的門牌`,
     end:n=>n?`門牌點只畫選的 ${n} 幅`:'沒選圖幅：畫所有圖框裡的門牌',cleared:'已清除：畫所有圖框裡的門牌'}};
 const sheetSel=SG.area.set;let sheetPick=null,sheetFr=null;
@@ -2113,7 +2113,9 @@ function sheetFrames(){const key=impName+'|'+imp.length+'|'+nativeOn+'|'+impLaye
     for(const t of T){if(t.p[0]<b[0]||t.p[0]>b[2]||t.p[1]<b[1]||t.p[1]>b[3])continue;const d=Math.hypot(t.p[0]-cx,t.p[1]-cy);if(d<bd){bd=d;best=t;}}
     const num=best?best.lines.join('').replace(/\s/g,''):'';return{id:num||`${Math.round(b[0])},${Math.round(b[1])}`,num,b};});
   if(fly.length&&(!nativeOn||FB.length))sheetFr={key,list};return list;}
-function sheetApply(D){const S=sheetBoxes();if(!S.length){if(sheetSel.size)toast('選的圖幅在這張圖找不到，改檢查整張圖',3000);return true;}
+// 沒選圖幅（2026-11-27 使用者）：有圖框的才是我們要做的，沒圖框的是別家的 → 檢查全部圖框（接邊照查，圖框外不報）；整張圖都沒有圖框才查整張
+function sheetApply(D){let S=sheetBoxes(),all=false;if(!S.length){if(sheetSel.size)toast('選的圖幅在這張圖找不到，改檢查全部圖框',3000);S=sheetFrames();all=true;if(!S.length)return true;}
+  const rng=all?D.range:null;
   const ox=D.ox,oy=D.oy,BX=S.map(f=>[f.b[0]-ox,f.b[1]-oy,f.b[2]-ox,f.b[3]-oy]);
   const PB=BX.map(b=>[b[0]-SHEET_PAD,b[1]-SHEET_PAD,b[2]+SHEET_PAD,b[3]+SHEET_PAD]);
   const ptIn=(x,y)=>PB.some(b=>x>=b[0]&&x<=b[2]&&y>=b[1]&&y<=b[3]);
@@ -2123,7 +2125,7 @@ function sheetApply(D){const S=sheetBoxes();if(!S.length){if(sheetSel.size)toast
   if(D.gates)D.gates=D.gates.filter(g=>ptIn(g[0],g[1]));if(D.ditch)D.ditch=D.ditch.filter(arrIn);if(D.odd)D.odd=D.odd.filter(o=>arrIn(o.p||o));
   if(D.notes)D.notes=D.notes.filter(n=>ptIn(n[0],n[1]));
   if(D.veg)D.veg=D.veg.filter(v=>!v||!v.p||arrIn(v.p));
-  D.keep=(x,y)=>BX.some(b=>x>=b[0]-0.5&&x<=b[2]+0.5&&y>=b[1]-0.5&&y<=b[3]+0.5);D.range=null;D.sheetN=S.length;D.cut=n0-D.lines.length;
+  D.keep=(x,y)=>BX.some(b=>x>=b[0]-0.5&&x<=b[2]+0.5&&y>=b[1]-0.5&&y<=b[3]+0.5)&&(!rng||areaInRing(rng.ring,x,y)===rng.inside);D.range=null;D.sheetN=all?0:S.length;D.allFr=all;D.cut=n0-D.lines.length;
   if(!D.lines.length){toast('選的圖幅裡沒有可以檢查的線',3000);return false;}return true;}
 function areaKeep(D){return D.keep||(D.range?(x,y)=>areaInRing(D.range.ring,x,y)===D.range.inside:null);}
 function sheetAt(w){return sheetFrames().filter(f=>w[0]>=f.b[0]&&w[0]<=f.b[2]&&w[1]>=f.b[1]&&w[1]<=f.b[3]).sort((a,b)=>(a.b[2]-a.b[0])*(a.b[3]-a.b[1])-(b.b[2]-b.b[0])*(b.b[3]-b.b[1]))[0]||null;}
@@ -2281,7 +2283,7 @@ function addrCheck(){if(!addrRaw)return[];const R=[];const txt=[];let x0=1e18,y0
 async function findArea(onlyNoAdd){
   const D=areaCollect();
   if(!D||!D.lines.length){toast('這張圖沒有認得的房屋、圍牆、道路、地類界圖層（5 碼或 7 碼編碼）',4000);return;}
-  sheetLoad();if(sheetSel.size&&!sheetApply(D))return;
+  sheetLoad();if(!sheetApply(D))return;
   const R=areaRun(D);
   {// 新圖（數字開頭）和 Q 圖層的小線段，一起列在區域檢查結果裡
     const nw=newLayers(),q=qLayers(),only=nw.concat(q);let L=[];
@@ -2295,7 +2297,7 @@ async function findArea(onlyNoAdd){
   smallKey=impName;smallMode='area';setTimeout(()=>{okApply();updSmallBar();schedule();},0);
   smallMarks=R.marks.map(m=>({p:[m.x+D.ox,m.y+D.oy],msg:m.msg,type:m.type,ring:m.ring,gap:m.gap,path:m.path,nd:m.nd,o:[D.ox,D.oy]}));smallIdx=-1;
   const c=R.st;
-  toast(smallMarks.length?`找到 ${smallMarks.length} 處${D.sheetN?`（只看選的 ${D.sheetN} 幅）`:D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,3500);
+  toast(smallMarks.length?`找到 ${smallMarks.length} 處${D.sheetN?`（只看選的 ${D.sheetN} 幅）`:D.allFr?'（只看有圖框的範圍）':D.range?'（只看作業範圍內）':''}（${(c.ms/1000).toFixed(1)} 秒）`:`沒有找到問題（${c.face} 個區域，${(c.ms/1000).toFixed(1)} 秒）`,3500);
   if(!smallMarks.length)smallMarks=null;updSmallBar();updOldBtn();schedule();
   if(smallMarks){fillAreaSheet();openSheet('areaSheet');}// 跑完開分類列表
 }
