@@ -525,7 +525,7 @@ function openNav(la,lo){const u=`https://www.google.com/maps/dir/?api=1&destinat
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 // 街景：Google 地圖的街景畫面（不用金鑰）；附近沒有街景時由 Google 地圖自己處理
 // Google Earth（2026-11-26）：手機裝了 Earth App 通常直接開 App，沒裝或在電腦上開網頁版；search＝在那一點插針
-function openEarth(la,lo){const a=la.toFixed(7),o=lo.toFixed(7),u=`https://earth.google.com/web/search/${a},${o}/@${a},${o},0a,600d,35y,0h,0t,0r`;
+function openEarth(la,lo){const a=la.toFixed(7),o=lo.toFixed(7),u=`https://earth.google.com/web/search/${a},${o}/@${a},${o},0a,200d,35y,0h,0t,0r`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
 function openPano(la,lo){const u=`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${la.toFixed(7)},${lo.toFixed(7)}`;
   if(NATIVE||isApp){location.href=u;return;}const w=window.open(u,'_blank');if(!w)location.href=u;}
