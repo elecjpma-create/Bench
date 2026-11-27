@@ -719,6 +719,8 @@ function areaCheck(lines,points,opt){
         // 對面有線剛好在這個位置（不是停在框邊而是轉彎或本來就穿過）就不算中斷
         const q=P2(a.s);if(!keep(q[0],q[1])||!cellNew(q[0],q[1]))continue;
         if(thru.some(t=>Math.abs(t.s-a.s)<=posTol&&t.li!==a.li))continue;
+        // 增建線的端點落在房屋線的屋角上（2026-11-27 使用者）：是接在屋角、沒有越過圖框，不算中斷
+        if(a.L.r&AR_ADD){let onCorner=false;for(const L of lines){if(!(L.r&(AR_HOUSE|AR_TEMP)))continue;const p=L.p;for(let i=0;i<p.length;i+=2)if(Math.abs(p[i]-a.x)<0.01&&Math.abs(p[i+1]-a.y)<0.01){onCorner=true;break;}if(onCorner)break;}if(onCorner)continue;}
         let near=false;for(const L of lines){if(L===a.L||(L.r&AR_GATE)||!(L.r&AR_ADD)!==!(a.L.r&AR_ADD))continue;const p=L.p;for(let i=2;i<p.length&&!near;i+=2){const[s0,d0]=U(p[i-2],p[i-1]),[s1,d1]=U(p[i],p[i+1]);
           // 對面那一側、框邊 posTol 內有其他線的端點或線段經過
           const sgn=side?-1:1;for(const[s,d]of[[s0,d0],[s1,d1]])if(Math.abs(s-a.s)<=posTol&&d*sgn>=-over&&d*sgn<=band)near=true;}if(near)break;}
