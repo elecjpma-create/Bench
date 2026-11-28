@@ -1421,10 +1421,15 @@ function nativeNear(x0,y0,x1,y1,max){if(!nativeOn)return[];try{return JSON.parse
 function nativeView(max){if(!nativeOn)return[];const a=toW([0,H]),b=toW([W,0]);return nativeNear(a[0],a[1],b[0],b[1],max);}
 function nativeGroup(g){if(!nativeOn)return[];try{return JSON.parse(CadNative.group(g)).map(nEnt);}catch(_){return[];}}
 // 從檔案管理員等 App 用「開啟檔案」選本 App 帶進來的圖；回傳是否有開
-async function cadIntent(){if(!NATIVE)return false;let m;try{m=await CadCall('Cad','openIntent',{});}catch(err){busy(false);if(!/none/.test(err.message||''))toast('開檔失敗：'+(err.message||err),5000);return false;}
+/* 開檔閃退保護（2026-11-28）：開檔前記下，開好 8 秒後才清掉；下次啟動還在＝上次開到一半 App 被關掉（例：80MB 的 DWG），這次就不自動開它，免得一直閃退 */
+const OPENING='simplecad.opening';
+function openMark(name){try{localStorage.setItem(OPENING,JSON.stringify({name:name||'',t:Date.now()}));}catch(_){}}
+function openClear(){try{localStorage.removeItem(OPENING);}catch(_){}}
+function openDone(){setTimeout(openClear,8000);}
+async function cadIntent(){if(!NATIVE)return false;let m;openMark('從其他 App 開啟的檔案');try{m=await CadCall('Cad','openIntent',{});}catch(err){openClear();busy(false);if(!/none/.test(err.message||''))toast('開檔失敗：'+(err.message||err),5000);return false;}
   closeSheet('fileSheet');await nativeLoaded(m);return true;}
 window.cadIntent=cadIntent;
-async function nativeOpen(){try{const m=await CadCall('Cad','open',{});await nativeLoaded(m);}catch(err){busy(false);if(!/cancel/i.test(err.message||''))toast('開檔失敗：'+(err.message||err),5000);}}
+async function nativeOpen(){openMark('');try{const m=await CadCall('Cad','open',{});await nativeLoaded(m);}catch(err){openClear();busy(false);if(!/cancel/i.test(err.message||''))toast('開檔失敗：'+(err.message||err),5000);}}
 async function nativeLoaded(m){
   if(m.dxf){busy(false);await openDrawing(m.name,unb64(m.data),true);return;}
   busy(true,'載入文字…');
@@ -1441,7 +1446,7 @@ async function nativeLoaded(m){
   let L=recentList();L=[{key:m.key,name:m.name,size:m.size,t:Date.now(),native:1},...L.filter(x=>x.key!==m.key)];
   for(const x of L.slice(RECENT_MAX))if(!x.native)await idbFile('f:'+x.key,null);
   recentSave(L.slice(0,RECENT_MAX));localStorage.setItem('simplecad.lastKey',m.key);
-  busy(false);if(!viewRestore())zoomFit();
+  busy(false);if(!viewRestore())zoomFit();openDone();
   toast(`已開啟「${m.name}」：${m.strips} 條線、${m.texts} 個文字（${m.how}）`+(st.ents.length?`，載回你畫的 ${st.ents.length} 個`:''),4000);
 }
 window.cadBack=()=>{const s=[...document.querySelectorAll('.sheet.show')];if(s.length){s[s.length-1].classList.remove('show');return true;}if(cmd){endCmd();return true;}return false;};
@@ -2526,7 +2531,7 @@ async function addRecent(name,bytes){
 }
 async function openRecent(key,quiet){
   {const x=recentList().find(r=>r.key===key);if(x&&x.blank){openBlank(x.name);return;}}
-  {const x=recentList().find(r=>r.key===key);if(x&&x.native){if(!NATIVE)return;try{busy(true,`開啟「${x.name}」…`);const m=await CadCall('Cad','openCache',{name:x.name,size:x.size});await nativeLoaded(m);}catch(err){busy(false);if(!quiet)toast('這張圖的暫存不見了，請重新從手機選檔');recentSave(recentList().filter(r=>r.key!==key));fillRecent();}return;}}
+  {const x=recentList().find(r=>r.key===key);if(x&&x.native){if(!NATIVE)return;try{busy(true,`開啟「${x.name}」…`);openMark(x.name);const m=await CadCall('Cad','openCache',{name:x.name,size:x.size});await nativeLoaded(m);}catch(err){openClear();busy(false);if(!quiet)toast('這張圖的暫存不見了，請重新從手機選檔');recentSave(recentList().filter(r=>r.key!==key));fillRecent();}return;}}
   const x=recentList().find(r=>r.key===key);const v=x&&await idbFileGet('f:'+key);
   if(!v){if(!quiet)toast('這個檔案的暫存不見了，請重新從手機選檔');recentSave(recentList().filter(r=>r.key!==key));fillRecent();return;}
   await openDrawing(x.name,new Uint8Array(v),true);
@@ -2745,7 +2750,10 @@ resize();setHint(baseHintText());updateUI();
   if(NP().SupportFolder&&localStorage.getItem('simplecad.supUri'))await scanSupport(false);
   // 舊版只存一個 'last'：搬進最近檔案清單
   const old=await idbFileGet('last');if(old&&old.bytes){await addRecent(old.name,new Uint8Array(old.bytes));await idbFile('last',null);}
-  const lk=localStorage.getItem('simplecad.lastKey');if(!(await cadIntent())&&lk)await openRecent(lk,true);
+  let om=null;try{om=JSON.parse(localStorage.getItem(OPENING)||'null');}catch(_){}
+  if(om){openClear();try{localStorage.removeItem('simplecad.lastKey');}catch(_){}
+    setTimeout(()=>alert(`上次開${om.name?'「'+om.name+'」':'檔案'}時 App 關掉了（可能是檔案太大），這次先不自動開它。\n\n可以從「最近開的檔」選別的檔案。`),300);}
+  else{const lk=localStorage.getItem('simplecad.lastKey');if(!(await cadIntent())&&lk)await openRecent(lk,true);}
   schedule();
 })();
 window.__cad={get cmd(){return cmd;},get cur(){return cur;},get st(){return st;},get imp(){return imp;},get lts(){return lts;},schedule,zoomFit,shxFiles:()=>shxFiles,buildDXF,tm2ll,set view(v){st.view=v;},get view(){return st.view;}};
